@@ -255,31 +255,47 @@
           <label>Operario</label>
           <select id="filtroOpHE"><option value="">Todos los operarios</option></select>
         </div>
+        <div class="filter-group">
+          <label>Categoría</label>
+          <select id="filtroCategHE">
+            <option value="">Todas</option>
+            <option value="extra">Solo horas extra</option>
+            <option value="ordinario">Solo recargos ordinarios</option>
+          </select>
+        </div>
         <button id="btnCargarHE" class="btn btn-dark btn-sm">Buscar</button>
       </div>
 
       <div class="summary-cards">
         <div class="summary-card">
-          <div class="label">Total horas extra</div>
+          <div class="label">Total con recargo</div>
           <div class="value" id="sumHorasTotal">—</div>
         </div>
         <div class="summary-card" style="border-left-color:var(--cf-dark);">
-          <div class="label">HED (25%)</div>
+          <div class="label">HED — Extra diurna</div>
           <div class="value" id="sumHED">—</div>
         </div>
         <div class="summary-card" style="border-left-color:#7C3AED;">
-          <div class="label">HEN (75%)</div>
+          <div class="label">HEN — Extra nocturna</div>
           <div class="value" id="sumHEN">—</div>
         </div>
         <div class="summary-card" style="border-left-color:var(--cf-warning);">
-          <div class="label">Dom. / Festivos</div>
+          <div class="label">Extra Dom./Festivo</div>
           <div class="value" id="sumDF">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:#0EA5E9;">
+          <div class="label">RN — Noct. ordinario</div>
+          <div class="value" id="sumRN">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:#10B981;">
+          <div class="label">RDF/RNDF — Dom. ord.</div>
+          <div class="value" id="sumOrdinDF">—</div>
         </div>
       </div>
 
       <div class="table-card">
         <div class="table-header">
-          <h2>Detalle horas extra</h2>
+          <h2>Detalle de recargos</h2>
           <button id="btnExportHE" class="btn btn-ghost btn-sm">Exportar CSV</button>
         </div>
         <div class="table-wrap">
@@ -291,7 +307,7 @@
                 <th>Entrada</th>
                 <th>Salida</th>
                 <th>Horario</th>
-                <th>H. Extra</th>
+                <th>Horas</th>
                 <th>Tipo</th>
                 <th>Recargo</th>
               </tr>

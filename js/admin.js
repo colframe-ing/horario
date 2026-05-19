@@ -1,8 +1,32 @@
 // ============================================================
 // admin.js — Lógica del panel de administración
 // ============================================================
+//
+// ESTRUCTURA GENERAL (todo dentro de un IIFE para no contaminar el scope global):
+//
+//  ┌─ initData()          Carga horarios + operarios en paralelo al arrancar
+//  ├─ TAB: Registros      Tabla de marcaciones con filtros y export CSV
+//  ├─ TAB: Horas Extra    Resumen calculado por el backend (HED/HEN/HEDD/HEND)
+//  ├─ TAB: Programación   Grilla semanal de turnos; modal para editar celda
+//  ├─ TAB: Asistencia     Sesiones de trabajo (detalle o agrupado por semana ISO)
+//  ├─ TAB: Operarios      CRUD de operarios + panel de sesiones abiertas
+//  ├─ TAB: Auditoría      Log inmutable de acciones admin
+//  └─ UTILS               confirmar(), toast(), manejarError(), fmtHora(), esc()…
+//
+// DEPENDENCIAS (deben cargarse antes en el HTML):
+//   config.js  →  CONFIG.APPS_SCRIPT_URL
+//   api.js     →  apiAdmin*(), getSession(), clearSession()
+//   geo.js     →  validarEnPlanta()
+//
+// CONVENCIÓN DE ERRORES:
+//   Todas las llamadas a la API usan manejarError(e, 'contexto').
+//   Si el error es de tipo 'auth' → logout automático.
+//   Si es de otro tipo → toast de error visible.
+// ============================================================
 
 (function () {
+  // Guard: solo admins. La verificación real está en el backend;
+  // esta es solo UX para no mostrar la UI a operarios normales.
   const session = getSession();
   if (!session || !session.token || !session.esAdmin) {
     window.location.replace('index.html');
@@ -10,13 +34,16 @@
   }
 
   const { token } = session;
-  let horariosList   = [];
-  let horarioMap     = {};   // nombre → { inicio, fin }
-  let operariosCache = [];   // { cedula, nombre } de operarios activos
-  let operarioEditar = null;
-  let progCargada    = false;
 
-  // Carga horarios y lista de operarios al inicio
+  // Estado global del módulo
+  let horariosList   = [];  // lista completa de horarios definidos en Sheets
+  let horarioMap     = {};  // índice nombre → { inicio, fin } para render rápido
+  let operariosCache = [];  // operarios activos, usado para poblar filtros de tabs
+  let operarioEditar = null; // operario que está siendo editado en el modal
+  let progCargada    = false; // flag para lazy-load de la pestaña Programación
+
+  // Carga horarios y operarios en paralelo al iniciar.
+  // Se usan en varios tabs, por eso se cargan una sola vez aquí.
   (async function initData() {
     try {
       const [resHor, resOp] = await Promise.all([
@@ -162,29 +189,47 @@
     }
   }
 
+  // Tipos que corresponden a recargos ORDINARIOS (no horas extra)
+  const TIPOS_ORDINARIOS = ['Recargo Nocturno Ordinario', 'Recargo Dominical/Festivo Ordinario', 'Recargo Nocturno Dominical/Festivo Ordinario'];
+
   function renderHorasExtra(rows) {
-    const filtroHE = document.getElementById('filtroOpHE').value;
-    const rows2 = filtroHE ? rows.filter(r => String(r.cedula) === filtroHE) : rows;
-    let totalH = 0, hed = 0, hen = 0, df = 0;
+    const filtroOp    = document.getElementById('filtroOpHE').value;
+    const filtroCateg = document.getElementById('filtroCategHE').value;
+
+    let rows2 = filtroOp ? rows.filter(r => String(r.cedula) === filtroOp) : rows;
+    if (filtroCateg === 'extra')     rows2 = rows2.filter(r => !TIPOS_ORDINARIOS.includes(r.tipo));
+    if (filtroCateg === 'ordinario') rows2 = rows2.filter(r =>  TIPOS_ORDINARIOS.includes(r.tipo));
+
+    let totalH = 0, hed = 0, hen = 0, df = 0, rn = 0, ordinDF = 0;
     rows2.forEach(r => {
       const h = parseFloat(r.horas) || 0;
       totalH += h;
-      if (r.tipo && r.tipo.includes('Diurna') && !r.tipo.includes('Dominical')) hed += h;
-      else if (r.tipo && r.tipo.includes('Nocturna') && !r.tipo.includes('Dominical')) hen += h;
-      else df += h;
+      const t = r.tipo || '';
+      if      (t === 'Hora Extra Diurna')                           hed     += h;
+      else if (t === 'Hora Extra Nocturna')                         hen     += h;
+      else if (t.startsWith('Hora Extra') && t.includes('Dominical')) df    += h;
+      else if (t === 'Recargo Nocturno Ordinario')                  rn      += h;
+      else if (t.startsWith('Recargo') && t.includes('Dominical'))  ordinDF += h;
     });
 
     document.getElementById('sumHorasTotal').textContent = totalH.toFixed(1) + 'h';
     document.getElementById('sumHED').textContent        = hed.toFixed(1) + 'h';
     document.getElementById('sumHEN').textContent        = hen.toFixed(1) + 'h';
     document.getElementById('sumDF').textContent         = df.toFixed(1) + 'h';
+    document.getElementById('sumRN').textContent         = rn.toFixed(1) + 'h';
+    document.getElementById('sumOrdinDF').textContent    = ordinDF.toFixed(1) + 'h';
 
     if (!rows2.length) {
-      bodyHE.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin horas extra para el período seleccionado</td></tr>';
+      bodyHE.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin registros con recargo para el período seleccionado</td></tr>';
       return;
     }
-    bodyHE.innerHTML = rows2.map(r => `
-      <tr>
+
+    // Color de fila: azul claro para recargos ordinarios, fondo normal para extras
+    bodyHE.innerHTML = rows2.map(r => {
+      const esOrd = TIPOS_ORDINARIOS.includes(r.tipo);
+      const rowStyle = esOrd ? 'background:rgba(14,165,233,0.06);' : '';
+      return `
+      <tr style="${rowStyle}">
         <td><strong>${esc(r.nombre)}</strong></td>
         <td>${esc(r.fecha)}</td>
         <td>${fmtHora(r.horaEnt)}</td>
@@ -192,8 +237,9 @@
         <td>${fmtHorario(r.horario)}</td>
         <td style="font-weight:800;color:var(--cf-dark);">${parseFloat(r.horas).toFixed(2)}h</td>
         <td style="font-size:0.8rem;">${esc(r.tipo)}</td>
-        <td style="font-weight:700;color:var(--cf-blue);">+${esc(r.porcentaje)}</td>
-      </tr>`).join('');
+        <td style="font-weight:700;color:${esOrd ? '#0EA5E9' : 'var(--cf-blue)'};">+${esc(r.porcentaje)}</td>
+      </tr>`;
+    }).join('');
   }
 
   document.getElementById('btnExportHE').addEventListener('click', () => {
@@ -202,6 +248,9 @@
     exportCSV(data, ['nombre','cedula','fecha','horaEnt','horaSal','horario','horas','tipo','porcentaje'], 'horas-extra');
   });
   document.getElementById('filtroOpHE').addEventListener('change', () => {
+    if (heData.length) renderHorasExtra(heData);
+  });
+  document.getElementById('filtroCategHE').addEventListener('change', () => {
     if (heData.length) renderHorasExtra(heData);
   });
 
@@ -1408,9 +1457,16 @@
 
   // ============================================================
   // UTILS
+  // Funciones reutilizadas en todos los tabs. Declaradas al final
+  // para no interferir visualmente con la lógica de negocio,
+  // pero son hoisted al scope del IIFE y accesibles desde arriba.
   // ============================================================
 
   // ── Modal de confirmación ──
+  // Reemplaza window.confirm() (bloqueante, feo en móvil).
+  // Uso: const ok = await confirmar({ titulo, mensaje, btnOk, peligro: true })
+  // peligro: true pone el botón Ok en rojo.
+  // btnCancel: permite texto personalizado (ej: 'Solo Lun–Sáb').
   function confirmar({ titulo = 'Confirmar', mensaje, btnOk = 'Confirmar', btnCancel = 'Cancelar', peligro = false }) {
     return new Promise(resolve => {
       document.getElementById('confirmTitle').textContent = titulo;
@@ -1449,6 +1505,8 @@
   }
 
   // ── Notificación toast ──
+  // tipos: 'info' | 'success' | 'warning' | 'error'
+  // Se apilan en #toastContainer (esquina inferior derecha).
   function toast(mensaje, tipo = 'info', durMs = 3500) {
     const colores = {
       info:    { bg: '#EFF6FF', color: '#1E40AF', borde: '#BFDBFE', icono: 'ℹ' },
@@ -1465,7 +1523,10 @@
     setTimeout(() => div.remove(), durMs);
   }
 
-  // Convierte cualquier formato de hora a HH:mm legible
+  // ── Helpers de formato ──
+
+  // fmtHora: acepta 'HH:mm:ss', 'HH:mm' o ISO timestamp.
+  // Los timestamps de Sheets a veces vienen como ISO UTC → convierte a Bogotá.
   function fmtHora(val) {
     if (!val) return '—';
     const s = String(val);
@@ -1492,6 +1553,9 @@
     return `<span style="font-size:0.82rem;">${esc(nombre)}</span>`;
   }
 
+  // esc: escapar HTML antes de insertar en innerHTML.
+  // SIEMPRE usar para datos que vienen del backend (nombres, cédulas, etc.)
+  // para prevenir XSS si algún dato contiene < > & "
   function esc(str) {
     return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }

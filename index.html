@@ -63,6 +63,48 @@
     </div>
 
     <p class="login-footer">COLFRAME — Framing Colombia S.A.S. BIC</p>
+    <button class="login-privacy-link" id="btnPrivacidad" type="button">Aviso de privacidad · Ley 1581/2012</button>
+  </div>
+
+  <!-- ── Modal: Aviso de Privacidad ── -->
+  <div id="modalPrivacidad" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="privTitle">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h2 id="privTitle">Aviso de Privacidad</h2>
+        <button id="btnCerrarPriv" class="btn-icon" style="color:var(--cf-gray-text);" aria-label="Cerrar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div style="font-size:0.875rem;line-height:1.65;color:var(--cf-text);overflow-y:auto;max-height:58vh;padding-right:4px;">
+
+        <p><strong>Responsable del tratamiento</strong><br>
+        Framing Colombia S.A.S. BIC (COLFRAME), domiciliada en Medellín, Antioquia, Colombia.</p>
+
+        <p><strong>Finalidad</strong><br>
+        Sus datos se usan exclusivamente para el registro y control de asistencia y horas extra del personal, en cumplimiento de las obligaciones del contrato de trabajo y la normativa laboral colombiana.</p>
+
+        <p><strong>Datos que se recopilan</strong><br>
+        Número de cédula, nombre, cargo, horario laboral y ubicación GPS al momento de cada marcación de entrada o salida.</p>
+
+        <p><strong>Base legal</strong><br>
+        Ejecución del contrato de trabajo (Art. 6, Ley 1581/2012). La ubicación GPS se solicita con su consentimiento explícito vía el navegador y únicamente en el momento del registro.</p>
+
+        <p><strong>Almacenamiento y acceso</strong><br>
+        Los datos se guardan en Google Sheets (Google LLC) bajo sus políticas de seguridad. Solo el personal autorizado de COLFRAME tiene acceso. No se comparten con terceros.</p>
+
+        <p><strong>Vigencia</strong><br>
+        Durante la relación laboral y por el tiempo que exijan las normas de retención documental laboral colombianas.</p>
+
+        <p><strong>Sus derechos — Ley 1581 de 2012</strong><br>
+        Usted puede conocer, actualizar, rectificar o solicitar la supresión de sus datos, y revocar su autorización en cualquier momento. Para ejercer estos derechos, contacte al área de Recursos Humanos de COLFRAME.</p>
+
+      </div>
+      <div class="modal-actions" style="justify-content:flex-end;margin-top:20px;">
+        <button class="btn btn-primary" id="btnAceptarPriv">Entendido</button>
+      </div>
+    </div>
   </div>
 
   <script src="js/config.js"></script>
@@ -138,6 +180,15 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
+
+    // ── Modal de privacidad ──
+    const modalPriv = document.getElementById('modalPrivacidad');
+    function abrirPrivacidad()  { modalPriv.classList.remove('hidden'); }
+    function cerrarPrivacidad() { modalPriv.classList.add('hidden'); }
+    document.getElementById('btnPrivacidad').addEventListener('click', abrirPrivacidad);
+    document.getElementById('btnCerrarPriv').addEventListener('click', cerrarPrivacidad);
+    document.getElementById('btnAceptarPriv').addEventListener('click', cerrarPrivacidad);
+    modalPriv.addEventListener('click', e => { if (e.target === modalPriv) cerrarPrivacidad(); });
   </script>
 </body>
 </html>
