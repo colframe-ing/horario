@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Zona_de_trabajo_JA" data-name="Zona de trabajo JA" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 469.2">
+  <defs>
+    <style>
+      .cls-1, .cls-2, .cls-3 {
+        fill: #071d49;
+      }
+
+      .cls-1, .cls-4 {
+        letter-spacing: .12em;
+      }
+
+      .cls-5 {
+        font-family: Montserrat-ExtraBold, Montserrat;
+        font-size: 74px;
+        font-weight: 700;
+      }
+
+      .cls-3 {
+        letter-spacing: .1em;
+      }
+
+      .cls-6 {
+        stroke: #0072ce;
+        stroke-miterlimit: 10;
+        stroke-width: 2px;
+      }
+
+      .cls-6, .cls-4 {
+        fill: #0072ce;
+      }
+    </style>
+  </defs>
+  <g id="logo">
+    <text class="cls-5" transform="translate(47.84 415.3)"><tspan class="cls-3" x="0" y="0">C</tspan><tspan class="cls-1" x="62.16" y="0">OL</tspan><tspan class="cls-4" x="187.22" y="0">FRAME</tspan></text>
+    <g>
+      <polygon class="cls-2" points="215.69 175.96 215.69 301.74 302.95 301.74 302.95 313.19 204.24 313.19 204.24 171.22 208.8 166.66 302.88 72.58 302.95 72.65 302.95 88.7 215.69 175.96"/>
+      <path class="cls-6" d="M402.7,314.13h-100.69v-13.33h87.36v-124.45l-87.26-87.26v-16.82l1.01-1.02,99.58,99.58v143.3ZM303.89,312.25h96.92v-140.64l-96.82-96.82v13.52l87.26,87.26v127.12h-87.36v9.56Z"/>
+      <rect class="cls-6" x="302.01" y="53.03" width="1.88" height="285.29"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,15 @@
+{
+  "name": "COLFRAME — Horas Extra",
+  "short_name": "HorasExtra",
+  "description": "Control de horas extra COLFRAME Framing Colombia",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#071D49",
+  "theme_color": "#071D49",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon.svg",     "sizes": "any",     "type": "image/svg+xml", "purpose": "maskable any" }
+  ]
+}

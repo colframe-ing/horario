@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#071D49">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>COLFRAME — Horas Extra</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="login-body">
+
+  <div class="login-container">
+
+    <div class="login-logo-wrap">
+      <img src="assets/logo-vertical-blanco.svg"
+           onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='block'"
+           alt="COLFRAME" class="login-logo">
+      <div id="logoFallback" style="display:none; text-align:center;">
+        <div style="font-size:2.2rem; font-weight:800; color:#fff; letter-spacing:0.04em;">
+          <span style="color:#fff;">COL</span><span style="color:#0072CE;">FRAME</span>
+        </div>
+        <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); letter-spacing:0.14em; margin-top:4px;">
+          FRAMING COLOMBIA
+        </div>
+      </div>
+    </div>
+
+    <div class="login-card">
+      <h1 class="login-title">Control de Horas Extra</h1>
+
+      <form id="loginForm" class="login-form" novalidate>
+        <div class="form-group">
+          <label for="cedula">Cédula</label>
+          <input
+            type="number" id="cedula"
+            placeholder="Ej: 1234567890"
+            inputmode="numeric" autocomplete="off" required>
+        </div>
+
+        <div class="form-group">
+          <label for="pin">PIN</label>
+          <input
+            type="password" id="pin"
+            placeholder="• • • •"
+            maxlength="6" inputmode="numeric"
+            class="pin-input" autocomplete="current-password" required>
+        </div>
+
+        <div id="loginError" class="alert alert-error hidden" role="alert"></div>
+
+        <button type="submit" id="loginBtn" class="btn btn-primary btn-full">
+          <span class="btn-text">Ingresar</span>
+          <span class="btn-loading hidden"><span class="spinner"></span>&nbsp;Verificando...</span>
+        </button>
+      </form>
+    </div>
+
+    <p class="login-footer">COLFRAME — Framing Colombia S.A.S. BIC</p>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+    // Redirigir si ya hay sesión válida
+    (function() {
+      const s = getSession();
+      if (s && s.token) {
+        window.location.replace(s.esAdmin ? 'admin.html' : 'app.html');
+      }
+    })();
+
+    // Reloj de clock en título opcional — dejamos simple
+
+    const form    = document.getElementById('loginForm');
+    const cedFld  = document.getElementById('cedula');
+    const pinFld  = document.getElementById('pin');
+    const errorEl = document.getElementById('loginError');
+    const btn     = document.getElementById('loginBtn');
+    const btnText = btn.querySelector('.btn-text');
+    const btnLoad = btn.querySelector('.btn-loading');
+
+    function setLoading(v) {
+      btnText.classList.toggle('hidden', v);
+      btnLoad.classList.toggle('hidden', !v);
+      btn.disabled = v;
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorEl.classList.add('hidden');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+
+      const cedula = cedFld.value.trim();
+      const pin    = pinFld.value.trim();
+
+      if (!cedula) { showError('Ingresa tu cédula'); cedFld.focus(); return; }
+      if (!pin)    { showError('Ingresa tu PIN');    pinFld.focus(); return; }
+
+      setLoading(true);
+      try {
+        const res = await apiLogin(cedula, pin);
+        if (res.error) {
+          showError(res.error);
+          pinFld.value = '';
+          pinFld.focus();
+        } else {
+          setSession(res);
+          window.location.replace(res.esAdmin ? 'admin.html' : 'app.html');
+        }
+      } catch (err) {
+        showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Máximo 6 dígitos en PIN (4 para operarios, 6 para admins)
+    pinFld.addEventListener('input', () => {
+      if (pinFld.value.length > 6) pinFld.value = pinFld.value.slice(0, 6);
+    });
+
+    // Registrar Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

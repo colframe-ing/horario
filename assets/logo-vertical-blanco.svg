@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Zona_de_trabajo_JA" data-name="Zona de trabajo JA" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 601.68 522.35">
+  <defs>
+    <style>
+      .cls-1, .cls-2, .cls-3, .cls-4 {
+        fill: #ffffff;
+      }
+
+      .cls-1, .cls-5 {
+        letter-spacing: .12em;
+      }
+
+      .cls-6 {
+        letter-spacing: .15em;
+      }
+
+      .cls-2 {
+        font-family: Montserrat-SemiBold, Montserrat;
+        font-size: 37px;
+        font-weight: 600;
+      }
+
+      .cls-7 {
+        letter-spacing: .17em;
+      }
+
+      .cls-8 {
+        font-family: Montserrat-ExtraBold, Montserrat;
+        font-size: 74px;
+        font-weight: 700;
+      }
+
+      .cls-9 {
+        letter-spacing: .17em;
+      }
+
+      .cls-4 {
+        letter-spacing: .1em;
+      }
+
+      .cls-10 {
+        letter-spacing: .15em;
+      }
+
+      .cls-11 {
+        stroke: #ffffff;
+        stroke-miterlimit: 10;
+        stroke-width: 2px;
+      }
+
+      .cls-11, .cls-5 {
+        fill: #ffffff;
+      }
+    </style>
+  </defs>
+  <g id="logoexplicado">
+    <text class="cls-8" transform="translate(49.3 413.82)"><tspan class="cls-4" x="0" y="0">C</tspan><tspan class="cls-1" x="62.16" y="0">OL</tspan><tspan class="cls-5" x="187.22" y="0">FRAME</tspan></text>
+    <g>
+      <polygon class="cls-3" points="217.15 175.47 217.15 301.26 304.41 301.26 304.41 312.7 205.7 312.7 205.7 170.74 210.27 166.18 304.34 72.1 304.41 72.17 304.41 88.21 217.15 175.47"/>
+      <path class="cls-11" d="M404.16,313.64h-100.69v-13.33h87.36v-124.45l-87.26-87.26v-16.82l1.01-1.02,99.58,99.58v143.3ZM305.35,311.76h96.92v-140.64l-96.82-96.82v13.52l87.26,87.26v127.12h-87.36v9.56Z"/>
+      <rect class="cls-11" x="303.47" y="52.55" width="1.88" height="285.29"/>
+    </g>
+    <text class="cls-2" transform="translate(49.43 467.3)"><tspan class="cls-7" x="0" y="0">FRAMING </tspan><tspan class="cls-6" x="243.64" y="0">C</tspan><tspan class="cls-7" x="276.16" y="0">O</tspan><tspan class="cls-10" x="313.5" y="0">L</tspan><tspan class="cls-9" x="341.36" y="0">OMBIA </tspan></text>
+  </g>
+</svg>

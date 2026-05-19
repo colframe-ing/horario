@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Zona_de_trabajo_JA" data-name="Zona de trabajo JA" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2024 593.2">
+  <defs>
+    <style>
+      .cls-1 {
+        letter-spacing: .16em;
+      }
+
+      .cls-2 {
+        letter-spacing: .1em;
+      }
+
+      .cls-2, .cls-3, .cls-4, .cls-5 {
+        fill: #ffffff;
+      }
+
+      .cls-6, .cls-4 {
+        letter-spacing: .12em;
+      }
+
+      .cls-6, .cls-7 {
+        fill: #ffffff;
+      }
+
+      .cls-8 {
+        letter-spacing: .17em;
+      }
+
+      .cls-9 {
+        letter-spacing: .15em;
+      }
+
+      .cls-10 {
+        font-family: Montserrat-ExtraBold, Montserrat;
+        font-size: 210px;
+        font-weight: 700;
+      }
+
+      .cls-5 {
+        font-family: Montserrat-SemiBold, Montserrat;
+        font-size: 105px;
+        font-weight: 600;
+      }
+
+      .cls-7 {
+        stroke: #ffffff;
+        stroke-miterlimit: 10;
+        stroke-width: 2px;
+      }
+    </style>
+  </defs>
+  <g id="Logo_Horizontal" data-name="Logo Horizontal">
+    <text class="cls-10" transform="translate(456.83 304.04)"><tspan class="cls-2" x="0" y="0">C</tspan><tspan class="cls-4" x="176.4" y="0">OL</tspan><tspan class="cls-6" x="531.29" y="0">FRAME</tspan></text>
+    <polygon class="cls-3" points="159.68 276.93 159.68 424.78 261.94 424.78 261.94 437.71 145.57 437.71 145.57 271.05 151.41 265.69 261.99 155.11 261.94 155.19 261.94 174.36 159.68 276.93"/>
+    <path class="cls-7" d="M379.48,438.89h-118.72v-15.28h102.26v-146.29l-102.26-102.57v-20.16l1.19-1.19,117.53,117.05v168.44ZM263.12,436.54h114.02v-165.31l-114.02-113.81v16.32l102.26,102.26v148.78h-102.26v11.75Z"/>
+    <rect class="cls-7" x="260.77" y="132.1" width="2.35" height="335"/>
+    <text class="cls-5" transform="translate(454.48 437.29)"><tspan class="cls-8" x="0" y="0">FRAMING </tspan><tspan class="cls-9" x="692.26" y="0">C</tspan><tspan class="cls-8" x="784.66" y="0">O</tspan><tspan class="cls-1" x="890.71" y="0">L</tspan><tspan class="cls-8" x="969.88" y="0">OMBIA </tspan></text>
+  </g>
+</svg>

@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#071D49">
+  <title>COLFRAME — Panel Admin</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <img src="assets/logo-horizontal-blanco.svg"
+         onerror="this.outerHTML='<span style=\'color:#fff;font-weight:800;font-size:1.1rem\'><span>COL</span><span style=\'color:#0072CE\'>FRAME</span></span>'"
+         alt="COLFRAME" class="header-logo">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:rgba(255,255,255,0.7);font-size:0.78rem;font-weight:600;">ADMIN</span>
+      <button id="logoutBtn" class="btn-icon" title="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="registros">Registros</button>
+    <button class="tab-btn" data-tab="programacion">Programación</button>
+    <button class="tab-btn" data-tab="asistencia">Asistencia</button>
+    <button class="tab-btn" data-tab="horas-extra">Horas Extra</button>
+    <button class="tab-btn" data-tab="operarios">Operarios</button>
+    <button class="tab-btn" data-tab="auditoria">Auditoría</button>
+  </div>
+
+  <div class="admin-main">
+
+    <!-- ── TAB: REGISTROS ── -->
+    <div id="tab-registros" class="tab-panel active admin-panel">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Desde</label>
+          <input type="date" id="regDesde">
+        </div>
+        <div class="filter-group">
+          <label>Hasta</label>
+          <input type="date" id="regHasta">
+        </div>
+        <div class="filter-group">
+          <label>Operario</label>
+          <select id="filtroOpReg"><option value="">Todos los operarios</option></select>
+        </div>
+        <button id="btnCargarRegistros" class="btn btn-dark btn-sm">Buscar</button>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">Total registros</div>
+          <div class="value" id="sumTotal">—</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Entradas</div>
+          <div class="value" id="sumEntradas">—</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Salidas</div>
+          <div class="value" id="sumSalidas">—</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <h2>Marcaciones</h2>
+          <button id="btnExportReg" class="btn btn-ghost btn-sm">Exportar CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table id="tablaRegistros">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Cédula</th>
+                <th>Tipo</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="bodyRegistros">
+              <tr><td colspan="6" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Buscar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: PROGRAMACIÓN ── -->
+    <div id="tab-programacion" class="tab-panel admin-panel">
+
+      <!-- Navegador de semana -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:8px;flex-wrap:wrap;">
+        <button id="btnSemAnt" class="btn btn-ghost btn-sm">← Anterior</button>
+        <div style="text-align:center;">
+          <div id="semanaLabel" style="font-weight:700;font-size:0.95rem;color:var(--cf-dark);">—</div>
+          <div id="semanaNum" style="font-size:0.75rem;color:var(--cf-gray-text);"></div>
+        </div>
+        <button id="btnSemSig" class="btn btn-ghost btn-sm">Siguiente →</button>
+        <button id="btnSemHoy" class="btn btn-primary btn-sm">Esta semana</button>
+        <button id="btnPoblarSemana" class="btn btn-ghost btn-sm" title="Rellena los días vacíos con el horario predeterminado de cada operario">
+          ✦ Aplicar predeterminados
+        </button>
+        <button id="btnLimpiarSemana" class="btn btn-ghost btn-sm" style="color:#DC2626;border-color:#FECACA;" title="Elimina toda la programación de la semana mostrada">
+          🗑 Limpiar semana
+        </button>
+      </div>
+
+      <!-- Cards de cumplimiento -->
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">Horas programadas</div>
+          <div class="value" id="progHorasProg">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-blue);">
+          <div class="label">Horas trabajadas</div>
+          <div class="value" id="progHorasTrab">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:#DC2626;">
+          <div class="label">Déficit semana</div>
+          <div class="value" id="progDeficit">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-warning);">
+          <div class="label">Ausencias</div>
+          <div class="value" id="progAusencias">—</div>
+        </div>
+      </div>
+
+      <!-- Cuadrícula semanal -->
+      <div class="table-card">
+        <div class="table-header">
+          <h2>Programación semanal</h2>
+          <span style="font-size:0.75rem;color:var(--cf-gray-text);">Clic en una celda para editar</span>
+        </div>
+        <div class="table-wrap">
+          <table id="tablaProgramacion" style="min-width:760px;">
+            <thead id="progHead"></thead>
+            <tbody id="bodyProgramacion">
+              <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--cf-gray-text);">
+                <span class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:var(--cf-blue);"></span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Leyenda -->
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:0.75rem;color:var(--cf-gray-text);">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#EFF6FF;border:1px solid #BFDBFE;display:inline-block;"></span> Turno programado</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#F0FDF4;border:1px solid #BBF7D0;display:inline-block;"></span> Cumplido</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#FFFBEB;border:1px solid #FDE68A;display:inline-block;"></span> Parcial / tardanza</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#FEF2F2;border:1px solid #FECACA;display:inline-block;"></span> Ausente</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#F5F3FF;border:1px solid #DDD6FE;display:inline-block;"></span> Novedad (incapacidad, permiso…)</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;background:#FFFBEB;border:1px solid #FDE68A;display:inline-block;"></span> Sin prog. pero trabajó</span>
+      </div>
+    </div>
+
+    <!-- ── TAB: ASISTENCIA ── -->
+    <div id="tab-asistencia" class="tab-panel admin-panel">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Desde</label>
+          <input type="date" id="asDesde">
+        </div>
+        <div class="filter-group">
+          <label>Hasta</label>
+          <input type="date" id="asHasta">
+        </div>
+        <div class="filter-group">
+          <label>Operario</label>
+          <select id="filtroOpAs"><option value="">Todos los operarios</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Vista</label>
+          <select id="asVista">
+            <option value="detalle">Detalle por sesión</option>
+            <option value="semana">Resumen por semana</option>
+          </select>
+        </div>
+        <button id="btnCargarAsistencia" class="btn btn-dark btn-sm">Buscar</button>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label" id="asSumSesionesLabel">Sesiones</div>
+          <div class="value" id="asSumSesiones">—</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Horas trabajadas</div>
+          <div class="value" id="asSumHoras">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-warning);">
+          <div class="label">Llegadas tarde</div>
+          <div class="value" id="asSumTardanzas">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-blue);">
+          <div class="label" id="asSumPromedioLabel">Prom. horas/sesión</div>
+          <div class="value" id="asSumPromedio">—</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <h2 id="asTituloTabla">Detalle por sesión</h2>
+          <button id="btnExportAs" class="btn btn-ghost btn-sm">Exportar CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table id="tablaAsistencia">
+            <thead id="asistenciaHead">
+              <tr>
+                <th>Nombre</th>
+                <th>Fecha</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>Horas</th>
+                <th>Tardanza</th>
+                <th>Horario</th>
+              </tr>
+            </thead>
+            <tbody id="bodyAsistencia">
+              <tr><td colspan="7" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Buscar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: HORAS EXTRA ── -->
+    <div id="tab-horas-extra" class="tab-panel admin-panel">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Desde</label>
+          <input type="date" id="heDesde">
+        </div>
+        <div class="filter-group">
+          <label>Hasta</label>
+          <input type="date" id="heHasta">
+        </div>
+        <div class="filter-group">
+          <label>Operario</label>
+          <select id="filtroOpHE"><option value="">Todos los operarios</option></select>
+        </div>
+        <button id="btnCargarHE" class="btn btn-dark btn-sm">Buscar</button>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">Total horas extra</div>
+          <div class="value" id="sumHorasTotal">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-dark);">
+          <div class="label">HED (25%)</div>
+          <div class="value" id="sumHED">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:#7C3AED;">
+          <div class="label">HEN (75%)</div>
+          <div class="value" id="sumHEN">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-warning);">
+          <div class="label">Dom. / Festivos</div>
+          <div class="value" id="sumDF">—</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <h2>Detalle horas extra</h2>
+          <button id="btnExportHE" class="btn btn-ghost btn-sm">Exportar CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table id="tablaHE">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Fecha</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>Horario</th>
+                <th>H. Extra</th>
+                <th>Tipo</th>
+                <th>Recargo</th>
+              </tr>
+            </thead>
+            <tbody id="bodyHE">
+              <tr><td colspan="8" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Buscar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: OPERARIOS ── -->
+    <div id="tab-operarios" class="tab-panel admin-panel">
+
+      <!-- Sesiones abiertas -->
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:0.92rem;font-weight:700;color:var(--cf-dark);">🟢 Sesiones abiertas</span>
+            <span id="sesionesCount" style="background:#FEF9C3;color:#92400E;border-radius:999px;padding:1px 9px;font-size:0.72rem;font-weight:700;">—</span>
+          </div>
+          <button id="btnRefreshSesiones" class="btn btn-ghost btn-sm">↻ Actualizar</button>
+        </div>
+        <div id="sesionesAbiertasBody">
+          <span style="color:var(--cf-gray-text);font-size:0.82rem;">Cargando...</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+        <button id="btnNuevoOperario" class="btn btn-primary btn-sm">+ Nuevo operario</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <h2>Operarios</h2>
+          <span id="operariosCount" style="font-size:0.82rem;color:var(--cf-gray-text);font-weight:600;"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Cédula</th>
+                <th>Cargo</th>
+                <th>Horario</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="bodyOperarios">
+              <tr><td colspan="6" style="text-align:center;color:var(--cf-gray-text);padding:32px;"><span class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:var(--cf-blue);"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: AUDITORÍA ── -->
+    <div id="tab-auditoria" class="tab-panel admin-panel">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Desde</label>
+          <input type="date" id="audDesde">
+        </div>
+        <div class="filter-group">
+          <label>Hasta</label>
+          <input type="date" id="audHasta">
+        </div>
+        <div class="filter-group">
+          <label>Acción</label>
+          <select id="audFiltroAccion">
+            <option value="">Todas</option>
+            <option value="OPERARIO_CREADO">Operario creado</option>
+            <option value="OPERARIO_ACTUALIZADO">Operario actualizado</option>
+            <option value="DESBLOQUEO">Desbloqueo</option>
+            <option value="MARCACION_ADMIN">Marcación por admin</option>
+            <option value="CORRECCIONES_MANUALES">⚡ Correcciones manuales</option>
+            <option value="REGISTRO_ELIMINADO">Registro eliminado</option>
+            <option value="TURNO_CREADO">Turno creado</option>
+            <option value="TURNO_ACTUALIZADO">Turno actualizado</option>
+            <option value="TURNO_ELIMINADO">Turno eliminado</option>
+            <option value="POBLAR_SEMANA">Poblar semana</option>
+            <option value="NOVEDAD_CREADA">Novedad creada</option>
+            <option value="NOVEDAD_ACTUALIZADA">Novedad actualizada</option>
+            <option value="NOVEDAD_ELIMINADA">Novedad eliminada</option>
+          </select>
+        </div>
+        <button id="btnCargarAud" class="btn btn-dark btn-sm">Buscar</button>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">Eventos</div>
+          <div class="value" id="audSumTotal">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-blue);">
+          <div class="label">Admins distintos</div>
+          <div class="value" id="audSumAdmins">—</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <h2>Registro de cambios</h2>
+          <button id="btnExportAud" class="btn btn-ghost btn-sm">Exportar CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table id="tablaAud">
+            <thead>
+              <tr>
+                <th>Fecha y hora</th>
+                <th>Admin</th>
+                <th>Acción</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="bodyAud">
+              <tr><td colspan="4" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Buscar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── MODAL OPERARIO ── -->
+  <div id="modalOperario" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitle">Nuevo operario</h2>
+        <button id="modalClose" class="btn-icon" style="color:var(--cf-gray-text);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="formOperario" novalidate>
+        <input type="hidden" id="opFila">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="form-group">
+            <label>Nombre completo *</label>
+            <input type="text" id="opNombre" placeholder="Ej: Juan Pérez" required>
+          </div>
+          <div class="form-group">
+            <label>Cédula *</label>
+            <input type="number" id="opCedula" inputmode="numeric" placeholder="Ej: 1234567890" required>
+          </div>
+          <div class="form-group">
+            <label>PIN (<span id="opPinLongitud">4 dígitos</span>) *</label>
+            <input type="text" id="opPin" inputmode="numeric" maxlength="4" placeholder="Dejar en blanco para no cambiar">
+          </div>
+          <div class="form-group">
+            <label>Cargo</label>
+            <input type="text" id="opCargo" placeholder="Ej: Operario soldador">
+          </div>
+          <div class="form-group">
+            <label>Horario asignado</label>
+            <select id="opHorario">
+              <option value="">Sin asignar</option>
+            </select>
+          </div>
+          <div class="form-group" id="opEmailGroup" style="display:none;">
+            <label>Email <span style="font-weight:400;color:var(--cf-gray-text);">(para reportes diarios automáticos)</span></label>
+            <input type="email" id="opEmail" placeholder="correo@empresa.com">
+          </div>
+          <div style="display:flex;gap:20px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
+              <input type="checkbox" id="opActivo" checked> Activo
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
+              <input type="checkbox" id="opAdmin"> Es administrador
+            </label>
+          </div>
+        </div>
+        <div id="modalError" class="alert alert-error hidden" style="margin-top:14px;"></div>
+        <div class="modal-actions">
+          <button type="button" id="btnModalCancel" class="btn btn-ghost btn-sm">Cancelar</button>
+          <button type="submit" id="btnModalSave" class="btn btn-primary btn-sm">
+            <span class="btn-save-text">Guardar</span>
+            <span class="btn-save-loading hidden"><span class="spinner"></span></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── MODAL TURNO ── -->
+  <div id="modalTurno" class="modal-overlay hidden">
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header">
+        <h2 id="modalTurnoTitle">Programar turno</h2>
+        <button id="modalTurnoClose" class="btn-icon" style="color:var(--cf-gray-text);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="turnoInfo" style="background:#F1F5F9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.88rem;color:var(--cf-dark);"></div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="form-group">
+          <label>Turno predefinido</label>
+          <select id="turnoPreset">
+            <option value="">— Personalizado —</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div class="form-group" style="flex:1;">
+            <label>Hora de inicio</label>
+            <input type="time" id="turnoInicio">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Hora de fin</label>
+            <input type="time" id="turnoFin">
+          </div>
+        </div>
+        <div id="turnoHorasCalc" style="text-align:center;font-size:0.85rem;color:var(--cf-blue);font-weight:700;min-height:20px;"></div>
+      </div>
+
+      <!-- Novedad del día -->
+      <div style="border-top:1px solid #E2E8F0;margin-top:16px;padding-top:14px;">
+        <div style="font-size:0.8rem;font-weight:700;color:var(--cf-gray-text);letter-spacing:0.06em;margin-bottom:10px;">NOVEDAD DEL DÍA (opcional)</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="form-group">
+            <label>Tipo de novedad</label>
+            <select id="novedadTipo">
+              <option value="">Sin novedad</option>
+              <option value="Incapacidad médica">🏥 Incapacidad médica</option>
+              <option value="Día de la familia">🏠 Día de la familia</option>
+              <option value="Vacaciones">🌴 Vacaciones</option>
+              <option value="Licencia remunerada">📋 Licencia remunerada</option>
+              <option value="Licencia no remunerada">📋 Licencia no remunerada</option>
+              <option value="Permiso — Votación">🗳️ Permiso — Votación</option>
+              <option value="Permiso — Otro">🗳️ Permiso — Otro</option>
+              <option value="Calamidad doméstica">🚨 Calamidad doméstica</option>
+              <option value="Suspensión disciplinaria">⛔ Suspensión disciplinaria</option>
+            </select>
+          </div>
+          <div id="novedadExtras" class="hidden" style="display:flex;flex-direction:column;gap:10px;">
+            <div class="form-group">
+              <label>Descripción <span style="font-weight:400;color:var(--cf-gray-text);">(opcional)</span></label>
+              <input type="text" id="novedadDesc" placeholder="Ej: EPS Sura, No. incapacidad 12345">
+            </div>
+            <div class="form-group">
+              <label>Horas de novedad</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="number" id="novedadHoras" min="0.5" max="24" step="0.5"
+                       placeholder="Vacío = turno completo" style="flex:1;">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="turnoAlert" class="alert hidden" style="margin-top:12px;"></div>
+
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button id="btnTurnoLibre" class="btn btn-ghost btn-sm" style="color:#DC2626;border-color:#FECACA;">Quitar turno</button>
+        <div style="display:flex;gap:8px;">
+          <button id="btnTurnoCancel" class="btn btn-ghost btn-sm">Cancelar</button>
+          <button id="btnTurnoSave" class="btn btn-primary btn-sm">
+            <span id="turnoSaveText">Guardar</span>
+            <span id="turnoSaveLoad" class="hidden"><span class="spinner"></span></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL MARCAR POR OPERARIO ── -->
+  <div id="modalMarcar" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Marcar por operario</h2>
+        <button id="modalMarcarClose" class="btn-icon" style="color:var(--cf-gray-text);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;padding:4px 0 8px;">
+        <!-- Info del operario -->
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div id="marcarAvatar" style="width:44px;height:44px;border-radius:50%;background:var(--cf-dark);color:#fff;font-weight:800;font-size:1.1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;">?</div>
+          <div>
+            <div id="marcarNombre" style="font-weight:700;font-size:1rem;color:var(--cf-dark);">—</div>
+            <div id="marcarCedula" style="font-size:0.8rem;color:var(--cf-gray-text);">—</div>
+          </div>
+        </div>
+
+        <!-- Estado actual del operario -->
+        <div id="marcarEstado" style="background:#F1F5F9;border-radius:8px;padding:10px 14px;font-size:0.82rem;color:var(--cf-dark);line-height:1.5;"></div>
+
+        <!-- Fecha y hora de la marcación -->
+        <div style="border-top:1px solid #E2E8F0;padding-top:12px;">
+          <div style="font-size:0.75rem;font-weight:700;color:var(--cf-gray-text);letter-spacing:0.06em;margin-bottom:8px;">FECHA Y HORA DE LA MARCACIÓN</div>
+          <div style="display:flex;gap:10px;">
+            <div class="form-group" style="flex:1;">
+              <label>Fecha</label>
+              <input type="date" id="marcarFecha">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Hora</label>
+              <input type="time" id="marcarHora">
+            </div>
+          </div>
+          <div style="font-size:0.75rem;color:var(--cf-gray-text);margin-top:4px;">
+            Ajusta si el operario olvidó marcar a tiempo. Por defecto se usa la hora actual.
+          </div>
+        </div>
+      </div>
+
+      <div id="marcarAlert" class="alert hidden" style="margin-top:4px;"></div>
+
+      <div class="modal-actions" style="margin-top:16px;">
+        <button id="btnMarcarCancel" class="btn btn-ghost btn-sm">Cancelar</button>
+        <button id="btnMarcarConfirm" class="btn btn-primary btn-sm">
+          <span id="marcarBtnText">Confirmar marcación</span>
+          <span id="marcarBtnLoading" class="hidden"><span class="spinner"></span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL REPORTE PDF ── -->
+  <div id="modalReporte" class="modal-overlay hidden">
+    <div class="modal" style="max-width:340px;">
+      <div class="modal-header">
+        <h2>Reporte mensual</h2>
+        <button id="modalReporteClose" class="btn-icon" style="color:var(--cf-gray-text);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="reporteOperarioInfo" style="background:#F1F5F9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.88rem;color:var(--cf-dark);"></div>
+      <div class="form-group">
+        <label>Mes</label>
+        <input type="month" id="reporteMes" required>
+      </div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button id="btnReporteCancel" class="btn btn-ghost btn-sm">Cancelar</button>
+        <button id="btnReporteGenerar" class="btn btn-primary btn-sm">
+          <span id="reporteBtnText">📄 Descargar PDF</span>
+          <span id="reporteBtnLoading" class="hidden"><span class="spinner"></span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL CONFIRMACIÓN GENÉRICO ── -->
+  <div id="modalConfirm" class="modal-overlay hidden">
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-header">
+        <h2 id="confirmTitle">Confirmar</h2>
+      </div>
+      <p id="confirmMsg" style="font-size:0.92rem;line-height:1.5;color:var(--cf-dark);margin:0 0 16px;"></p>
+      <div class="modal-actions">
+        <button id="confirmCancel" class="btn btn-ghost btn-sm">Cancelar</button>
+        <button id="confirmOk" class="btn btn-primary btn-sm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TOAST CONTAINER ── -->
+  <div id="toastContainer" style="position:fixed;top:80px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
