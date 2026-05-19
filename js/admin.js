@@ -841,11 +841,14 @@
   // TAB: OPERARIOS
   // ============================================================
 
+  let sesionesAbiertasData = [];   // se rellena en cargarSesionesAbiertas()
+
   async function cargarOperarios() {
     try {
       const resOp = await apiAdminOperariosList(token);
       renderOperarios(resOp.operarios || []);
     } catch (e) { manejarError(e, 'cargarOperarios'); }
+  }
 
   function renderOperarios(operarios) {
     document.getElementById('operariosCount').textContent = operarios.length + ' operarios';
