@@ -69,6 +69,49 @@
 
   </main>
 
+  <!-- ── Modal: sesión sin cerrar ── -->
+  <div id="modalSesionVencida" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+
+      <div style="text-align:center;font-size:2.2rem;margin-bottom:8px;">⚠️</div>
+      <h2 style="font-size:1rem;font-weight:800;color:#071D49;margin:0 0 8px;text-align:center;">Sesión sin cerrar</h2>
+      <p style="font-size:0.875rem;line-height:1.55;color:#374151;margin:0 0 20px;text-align:center;">
+        Tienes una entrada del <strong id="svFechaLabel"></strong> a las <strong id="svHoraLabel"></strong> que nunca se cerró. ¿Qué pasó?
+      </p>
+
+      <!-- Opciones -->
+      <div id="svOpciones">
+        <div id="svOptOlvide" style="border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;">
+          <div style="font-weight:700;font-size:0.9rem;color:#071D49;">🕐 Olvidé marcar mi salida</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;">Voy a ingresar la hora real en que salí</div>
+        </div>
+        <div id="svOptTrabaje" style="border:2px solid #E2E8F0;border-radius:12px;padding:14px 16px;cursor:pointer;">
+          <div style="font-weight:700;font-size:0.9rem;color:#071D49;">✅ Realmente estuve trabajando</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;">Marco mi salida ahora en tiempo real</div>
+        </div>
+      </div>
+
+      <!-- Formulario corrección -->
+      <div id="svForm" style="display:none;">
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">Fecha de salida</label>
+          <input type="date" id="svFechaSalida" style="width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">Hora de salida real</label>
+          <input type="time" id="svHoraSalida" style="width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;">
+        </div>
+        <div id="svError"  style="display:none;font-size:0.82rem;color:#B91C1C;background:#FEE2E2;padding:10px 12px;border-radius:8px;margin-bottom:12px;line-height:1.4;"></div>
+        <div id="svGpsMsg" style="display:none;font-size:0.8rem;color:#6B7280;text-align:center;margin-bottom:12px;"></div>
+        <div style="display:flex;gap:8px;">
+          <button id="svBtnAtras"     style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #E2E8F0;background:#fff;font-weight:600;font-size:0.85rem;cursor:pointer;font-family:inherit;">← Atrás</button>
+          <button id="svBtnConfirmar" style="flex:2;padding:10px;border-radius:8px;border:none;background:#071D49;color:#fff;font-weight:700;font-size:0.85rem;cursor:pointer;font-family:inherit;">Confirmar salida</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ── Modal confirmación ── -->
   <div id="appModalConfirm" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9000;align-items:center;justify-content:center;padding:16px;">
     <div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.18);">

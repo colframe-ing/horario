@@ -92,6 +92,7 @@
       const res = await apiEstado(session.token);
       estadoActual = res;
       actualizarUI();
+      verificarSesionVencida();
     } catch (e) {
       console.error('cargarEstado', e);
       if (e && e.name === 'ApiError' && e.tipo === 'auth') {
@@ -217,6 +218,121 @@
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Sesión vencida ──────────────────────────────────────────
+  // Si el operario tiene una ENTRADA de un día anterior sin cerrar,
+  // se muestra este modal antes de que pueda marcar cualquier cosa.
+
+  const modalSV     = document.getElementById('modalSesionVencida');
+  const svOpciones  = document.getElementById('svOpciones');
+  const svForm      = document.getElementById('svForm');
+  const svError     = document.getElementById('svError');
+  const svGpsMsg    = document.getElementById('svGpsMsg');
+  const svBtnConf   = document.getElementById('svBtnConfirmar');
+
+  function hoyEnColombia() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
+
+  function verificarSesionVencida() {
+    if (!estadoActual || !estadoActual.tieneEntradaAbierta || !estadoActual.ultimoRegistro) return;
+    const u = estadoActual.ultimoRegistro;
+    if (!u.fecha || u.fecha >= hoyEnColombia()) return; // entrada de hoy → no aplica
+
+    // Poblar labels
+    document.getElementById('svFechaLabel').textContent = u.fecha;
+    document.getElementById('svHoraLabel').textContent  = (u.hora || '').slice(0, 5);
+
+    // Pre-fill formulario con fecha de la entrada y hora vacía
+    document.getElementById('svFechaSalida').value = u.fecha;
+    document.getElementById('svFechaSalida').max   = hoyEnColombia();
+    document.getElementById('svHoraSalida').value  = '';
+
+    svOpciones.style.display = 'block';
+    svForm.style.display     = 'none';
+    svError.style.display    = 'none';
+    svGpsMsg.style.display   = 'none';
+    modalSV.style.display    = 'flex';
+    markBtn.disabled         = true; // bloquear marcación normal hasta resolver
+  }
+
+  document.getElementById('svOptOlvide').addEventListener('click', () => {
+    svOpciones.style.display = 'none';
+    svForm.style.display     = 'block';
+  });
+
+  document.getElementById('svOptTrabaje').addEventListener('click', () => {
+    modalSV.style.display = 'none';
+    markBtn.disabled      = false;
+    actualizarUI(); // reactiva el botón de salida
+  });
+
+  document.getElementById('svBtnAtras').addEventListener('click', () => {
+    svForm.style.display     = 'none';
+    svOpciones.style.display = 'block';
+    svError.style.display    = 'none';
+    svGpsMsg.style.display   = 'none';
+  });
+
+  svBtnConf.addEventListener('click', async () => {
+    const fecha = document.getElementById('svFechaSalida').value;
+    const hora  = document.getElementById('svHoraSalida').value;
+
+    svError.style.display  = 'none';
+    svGpsMsg.style.display = 'none';
+
+    if (!fecha) { mostrarSvError('Ingresa la fecha de salida.'); return; }
+    if (!hora)  { mostrarSvError('Ingresa la hora de salida.'); return; }
+
+    // La salida no puede ser en el futuro
+    if (new Date(fecha + 'T' + hora) > new Date()) {
+      mostrarSvError('La hora de salida no puede ser en el futuro.'); return;
+    }
+
+    // La salida debe ser después de la entrada
+    const u = estadoActual.ultimoRegistro;
+    if (new Date(fecha + 'T' + hora) <= new Date(u.fecha + 'T' + u.hora)) {
+      mostrarSvError('La salida debe ser después de la entrada (' + u.fecha + ' ' + (u.hora || '').slice(0, 5) + ').'); return;
+    }
+
+    svBtnConf.disabled    = true;
+    svBtnConf.textContent = 'Verificando GPS...';
+    svGpsMsg.style.display = 'block';
+    svGpsMsg.textContent   = 'Obteniendo ubicación...';
+
+    try {
+      const { enPlanta, distancia, lat, lng } = await validarEnPlanta();
+
+      if (!enPlanta) {
+        svGpsMsg.style.display = 'none';
+        mostrarSvError('📍 Estás a ' + distancia + ' m de la planta (máx. ' + CONFIG.RADIO_METROS + ' m). Debes estar en la planta para corregir la salida.');
+        return;
+      }
+
+      svGpsMsg.textContent  = '📍 Ubicación confirmada (' + distancia + ' m)';
+      svBtnConf.textContent = 'Registrando...';
+
+      await apiMarcar(session.token, lat, lng, { fecha, hora: hora + ':00' });
+
+      modalSV.style.display = 'none';
+      showAlert('✅ Salida del ' + fecha + ' a las ' + hora + ' registrada correctamente.', 'success');
+      await cargarEstado();
+      await cargarHistorial();
+
+    } catch (err) {
+      const msg = (err && err.name === 'ApiError') ? err.message : (err.message || 'Error al registrar. Intenta de nuevo.');
+      mostrarSvError(msg);
+      svGpsMsg.style.display = 'none';
+    } finally {
+      svBtnConf.disabled    = false;
+      svBtnConf.textContent = 'Confirmar salida';
+    }
+  });
+
+  function mostrarSvError(msg) {
+    svError.textContent    = msg;
+    svError.style.display  = 'block';
   }
 
   // ── Init ──

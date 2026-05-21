@@ -66,8 +66,14 @@ async function apiLogin(cedula, pin) {
 async function apiEstado(token) {
   return apiCall('estado', { token });
 }
-async function apiMarcar(token, lat, lng) {
-  return apiCall('marcar', { token, lat, lng });
+// override: { fecha: 'YYYY-MM-DD', hora: 'HH:mm:ss' } — para corregir salidas olvidadas
+async function apiMarcar(token, lat, lng, override) {
+  const payload = { token, lat, lng };
+  if (override) {
+    if (override.fecha) payload.fechaOverride = override.fecha;
+    if (override.hora)  payload.horaOverride  = override.hora;
+  }
+  return apiCall('marcar', payload);
 }
 async function apiHistorial(token) {
   return apiCall('historial', { token });
