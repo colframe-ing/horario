@@ -220,20 +220,27 @@
     document.getElementById('sumOrdinDF').textContent    = ordinDF.toFixed(1) + 'h';
 
     if (!rows2.length) {
-      bodyHE.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin registros con recargo para el período seleccionado</td></tr>';
+      bodyHE.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin registros con recargo para el período seleccionado</td></tr>';
       return;
     }
 
     // Color de fila: azul claro para recargos ordinarios, fondo normal para extras
     bodyHE.innerHTML = rows2.map(r => {
-      const esOrd = TIPOS_ORDINARIOS.includes(r.tipo);
+      const esOrd    = TIPOS_ORDINARIOS.includes(r.tipo);
       const rowStyle = esOrd ? 'background:rgba(14,165,233,0.06);' : '';
+      // Si la fecha de salida es distinta a la de entrada, marcarla en naranja
+      const fechaSal     = r.fechaSal || r.fecha;
+      const cruceMed     = fechaSal !== r.fecha;
+      const fechaSalHtml = cruceMed
+        ? `<span style="color:var(--cf-warning);font-weight:700;">${esc(fechaSal)} ↑</span>`
+        : esc(fechaSal);
       return `
       <tr style="${rowStyle}">
         <td><strong>${esc(r.nombre)}</strong></td>
-        <td>${esc(r.fecha)}</td>
-        <td>${fmtHora(r.horaEnt)}</td>
-        <td>${fmtHora(r.horaSal)}</td>
+        <td style="white-space:nowrap;">${esc(r.fecha)}</td>
+        <td style="white-space:nowrap;">${fmtHora(r.horaEnt)}</td>
+        <td style="white-space:nowrap;">${fechaSalHtml}</td>
+        <td style="white-space:nowrap;">${fmtHora(r.horaSal)}</td>
         <td>${fmtHorario(r.horario)}</td>
         <td style="font-weight:800;color:var(--cf-dark);">${parseFloat(r.horas).toFixed(2)}h</td>
         <td style="font-size:0.8rem;">${esc(r.tipo)}</td>
