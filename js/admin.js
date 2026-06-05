@@ -832,11 +832,24 @@
     const r = asistenciaData[idx];
     if (!r) return;
     sesionEditando = r;
+
+    // Detectar si la sesión cruzó medianoche (horaSal < horaEnt)
+    const horaEntStr = (r.horaEnt || '').slice(0, 5);
+    const horaSalStr = (r.horaSal || '').slice(0, 5);
+    const cruceMedNoche = horaSalStr && horaEntStr && horaSalStr < horaEntStr;
+    const fechaSalDefecto = cruceMedNoche
+      ? (() => { const d = new Date(r.fecha + 'T12:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })()
+      : r.fecha;
+
     document.getElementById('editSesionInfo').innerHTML =
       `<strong>${esc(r.nombre)}</strong> · ${esc(r.fecha)}<br>` +
-      `Horario: <em>${fmtHorario(r.horario)}</em>`;
-    document.getElementById('editSesionHoraEnt').value = (r.horaEnt || '').slice(0, 5);
-    document.getElementById('editSesionHoraSal').value = (r.horaSal || '').slice(0, 5);
+      `Horario detectado: <em>${fmtHorario(r.horario)}</em>` +
+      (cruceMedNoche ? ' <span style="color:var(--cf-warning);font-size:0.78rem;">· turno nocturno</span>' : '');
+
+    document.getElementById('editSesionFechaEnt').value = r.fecha;
+    document.getElementById('editSesionHoraEnt').value  = horaEntStr;
+    document.getElementById('editSesionFechaSal').value = fechaSalDefecto;
+    document.getElementById('editSesionHoraSal').value  = horaSalStr;
     editSesionError.classList.add('hidden');
     modalEditSesion.classList.remove('hidden');
   }
@@ -862,13 +875,20 @@
     const btnSave = document.getElementById('modalEditSesionSave');
     btnSave.disabled = true; btnSave.textContent = 'Guardando...';
     try {
+      const fechaSal = document.getElementById('editSesionFechaSal').value;
+      if (!fechaSal) {
+        editSesionError.textContent = 'Completa la fecha de salida.';
+        editSesionError.classList.remove('hidden');
+        return;
+      }
       const res = await apiAdminSesionUpdate(
         token,
         sesionEditando.cedula,
         sesionEditando.fecha,
-        sesionEditando.horaEnt,   // hora original para identificar la sesión
-        horaEnt + ':00',
-        horaSal + ':00',
+        sesionEditando.horaEnt,   // hora original para identificar la sesión (backend slice(0,5))
+        horaEnt,                  // HH:MM del input, sin :00
+        horaSal,                  // HH:MM del input, sin :00
+        fechaSal,                 // fecha de salida (puede ser día siguiente)
       );
       if (res.error) throw new Error(res.error);
       cerrarEditSesion();

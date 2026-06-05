@@ -252,13 +252,26 @@
           </button>
         </div>
         <div id="editSesionInfo" style="font-size:0.82rem;color:var(--cf-gray-text);margin-bottom:16px;line-height:1.5;"></div>
-        <div class="form-group" style="margin-bottom:12px;">
-          <label>Hora de entrada</label>
-          <input type="time" id="editSesionHoraEnt" step="60">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div class="form-group">
+            <label>Fecha entrada</label>
+            <input type="date" id="editSesionFechaEnt" readonly
+              style="background:#F8FAFC;color:var(--cf-gray-text);cursor:default;">
+          </div>
+          <div class="form-group">
+            <label>Hora entrada</label>
+            <input type="time" id="editSesionHoraEnt" step="60">
+          </div>
         </div>
-        <div class="form-group" style="margin-bottom:16px;">
-          <label>Hora de salida</label>
-          <input type="time" id="editSesionHoraSal" step="60">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div class="form-group">
+            <label>Fecha salida</label>
+            <input type="date" id="editSesionFechaSal">
+          </div>
+          <div class="form-group">
+            <label>Hora salida</label>
+            <input type="time" id="editSesionHoraSal" step="60">
+          </div>
         </div>
         <div id="editSesionError" class="alert alert-error hidden"></div>
         <div class="modal-actions">
