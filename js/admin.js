@@ -795,13 +795,13 @@
     document.getElementById('asTituloTabla').textContent = 'Detalle por sesión';
     asistenciaHead.innerHTML = `<tr>
       <th>Nombre</th><th>Fecha</th><th>Entrada</th><th>Salida</th>
-      <th>Horas</th><th>Tardanza</th><th>Horario</th>
+      <th>Horas</th><th>Tardanza</th><th>Horario</th><th></th>
     </tr>`;
     if (!rows.length) {
-      bodyAsistencia.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin sesiones para el período seleccionado</td></tr>';
+      bodyAsistencia.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin sesiones para el período seleccionado</td></tr>';
       return;
     }
-    bodyAsistencia.innerHTML = rows.map(r => {
+    bodyAsistencia.innerHTML = rows.map((r, idx) => {
       const tarde = r.tardanzaMin > 0;
       const rowStyle = tarde ? 'background:#FFF7ED;' : '';
       const tardLabel = tarde
@@ -815,9 +815,78 @@
         <td style="font-weight:800;color:var(--cf-dark);">${(r.horas||0).toFixed(2)}h</td>
         <td>${tardLabel}</td>
         <td>${fmtHorario(r.horario)}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm btn-edit-sesion" data-idx="${idx}"
+            style="padding:4px 10px;font-size:0.75rem;">✏️</button>
+        </td>
       </tr>`;
     }).join('');
   }
+
+  // ── Modal editar sesión ──────────────────────────────────────
+  const modalEditSesion    = document.getElementById('modalEditSesion');
+  const editSesionError    = document.getElementById('editSesionError');
+  let   sesionEditando     = null; // fila original que se está editando
+
+  function abrirEditSesion(idx) {
+    const r = asistenciaData[idx];
+    if (!r) return;
+    sesionEditando = r;
+    document.getElementById('editSesionInfo').innerHTML =
+      `<strong>${esc(r.nombre)}</strong> · ${esc(r.fecha)}<br>` +
+      `Horario: <em>${fmtHorario(r.horario)}</em>`;
+    document.getElementById('editSesionHoraEnt').value = (r.horaEnt || '').slice(0, 5);
+    document.getElementById('editSesionHoraSal').value = (r.horaSal || '').slice(0, 5);
+    editSesionError.classList.add('hidden');
+    modalEditSesion.classList.remove('hidden');
+  }
+
+  function cerrarEditSesion() {
+    modalEditSesion.classList.add('hidden');
+    sesionEditando = null;
+  }
+
+  document.getElementById('modalEditSesionClose').addEventListener('click', cerrarEditSesion);
+  document.getElementById('modalEditSesionCancel').addEventListener('click', cerrarEditSesion);
+
+  document.getElementById('modalEditSesionSave').addEventListener('click', async () => {
+    if (!sesionEditando) return;
+    const horaEnt = document.getElementById('editSesionHoraEnt').value;
+    const horaSal = document.getElementById('editSesionHoraSal').value;
+    if (!horaEnt || !horaSal) {
+      editSesionError.textContent = 'Completa ambas horas.';
+      editSesionError.classList.remove('hidden');
+      return;
+    }
+    editSesionError.classList.add('hidden');
+    const btnSave = document.getElementById('modalEditSesionSave');
+    btnSave.disabled = true; btnSave.textContent = 'Guardando...';
+    try {
+      const res = await apiAdminSesionUpdate(
+        token,
+        sesionEditando.cedula,
+        sesionEditando.fecha,
+        sesionEditando.horaEnt,   // hora original para identificar la sesión
+        horaEnt + ':00',
+        horaSal + ':00',
+      );
+      if (res.error) throw new Error(res.error);
+      cerrarEditSesion();
+      toast('Sesión actualizada correctamente', 'success');
+      await cargarAsistencia(); // refresca la tabla
+    } catch (e) {
+      editSesionError.textContent = e.message || 'Error al guardar.';
+      editSesionError.classList.remove('hidden');
+    } finally {
+      btnSave.disabled = false; btnSave.textContent = 'Guardar';
+    }
+  });
+
+  // Delegación de eventos para los botones ✏️ (generados dinámicamente)
+  bodyAsistencia.addEventListener('click', e => {
+    const btn = e.target.closest('.btn-edit-sesion');
+    if (btn) abrirEditSesion(parseInt(btn.dataset.idx, 10));
+  });
 
   function renderAsistenciaSemana(rows) {
     document.getElementById('asTituloTabla').textContent = 'Resumen por semana';

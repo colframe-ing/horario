@@ -1,5 +1,5 @@
 // Service Worker — COLFRAME Horas Extra
-const CACHE = 'colframe-v4';
+const CACHE = 'colframe-v5';
 const STATIC = [
   './', './index.html', './app.html', './admin.html',
   './css/styles.css',

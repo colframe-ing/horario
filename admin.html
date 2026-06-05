@@ -233,9 +233,37 @@
               </tr>
             </thead>
             <tbody id="bodyAsistencia">
-              <tr><td colspan="7" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Buscar</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Buscar</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: editar sesión de asistencia ── -->
+    <div id="modalEditSesion" class="modal-overlay hidden">
+      <div class="modal" style="max-width:380px;">
+        <div class="modal-header">
+          <h2>Editar sesión</h2>
+          <button id="modalEditSesionClose" class="btn-icon" style="color:var(--cf-gray-text);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div id="editSesionInfo" style="font-size:0.82rem;color:var(--cf-gray-text);margin-bottom:16px;line-height:1.5;"></div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>Hora de entrada</label>
+          <input type="time" id="editSesionHoraEnt" step="60">
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>Hora de salida</label>
+          <input type="time" id="editSesionHoraSal" step="60">
+        </div>
+        <div id="editSesionError" class="alert alert-error hidden"></div>
+        <div class="modal-actions">
+          <button id="modalEditSesionCancel" class="btn btn-ghost">Cancelar</button>
+          <button id="modalEditSesionSave"   class="btn btn-primary">Guardar</button>
         </div>
       </div>
     </div>

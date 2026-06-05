@@ -101,6 +101,9 @@ async function apiAdminHorariosList(token) {
 async function apiAdminAsistencia(token, desde, hasta) {
   return apiCall('admin_asistencia', { token, desde, hasta });
 }
+async function apiAdminSesionUpdate(token, cedula, fecha, horaEntOriginal, horaEnt, horaSal) {
+  return apiCall('admin_sesion_update', { token, cedula, fecha, horaEntOriginal, horaEnt, horaSal });
+}
 async function apiAdminProgramacionGet(token, desde, hasta) {
   return apiCall('admin_programacion_get', { token, desde, hasta });
 }
