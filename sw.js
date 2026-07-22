@@ -1,9 +1,9 @@
 // Service Worker — COLFRAME Horas Extra
-const CACHE = 'colframe-v5';
+const CACHE = 'colframe-v10';
 const STATIC = [
-  './', './index.html', './app.html', './admin.html',
+  './', './index.html', './app.html', './admin.html', './produccion.html', './cotizaciones.html', './programacion.html',
   './css/styles.css',
-  './js/config.js', './js/api.js', './js/geo.js', './js/app.js', './js/admin.js',
+  './js/config.js', './js/api.js', './js/geo.js', './js/app.js', './js/admin.js', './js/produccion.js', './js/cotizaciones.js', './js/programacion.js',
   './manifest.json',
   'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap',
 ];

@@ -137,3 +137,75 @@ async function apiAdminSesionesAbiertas(token) {
 async function apiAdminEliminarRegistro(token, timestampReg) {
   return apiCall('admin_eliminar_registro', { token, timestampReg });
 }
+
+// ── Producción (Fase 1) ──────────────────────────────────────────────────────
+async function apiProdProyectosList(token, filtros = {}) {
+  return apiCall('prod_proyectos_list', { token, ...filtros });
+}
+async function apiProdProyectoDetalle(token, carpetaId) {
+  return apiCall('prod_proyecto_detalle', { token, carpetaId });
+}
+async function apiProdScanNow(token) {
+  return apiCall('prod_scan_now', { token });
+}
+async function apiProdProyectoEstado(token, carpetaId, estado) {
+  return apiCall('prod_proyecto_estado', { token, carpetaId, estado });
+}
+
+// ── Cotizaciones (maestro externo, solo lectura) ─────────────────────────────
+async function apiCotizList(token, filtros = {}) {
+  return apiCall('cotiz_list', { token, ...filtros });
+}
+async function apiCotizMarcar(token, archivo, aprobada, cantidad) {
+  const payload = { token, archivo, aprobada };
+  if (cantidad !== undefined && cantidad !== null) payload.cantidad = cantidad;
+  return apiCall('cotiz_marcar', payload);
+}
+async function apiCotizDetalle(token, archivo) {
+  return apiCall('cotiz_detalle', { token, archivo });
+}
+async function apiCotizVincular(token, archivo, carpetaId, accion) {
+  return apiCall('cotiz_vincular', { token, archivo, carpetaId, accion });
+}
+
+// ── Programación / calendario de producción (Etapa 3) ────────────────────────
+async function apiProdColaGet(token) {
+  return apiCall('prod_cola_get', { token });
+}
+async function apiProdColaReordenar(token, orden) {
+  return apiCall('prod_cola_reordenar', { token, orden });
+}
+async function apiProdColaToggle(token, archivo, enCola) {
+  return apiCall('prod_cola_toggle', { token, archivo, enCola: !!enCola });
+}
+async function apiProdColaFinalizar(token, archivo, fechaReal, fechaRealInicio) {
+  return apiCall('prod_cola_finalizar', { token, archivo, fechaReal, fechaRealInicio });
+}
+async function apiProdColaIniciar(token, archivo, fechaRealInicio) {
+  return apiCall('prod_cola_iniciar', { token, archivo, fechaRealInicio });
+}
+async function apiProdColaReabrir(token, archivo) {
+  return apiCall('prod_cola_reabrir', { token, archivo });
+}
+async function apiProdColaAjustesSet(token, archivo, ritmo, fechaInicioMin) {
+  return apiCall('prod_cola_ajustes_set', { token, archivo, ritmo, fechaInicioMin });
+}
+// archivo = proyecto (no uid). envios = [{id?, tipo:'casas'|'metros', valor, fechaEntrega?}]; [] = unir.
+async function apiProdEnviosSet(token, archivo, envios) {
+  return apiCall('prod_envios_set', { token, archivo, envios });
+}
+async function apiProdAlertasHigiene(token) {
+  return apiCall('prod_alertas_higiene', { token });
+}
+async function apiProdAnomaliasList(token) {
+  return apiCall('prod_anomalias_list', { token });
+}
+async function apiProdColaConfig(token, ritmo, fechaInicio) {
+  return apiCall('prod_cola_config', { token, ritmo, fechaInicio });
+}
+async function apiProdColaEntrega(token, archivo, fechaEntrega) {
+  return apiCall('prod_cola_entrega', { token, archivo, fechaEntrega });
+}
+async function apiProdCalExcepcion(token, fecha, laborable, accion, nota) {
+  return apiCall('prod_cal_excepcion', { token, fecha, laborable, accion, nota });
+}

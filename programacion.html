@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#071D49">
+  <title>COLFRAME — Programación</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .mod-nav { background:#fff; border-bottom:1px solid var(--cf-gray-mid); padding:0 16px; display:flex; gap:4px; overflow-x:auto; }
+    .mod-nav-link { padding:10px 14px; font-size:0.82rem; font-weight:700; color:var(--cf-gray-text); text-decoration:none; border-bottom:3px solid transparent; white-space:nowrap; display:inline-block; }
+    .mod-nav-link.active { color:var(--cf-blue); border-bottom-color:var(--cf-blue); }
+    .mod-nav-link:hover:not(.active) { color:var(--cf-dark); }
+
+    .cfg-bar { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; margin-bottom:14px; }
+    .cfg-field { display:flex; flex-direction:column; gap:3px; }
+    .cfg-field label { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); }
+    .cfg-field input { padding:7px 10px; border:1.5px solid var(--cf-gray-mid); border-radius:8px; font-size:0.85rem; font-family:inherit; }
+    .save-status { font-size:0.72rem; font-weight:700; padding:4px 10px; border-radius:999px; align-self:center; opacity:0; transition:opacity .2s; white-space:nowrap; }
+    .save-status.saving { opacity:1; color:#92400E; background:#FEF3C7; }
+    .save-status.ok { opacity:1; color:#065F46; background:#D1FAE5; }
+    .ritmo-real-info { font-size:0.72rem; font-weight:600; padding:4px 10px; border-radius:999px; align-self:center; white-space:nowrap; }
+    .ritmo-real-info.bajo { color:#92400E; background:#FEF3C7; }
+    .ritmo-real-info.ok { color:#065F46; background:#D1FAE5; }
+    .ritmo-real-info.alto { color:#1D4ED8; background:#DBEAFE; }
+
+    .cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:10px; }
+    .cal-title { font-size:1.05rem; font-weight:800; color:var(--cf-dark); text-transform:capitalize; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .cal-dow { text-align:center; font-size:0.68rem; font-weight:700; color:var(--cf-gray-text); text-transform:uppercase; padding:4px 0; }
+    .cal-cell { min-height:74px; border:1px solid var(--cf-gray-mid); border-radius:8px; padding:4px 5px; font-size:0.72rem; overflow:hidden; cursor:pointer; background:#fff; position:relative; }
+    .cal-cell.empty { background:transparent; border:none; cursor:default; }
+    .cal-cell.nolab { background:repeating-linear-gradient(135deg,#F8FAFC,#F8FAFC 6px,#F1F5F9 6px,#F1F5F9 12px); }
+    .cal-cell.hoy { box-shadow:0 0 0 2px var(--cf-blue) inset; }
+    .cal-daynum { font-weight:700; color:var(--cf-dark); font-size:0.72rem; }
+    .cal-cell.nolab .cal-daynum { color:var(--cf-gray-text); }
+    .cal-nolab-tag { font-size:0.6rem; color:var(--cf-gray-text); line-height:1.1; margin-top:2px; }
+    .cal-casa { margin-top:3px; border-radius:5px; padding:2px 4px; color:#fff; font-weight:700; font-size:0.64rem; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cal-casa small { font-weight:600; opacity:0.9; }
+    /* Finalizado: tramo REAL ya producido — atenuado y rayado para distinguirlo de lo planeado */
+    .cal-casa.fin { opacity:0.55; background-image:repeating-linear-gradient(135deg,rgba(255,255,255,0.35),rgba(255,255,255,0.35) 3px,transparent 3px,transparent 7px); }
+    .prod-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#0891B2; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+
+    .leg { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
+    .leg-item { display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--cf-dark); }
+    .leg-dot { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+
+    .cola-card { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-top:16px; }
+    .cola-card h3 { font-size:0.82rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-dark); margin:0 0 12px; }
+    .cola-row { display:flex; align-items:center; gap:10px; padding:9px 8px; border-bottom:1px solid var(--cf-gray-mid); }
+    .cola-row:last-child { border-bottom:none; }
+    .cola-color { width:12px; height:38px; border-radius:4px; flex-shrink:0; }
+    .cola-main { flex:1; min-width:0; }
+    .cola-nombre { font-weight:700; font-size:0.84rem; color:var(--cf-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cola-meta { font-size:0.72rem; color:var(--cf-gray-text); }
+    .cola-fechas { font-size:0.72rem; color:var(--cf-dark); font-weight:600; }
+    .cola-entrega { display:flex; flex-direction:column; gap:2px; align-items:flex-end; }
+    .cola-entrega input { padding:4px 6px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.72rem; font-family:inherit; }
+    .cola-atraso { font-size:0.64rem; font-weight:800; color:#fff; background:#DC2626; padding:1px 6px; border-radius:999px; }
+    .cola-ok { font-size:0.64rem; font-weight:700; color:#065F46; }
+    .cola-mover { display:flex; flex-direction:column; gap:2px; }
+    .cola-mover button { width:26px; height:22px; border:1px solid var(--cf-gray-mid); background:#fff; border-radius:5px; cursor:pointer; font-size:0.7rem; line-height:1; }
+    .cola-mover button:disabled { opacity:0.35; cursor:default; }
+    .cola-drag-handle { cursor:grab; color:var(--cf-gray-text); font-size:1rem; padding:0 4px; user-select:none; flex-shrink:0; }
+    .cola-drag-handle:active { cursor:grabbing; }
+    .cola-row.dragging { opacity:0.4; }
+    .cola-row.drop-before { box-shadow:inset 0 3px 0 0 var(--cf-blue); }
+    .cola-row.drop-after { box-shadow:inset 0 -3px 0 0 var(--cf-blue); }
+    .cola-toggle-btn { border:1px solid var(--cf-gray-mid); background:#fff; border-radius:6px; cursor:pointer; font-size:0.68rem; font-weight:700; padding:5px 9px; white-space:nowrap; color:var(--cf-gray-text); flex-shrink:0; }
+    .cola-toggle-btn.add { border-color:var(--cf-blue); color:var(--cf-blue); }
+    .cola-toggle-btn.done { border-color:#16A34A; color:#16A34A; }
+    .cola-toggle-btn:hover { background:var(--cf-gray-light,#F1F5F9); }
+    .cola-card.backlog h3 { color:var(--cf-gray-text); }
+    .cola-card.higiene { border-left:4px solid #F59E0B; }
+    .higiene-titulo { font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); margin:10px 0 6px; }
+    .higiene-titulo:first-child { margin-top:0; }
+    .envio-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#7C3AED; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    .env-row select, .env-row input { padding:6px 8px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.82rem; font-family:inherit; }
+    .row-actions { position:relative; flex-shrink:0; }
+    .row-menu-btn { border:1px solid var(--cf-gray-mid); background:#fff; border-radius:6px; cursor:pointer; font-size:1.1rem; font-weight:700; line-height:1; padding:3px 9px; color:var(--cf-gray-text); }
+    .row-menu-btn:hover { background:#F1F5F9; }
+    .row-menu { position:absolute; right:0; top:calc(100% + 4px); z-index:20; background:#fff; border:1px solid var(--cf-gray-mid); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.15); padding:4px; min-width:200px; display:none; }
+    .row-menu.open { display:block; }
+    .row-menu button { display:block; width:100%; text-align:left; border:none; background:none; padding:8px 10px; font-size:0.8rem; font-weight:600; color:var(--cf-dark); cursor:pointer; border-radius:6px; white-space:nowrap; }
+    .row-menu button:hover { background:#F1F5F9; }
+    .row-menu button.danger { color:#DC2626; }
+    .row-menu .menu-sep { height:1px; background:var(--cf-gray-mid); margin:4px 2px; }
+    .cola-card > summary { cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; }
+    .cola-card > summary::-webkit-details-marker { display:none; }
+    .cola-card[open] > summary { margin-bottom:4px; }
+    .cola-card > summary::before { content:'▸'; margin-right:6px; color:var(--cf-gray-text); font-size:0.7rem; }
+    .cola-card[open] > summary::before { content:'▾'; }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <img src="assets/logo-horizontal-blanco.svg"
+         onerror="this.outerHTML='<span style=\'color:#fff;font-weight:800;font-size:1.1rem\'><span>COL</span><span style=\'color:#0072CE\'>FRAME</span></span>'"
+         alt="COLFRAME" class="header-logo">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:rgba(255,255,255,0.65);font-size:0.78rem;font-weight:600;letter-spacing:0.05em;">PROGRAMACIÓN</span>
+      <button id="logoutBtn" class="btn-icon" title="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <nav id="modNav" class="mod-nav hidden">
+    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
+    <a href="produccion.html"   class="mod-nav-link">Producción</a>
+    <a href="cotizaciones.html" class="mod-nav-link">Cotizaciones</a>
+    <a href="programacion.html" class="mod-nav-link active">Programación</a>
+  </nav>
+
+  <div class="admin-main admin-panel">
+
+    <!-- Alertas de higiene: huecos en cotizar→programar→producir -->
+    <details class="cola-card higiene" id="higieneCard" style="display:none;" open>
+      <summary style="font-size:0.82rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--cf-dark);">
+        <span>⚠ Atención</span>
+        <button class="btn btn-ghost btn-sm" id="higieneRefrescar" title="Volver a revisar">🔄 Revisar</button>
+      </summary>
+      <div id="higieneSinCarpeta" style="margin-top:12px;"></div>
+      <div id="higieneSinCotizacion"></div>
+    </details>
+
+    <!-- Config -->
+    <div class="cfg-bar">
+      <div class="cfg-field">
+        <label>Ritmo (ML / día hábil)</label>
+        <input id="cfgRitmo" type="number" min="1" step="1" style="width:120px;">
+      </div>
+      <div class="cfg-field">
+        <label>Inicio de la cola</label>
+        <input id="cfgInicio" type="date">
+      </div>
+      <button id="btnCfgGuardar" class="btn btn-dark btn-sm">Guardar</button>
+      <span id="saveStatus" class="save-status"></span>
+      <div id="ritmoRealInfo" class="ritmo-real-info"></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--cf-gray-text);align-self:center;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" id="cfgVerFinalizados" style="cursor:pointer;">
+        Mostrar finalizados
+      </label>
+      <div style="flex:1;"></div>
+      <div style="font-size:0.72rem;color:var(--cf-gray-text);align-self:center;">Clic en un día para marcarlo laborable / no laborable</div>
+    </div>
+
+    <!-- Calendario -->
+    <div class="cal-head">
+      <button id="btnMesPrev" class="btn btn-ghost btn-sm">‹</button>
+      <div id="calTitulo" class="cal-title">—</div>
+      <button id="btnMesNext" class="btn btn-ghost btn-sm">›</button>
+    </div>
+    <div class="cal-grid" id="calDow"></div>
+    <div class="cal-grid" id="calBody" style="margin-top:4px;">
+      <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--cf-gray-text);">
+        <span class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:var(--cf-blue);"></span>
+      </div>
+    </div>
+
+    <div class="leg" id="calLeyenda"></div>
+
+    <!-- Cola -->
+    <div class="cola-card">
+      <h3>Cola de producción (orden = prioridad)</h3>
+      <p style="font-size:0.72rem;color:var(--cf-gray-text);margin:-6px 0 12px;line-height:1.4;">
+        Arrastra <span style="color:var(--cf-dark);">⠿</span> para reordenar (el orden = prioridad de producción).
+        La <strong>fecha de entrega</strong> es la fecha comprometida con el cliente: el sistema la compara con la
+        fecha de fin calculada y marca <span style="color:#DC2626;font-weight:700;">Atrasado</span> si la producción no alcanza a cumplirla.
+      </p>
+      <div id="colaBody">
+        <div style="text-align:center;padding:20px;color:var(--cf-gray-text);font-size:0.85rem;">Cargando…</div>
+      </div>
+    </div>
+
+    <!-- Aprobados sin cola (backlog) -->
+    <div class="cola-card backlog" id="backlogCard" style="display:none;">
+      <h3>Aprobados sin cola</h3>
+      <div id="backlogBody"></div>
+    </div>
+
+    <!-- Finalizados (historial planeado vs real) -->
+    <details class="cola-card" id="finalizadosCard" style="display:none;">
+      <summary style="cursor:pointer;font-size:0.82rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--cf-dark);">Finalizados</summary>
+      <div id="finalizadosBody" style="margin-top:12px;"></div>
+    </details>
+
+  </div>
+
+  <!-- Modal: Finalizar proyecto -->
+  <div id="modalFinalizar" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="finTitle">
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-header">
+        <h2 id="finTitle" style="font-size:1rem;">Finalizar proyecto</h2>
+      </div>
+      <div id="finProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:14px;"></div>
+      <div class="cfg-field" style="margin-bottom:12px;">
+        <label>Fecha real de inicio</label>
+        <input id="finFechaInicio" type="date">
+        <span id="finInicioHint" style="font-size:0.68rem;color:var(--cf-gray-text);margin-top:3px;"></span>
+      </div>
+      <div class="cfg-field">
+        <label>Fecha real de finalización</label>
+        <input id="finFecha" type="date">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="finCancelar">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="finConfirmar">Finalizar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Iniciar producción (captura la fecha real de arranque) -->
+  <div id="modalIniciar" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="iniTitle">
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-header">
+        <h2 id="iniTitle" style="font-size:1rem;">Iniciar producción</h2>
+      </div>
+      <div id="iniProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:14px;"></div>
+      <div class="cfg-field">
+        <label>Fecha real de inicio</label>
+        <input id="iniFecha" type="date">
+      </div>
+      <p style="font-size:0.7rem;color:var(--cf-gray-text);margin:10px 0 0;line-height:1.4;">
+        Queda registrado cuándo arrancó realmente esta unidad en planta. Junto con la
+        fecha de finalización permite ver el tramo real en el calendario.
+      </p>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="btn btn-ghost btn-sm" id="iniQuitar" title="Borrar la marca de inicio">Quitar marca</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="iniCancelar">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="iniConfirmar">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Ajustes por proyecto (ritmo propio + fecha mínima de inicio) -->
+  <div id="modalAjustes" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ajTitle">
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-header">
+        <h2 id="ajTitle" style="font-size:1rem;">Ajustes del proyecto</h2>
+      </div>
+      <div id="ajProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:14px;"></div>
+      <div class="cfg-field" style="margin-bottom:12px;">
+        <label>Ritmo propio (ML / día hábil)</label>
+        <input id="ajRitmo" type="number" min="1" step="1" placeholder="Usar el ritmo global">
+      </div>
+      <div class="cfg-field">
+        <label>No empezar antes de</label>
+        <input id="ajFechaMin" type="date">
+      </div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="btn btn-ghost btn-sm" id="ajLimpiar" title="Quita el ritmo propio y la fecha mínima">Quitar ajustes</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="ajCancelar">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="ajGuardar">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Partir en envíos -->
+  <div id="modalEnvios" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="envTitle">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h2 id="envTitle" style="font-size:1rem;">Partir en envíos</h2>
+      </div>
+      <div id="envProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:4px;"></div>
+      <div id="envTotalInfo" style="font-size:0.75rem;color:var(--cf-gray-text);margin-bottom:12px;"></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--cf-gray-mid);">
+        <span style="font-size:0.75rem;color:var(--cf-gray-text);">Dividir en</span>
+        <input id="envPartesN" type="number" min="2" step="1" value="2" style="width:56px;padding:6px 8px;border:1.5px solid var(--cf-gray-mid);border-radius:6px;font-size:0.82rem;">
+        <span id="envPartesUnidad" style="font-size:0.75rem;color:var(--cf-gray-text);">partes iguales</span>
+        <button class="btn btn-ghost btn-sm" id="envPartesAplicar">Aplicar</button>
+      </div>
+      <div id="envRows"></div>
+      <button class="btn btn-ghost btn-sm" id="envAgregar" style="margin-top:4px;">+ Agregar envío</button>
+      <div id="envResumen" style="font-size:0.8rem;font-weight:700;margin-top:12px;"></div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="btn btn-ghost btn-sm" id="envUnir" title="Volver a un solo bloque (sin partir)">Unir</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="envCancelar">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="envGuardar">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toastContainer" style="position:fixed;top:80px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/programacion.js"></script>
+</body>
+</html>
