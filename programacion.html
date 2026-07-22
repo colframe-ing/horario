@@ -44,6 +44,8 @@
     .cal-casa small { font-weight:600; opacity:0.9; }
     /* Finalizado: tramo REAL ya producido — atenuado y rayado para distinguirlo de lo planeado */
     .cal-casa.fin { opacity:0.55; background-image:repeating-linear-gradient(135deg,rgba(255,255,255,0.35),rgba(255,255,255,0.35) 3px,transparent 3px,transparent 7px); }
+    /* En producción: activo, con anillo para que resalte sobre lo planeado */
+    .cal-casa.prod { box-shadow:0 0 0 2px #0891B2 inset; }
     .prod-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#0891B2; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
 
     .leg { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }

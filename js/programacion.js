@@ -125,6 +125,12 @@
       while(cursor < target && guard++<20000){ cursor = nextLaborable(isoAddDays(cursor,1)); idx++; }
       return idx;
     }
+    // Fecha del día hábil nº `n` (1-based) empezando en un día ya hábil.
+    function addLaborables(startIso, n){
+      var cur = startIso, count = 1, guard = 0;
+      while(count < n && guard++ < 4000){ cur = nextLaborable(isoAddDays(cur,1)); count++; }
+      return cur;
+    }
     var EPS = 1e-9, dayCursor = 0, cola = [];
     items.forEach(function(it, idx){
       var color   = PALETA_GANTT[idx % PALETA_GANTT.length];
@@ -136,21 +142,38 @@
       // para proyecto entero) y es invariante al ritmo → usarlo directo.
       var totalML = (it.mlTotal != null) ? it.mlTotal : (it.mlCasa||0) * (it.cantidad||1);
       var durDias = ritmo > 0 ? totalML / ritmo : 0;
-      if(it.fechaInicioMin){
-        var minDay = diaIndiceDe(it.fechaInicioMin);
-        if(minDay > dayCursor) dayCursor = minDay;
+      var iniCot, finCot, diasSpan, enProd = false;
+
+      if(it.fechaRealInicio){
+        // EN PRODUCCIÓN: anclado a su inicio REAL (aunque sea pasado), no a la cola.
+        enProd = true;
+        iniCot = it.fechaRealInicio;
+        var diasToca = Math.max(1, Math.ceil(durDias - EPS));
+        finCot = addLaborables(nextLaborable(iniCot), diasToca);
+        var finIdx = diaIndiceDe(finCot);
+        if(finIdx + 1 > dayCursor) dayCursor = finIdx + 1;
+        diasSpan = 0; var cur = iniCot, g = 0;
+        while(cur <= finCot && g++ < 800){ if(esLaborable(cur)) diasSpan++; cur = isoAddDays(cur,1); }
+        if(diasSpan < 1) diasSpan = 1;
+      } else {
+        if(it.fechaInicioMin){
+          var minDay = diaIndiceDe(it.fechaInicioMin);
+          if(minDay > dayCursor) dayCursor = minDay;
+        }
+        var startDay = dayCursor, endDay = dayCursor + durDias;
+        dayCursor = endDay;
+        var dStart = Math.floor(startDay + EPS);
+        var dEnd   = durDias <= EPS ? dStart : Math.floor(endDay - EPS);
+        if(dEnd < dStart) dEnd = dStart;
+        iniCot = fechaDeIdx(dStart); finCot = fechaDeIdx(dEnd);
+        diasSpan = dEnd - dStart + 1;
       }
-      var startDay = dayCursor, endDay = dayCursor + durDias;
-      dayCursor = endDay;
-      var dStart = Math.floor(startDay + EPS);
-      var dEnd   = durDias <= EPS ? dStart : Math.floor(endDay - EPS);
-      if(dEnd < dStart) dEnd = dStart;
-      var iniCot = fechaDeIdx(dStart), finCot = fechaDeIdx(dEnd);
+
       cola.push(Object.assign({}, it, {
         inicio: iniCot, fin: finCot,
         atrasado: !!(it.fechaEntrega && finCot && finCot > it.fechaEntrega),
-        orden: idx+1, color: color, ritmo: ritmo,
-        mlTotal: Math.round(totalML*100)/100, durDias: Math.round(durDias*100)/100, dias: dEnd-dStart+1,
+        orden: idx+1, color: color, ritmo: ritmo, enProduccion: enProd,
+        mlTotal: Math.round(totalML*100)/100, durDias: Math.round(durDias*100)/100, dias: diasSpan,
       }));
     });
     return { cola: cola };
@@ -168,8 +191,8 @@
       var d = c.inicio, guard=0;
       while(d <= c.fin && guard++<800){
         // Un día no laborable puede tener producción real (se trabajó ese día);
-        // por eso los finalizados no se filtran por calendario laborable.
-        if(c.finalizado || esLaborable(d)){ (_dayItems[d] = _dayItems[d] || []).push(c); }
+        // por eso finalizados y en-producción no se filtran por calendario laborable.
+        if(c.finalizado || c.enProduccion || esLaborable(d)){ (_dayItems[d] = _dayItems[d] || []).push(c); }
         d = isoAddDays(d,1);
       }
     });
@@ -294,9 +317,13 @@
         var it2 = its[qi];
         var tip = it2.finalizado
           ? 'Finalizado — producción real '+fechaCorta(it2.inicio)+' → '+fechaCorta(it2.fin)
-          : etiquetaUnidad(it2)+' — planeado '+fechaCorta(it2.inicio)+' → '+fechaCorta(it2.fin);
-        inner += '<div class="cal-casa'+(it2.finalizado?' fin':'')+'" style="background:'+it2.color+';" title="'+esc(tip)+'">'+
-                 (it2.finalizado?'✓ ':'')+esc(it2.proyecto||'')+
+          : it2.enProduccion
+            ? 'En producción — inició '+fechaCorta(it2.fechaRealInicio)+', fin estimado '+fechaCorta(it2.fin)
+            : etiquetaUnidad(it2)+' — planeado '+fechaCorta(it2.inicio)+' → '+fechaCorta(it2.fin);
+        var extraCls = it2.finalizado ? ' fin' : (it2.enProduccion ? ' prod' : '');
+        var prefijo  = it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '');
+        inner += '<div class="cal-casa'+extraCls+'" style="background:'+it2.color+';" title="'+esc(tip)+'">'+
+                 prefijo+esc(it2.proyecto||'')+
                  (it2.cantidad>1?' <small>×'+it2.cantidad+'</small>':'')+'</div>';
       }
       if(its.length>3) inner += '<div class="cal-nolab-tag">+'+(its.length-3)+' más</div>';
