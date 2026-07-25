@@ -79,6 +79,9 @@
     .cola-toggle-btn:hover { background:var(--cf-gray-light,#F1F5F9); }
     .cola-card.backlog h3 { color:var(--cf-gray-text); }
     .cola-card.higiene { border-left:4px solid #F59E0B; }
+    /* Totales al lado del título de cada sección (carga de trabajo de un vistazo) */
+    .sec-resumen { font-weight:700; text-transform:none; letter-spacing:0; color:var(--cf-blue); margin-left:6px; }
+    .cola-card.backlog .sec-resumen { color:var(--cf-gray-text); }
     .higiene-titulo { font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); margin:10px 0 6px; }
     .higiene-titulo:first-child { margin-top:0; }
     .envio-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#7C3AED; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
@@ -124,10 +127,10 @@
 
   <div class="admin-main admin-panel">
 
-    <!-- Alertas de higiene: huecos en cotizar→programar→producir -->
-    <details class="cola-card higiene" id="higieneCard" style="display:none;" open>
+    <!-- Alertas de higiene: huecos en cotizar→programar→producir (minimizada por defecto) -->
+    <details class="cola-card higiene" id="higieneCard" style="display:none;">
       <summary style="font-size:0.82rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--cf-dark);">
-        <span>⚠ Atención</span>
+        <span>⚠ Atención <span id="higieneResumen" style="font-weight:600;color:#92400E;"></span></span>
         <button class="btn btn-ghost btn-sm" id="higieneRefrescar" title="Volver a revisar">🔄 Revisar</button>
       </summary>
       <div id="higieneSinCarpeta" style="margin-top:12px;"></div>
@@ -172,7 +175,7 @@
 
     <!-- Cola -->
     <div class="cola-card">
-      <h3>Cola de producción (orden = prioridad)</h3>
+      <h3>Cola de producción (orden = prioridad) <span id="colaResumen" class="sec-resumen"></span></h3>
       <p style="font-size:0.72rem;color:var(--cf-gray-text);margin:-6px 0 12px;line-height:1.4;">
         Arrastra <span style="color:var(--cf-dark);">⠿</span> para reordenar (el orden = prioridad de producción).
         La <strong>fecha de entrega</strong> es la fecha comprometida con el cliente: el sistema la compara con la
@@ -185,7 +188,7 @@
 
     <!-- Aprobados sin cola (backlog) -->
     <div class="cola-card backlog" id="backlogCard" style="display:none;">
-      <h3>Aprobados sin cola</h3>
+      <h3>Aprobados sin cola <span id="backlogResumen" class="sec-resumen"></span></h3>
       <div id="backlogBody"></div>
     </div>
 

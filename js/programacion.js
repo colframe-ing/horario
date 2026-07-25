@@ -348,6 +348,12 @@
   function renderCola(){
     var body = document.getElementById('colaBody');
     var cola = _data.cola || [];
+    // Carga de trabajo pendiente en la cola (ML y días estimados de producción).
+    var totML = cola.reduce(function(s,c){ return s + (Number(c.mlTotal)||0); }, 0);
+    var totDias = cola.reduce(function(s,c){ return s + (Number(c.durDias)||0); }, 0);
+    document.getElementById('colaResumen').textContent = cola.length
+      ? '· '+cola.length+(cola.length===1?' proyecto':' proyectos')+' · '+fmtNum(totML,0)+' ML · ≈'+fmtDias(Math.round(totDias*10)/10)
+      : '';
     if(!cola.length){
       body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--cf-gray-text);font-size:0.85rem;">No hay cotizaciones aprobadas. Aprueba cotizaciones para armar la cola.</div>';
       return;
@@ -411,6 +417,9 @@
     var bl = (_data && _data.backlog) || [];
     if(!bl.length){ card.style.display='none'; body.innerHTML=''; return; }
     card.style.display='';
+    var blML = bl.reduce(function(s,c){ return s + (Number(c.mlTotal)||0); }, 0);
+    document.getElementById('backlogResumen').textContent =
+      '· '+bl.length+(bl.length===1?' proyecto':' proyectos')+' · '+fmtNum(blML,0)+' ML';
     body.innerHTML = bl.map(function(c){
       return '<div class="cola-row" data-uid="'+esc(c.uid)+'">'+
         '<div class="cola-color" style="background:var(--cf-gray-mid);"></div>'+
@@ -480,6 +489,9 @@
     var sc = resp.sinCarpeta || [], sq = resp.sinCotizacion || [];
     if(!sc.length && !sq.length){ card.style.display='none'; return; }
     card.style.display='';
+    // El panel viene minimizado: el contador en el título avisa que hay algo dentro.
+    var n = sc.length + sq.length;
+    document.getElementById('higieneResumen').textContent = '('+n+(n===1?' pendiente)':' pendientes)');
 
     document.getElementById('higieneSinCarpeta').innerHTML = !sc.length ? '' :
       '<div class="higiene-titulo">Cotizaciones aprobadas sin carpeta vinculada ('+sc.length+')</div>' +
