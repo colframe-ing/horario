@@ -44,6 +44,7 @@
     <button class="tab-btn active" data-tab="registros">Registros</button>
     <button class="tab-btn" data-tab="programacion">Programación</button>
     <button class="tab-btn" data-tab="asistencia">Asistencia</button>
+    <button class="tab-btn" data-tab="tardanzas">Tardanzas</button>
     <button class="tab-btn" data-tab="horas-extra">Horas Extra</button>
     <button class="tab-btn" data-tab="operarios">Operarios</button>
     <button class="tab-btn" data-tab="auditoria">Auditoría</button>
@@ -246,6 +247,91 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- ══ TAB: TARDANZAS (dashboard de análisis) ══ -->
+    <div id="tab-tardanzas" class="tab-panel admin-panel">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Desde</label>
+          <input type="date" id="tzDesde">
+        </div>
+        <div class="filter-group">
+          <label>Hasta</label>
+          <input type="date" id="tzHasta">
+        </div>
+        <button id="btnCargarTardanzas" class="btn btn-dark btn-sm">Analizar</button>
+        <div id="tzParams" style="font-size:0.72rem;color:var(--cf-gray-text);align-self:center;"></div>
+      </div>
+
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">Jornadas analizadas</div>
+          <div class="value" id="tzSumJornadas">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-warning);">
+          <div class="label">Min. tarde (total)</div>
+          <div class="value" id="tzSumMin">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-error);">
+          <div class="label">% por datos anómalos</div>
+          <div class="value" id="tzSumAnomalo">—</div>
+        </div>
+        <div class="summary-card" style="border-left-color:var(--cf-blue);">
+          <div class="label">Tardes sin justificar</div>
+          <div class="value" id="tzSumSinJust">—</div>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-bottom:14px;">
+        <div class="table-header">
+          <h2>Ranking por operario (promedio limpio, sin anomalías)</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Nombre</th><th>Jornadas</th><th>Días tarde</th><th>% tarde</th>
+                <th>Prom. min (días tarde)</th><th>Máx. min</th><th>Total min</th>
+                <th>Anómalos</th><th>Prom. limpio</th>
+              </tr>
+            </thead>
+            <tbody id="tzBodyResumen">
+              <tr><td colspan="10" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Selecciona un rango y haz clic en Analizar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-bottom:14px;">
+        <div class="table-header">
+          <h2>Registros anómalos detectados</h2>
+          <span id="tzAnomNota" style="font-size:0.72rem;color:var(--cf-gray-text);"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tipo de anomalía</th><th>Casos</th><th>Min. "tarde" involucrados</th></tr></thead>
+            <tbody id="tzBodyAnomalias">
+              <tr><td colspan="3" style="text-align:center;color:var(--cf-gray-text);padding:24px;">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <details class="table-card">
+        <summary style="cursor:pointer;padding:16px 20px;font-weight:800;font-size:0.9rem;color:var(--cf-dark);">Detalle por jornada</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Fecha</th><th>Día</th><th>Entrada</th><th>Turno</th>
+                <th>Esperada</th><th>Min. tarde</th><th>Estado</th><th>Justificación</th>
+              </tr>
+            </thead>
+            <tbody id="tzBodyDetalle"></tbody>
+          </table>
+        </div>
+      </details>
     </div>
 
     <!-- ── Modal: editar sesión de asistencia ── -->

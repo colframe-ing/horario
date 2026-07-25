@@ -79,6 +79,7 @@
       // Carga lazy de programación y sesiones abiertas
       if (btn.dataset.tab === 'programacion' && !progCargada) cargarProgramacion();
       if (btn.dataset.tab === 'operarios') cargarSesionesAbiertas();
+      if (btn.dataset.tab === 'tardanzas' && !tardanzasCargado) cargarTardanzas();
     });
   });
 
@@ -435,7 +436,7 @@
     let sumProg = 0, sumTrab = 0, ausencias = 0;
 
     const filas = operarios.map(op => {
-      let opProg = 0, opTrab = 0;
+      let opProg = 0, opTrab = 0, opTurnos = 0;
 
       const celdas = dias.map(dia => {
         const fecha   = fmtDate(dia);
@@ -446,10 +447,11 @@
         const nov     = novMap[op.cedula + '|' + fecha] || null;
         const trabH   = sess.reduce((s, r) => s + (r.horas || 0), 0);
         const tard    = sess.some(r => r.tardanzaMin > 0);
-        // Horas justificadas: null en novedad = cubre todo el turno
-        const novH    = nov ? (nov.horas != null ? nov.horas : (prog ? prog.horas : 8)) : 0;
+        // Horas justificadas: null en novedad = cubre todo el turno.
+        // Fallback sin programación: 7h = jornada de 42h (Ley 2101) en 6 días.
+        const novH    = nov ? (nov.horas != null ? nov.horas : (prog ? prog.horas : 7)) : 0;
 
-        if (prog) { opProg += prog.horas; sumProg += prog.horas; }
+        if (prog) { opProg += prog.horas; sumProg += prog.horas; opTurnos++; }
         opTrab += trabH; sumTrab += trabH;
 
         // Solo es "ausencia sin justificar" si no hay novedad
@@ -464,7 +466,7 @@
         const nov   = novMap[op.cedula + '|' + fecha];
         const prog  = progMap[op.cedula + '|' + fecha];
         if (!nov) return acc;
-        return acc + (nov.horas != null ? nov.horas : (prog ? prog.horas : 8));
+        return acc + (nov.horas != null ? nov.horas : (prog ? prog.horas : 7));   // 7h = 42h/6 días (Ley 2101)
       }, 0);
       const deficit  = opTrab + novOpTotal - opProg;
       const defColor = deficit >= 0 ? '#16A34A' : '#DC2626';
@@ -474,6 +476,17 @@
           ? `<span style="color:#16A34A;font-size:0.7rem;font-weight:700;">✓ ${opTrab.toFixed(1)}h</span>`
           : `<span style="color:#DC2626;font-size:0.7rem;font-weight:700;">${deficit.toFixed(1)}h</span>`;
 
+      // Control Ley 2101: avisar si la PROGRAMACIÓN de la semana supera la
+      // jornada máxima legal (prevención — mejor verlo al planear que al pagar).
+      // La jornada ordinaria descuenta los 15 min de alimentación de cada turno.
+      const maxSemana   = jornadaMaxSemanal(fmtDate(dias[dias.length - 1]));
+      const progOrdin   = opProg - opTurnos * PAUSA_ALIMENTACION_H;
+      const progExceso  = progOrdin - maxSemana;
+      const progDetalle = `${opProg.toFixed(1)}h programadas − ${(opTurnos * PAUSA_ALIMENTACION_H * 60).toFixed(0)} min de alimentación = ${progOrdin.toFixed(1)}h ordinarias (máx. legal ${maxSemana}h)`;
+      const progLabel  = progExceso > 0.05
+        ? `<span style="color:#DC2626;font-weight:800;" title="${progDetalle}. Lo que exceda el límite es trabajo suplementario (Ley 2101).">${opProg.toFixed(1)}h ⚠</span>`
+        : `<span style="color:var(--cf-gray-text);" title="${progDetalle}">${opProg.toFixed(1)}h</span>`;
+
       return `<tr>
         <td style="font-weight:600;font-size:0.85rem;position:sticky;left:0;background:#fff;z-index:1;border-right:1px solid #E2E8F0;">
           ${esc(op.nombre)}<br>${defLabel}
@@ -481,7 +494,7 @@
         ${celdas.join('')}
         <td style="text-align:center;font-size:0.82rem;color:var(--cf-dark);">
           <strong>${opTrab.toFixed(1)}h</strong>
-          <span style="color:var(--cf-gray-text);"> / ${opProg.toFixed(1)}h</span>
+          <span style="color:var(--cf-gray-text);"> / </span>${progLabel}
         </td>
       </tr>`;
     });
@@ -912,10 +925,10 @@
     document.getElementById('asTituloTabla').textContent = 'Resumen por semana';
     asistenciaHead.innerHTML = `<tr>
       <th>Nombre</th><th>Semana</th><th>Días trab.</th>
-      <th>Horas totales</th><th>Tardanzas</th>
+      <th>Horas totales</th><th>Máx. legal</th><th>Jornada</th><th>Tardanzas</th>
     </tr>`;
     if (!rows.length) {
-      bodyAsistencia.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin sesiones para el período seleccionado</td></tr>';
+      bodyAsistencia.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin sesiones para el período seleccionado</td></tr>';
       return;
     }
 
@@ -924,8 +937,9 @@
     rows.forEach(r => {
       const sem   = isoWeek(r.fecha);
       const key   = r.cedula + '|' + sem;
-      if (!grupos[key]) grupos[key] = { nombre: r.nombre, cedula: r.cedula, semana: sem, sesiones: [] };
+      if (!grupos[key]) grupos[key] = { nombre: r.nombre, cedula: r.cedula, semana: sem, fechaRef: r.fecha, sesiones: [] };
       grupos[key].sesiones.push(r);
+      if (r.fecha > grupos[key].fechaRef) grupos[key].fechaRef = r.fecha;   // semana de transición → aplica el máx más reciente
     });
 
     const filas = Object.values(grupos).sort((a, b) =>
@@ -934,20 +948,56 @@
 
     bodyAsistencia.innerHTML = filas.map(g => {
       const horas     = g.sesiones.reduce((s, r) => s + (r.horas || 0), 0);
+      // Base del control legal: horas LIMPIAS — se excluyen mispunches evidentes
+      // (sesiones ≥16h = salida del día siguiente; <2 min = marcación duplicada)
+      // para no declarar un "exceso de jornada" por un error de marcación.
+      let horasLimpias = 0, turnosLimpios = 0;
+      g.sesiones.forEach(r => {
+        const h = r.horas || 0;
+        if (h >= 16 || h * 60 < 2) return;
+        horasLimpias += h; turnosLimpios++;
+      });
+      // Jornada ordinaria = presencia limpia − 15 min de alimentación por turno
+      // (la pausa no computa como jornada; así 43,5h de presencia = 42h ordinarias).
+      const horasOrdin = horasLimpias - turnosLimpios * PAUSA_ALIMENTACION_H;
+      const maxLegal   = jornadaMaxSemanal(g.fechaRef);
+      const exceso     = horasOrdin - maxLegal;
+      const desglose   = `${horasLimpias.toFixed(1)}h de presencia − ${(turnosLimpios * PAUSA_ALIMENTACION_H * 60).toFixed(0)} min de alimentación = ${horasOrdin.toFixed(1)}h ordinarias`;
+      const jornadaLabel = exceso > 0.05
+        ? `<span style="color:#DC2626;font-weight:800;" title="${desglose}. Lo que excede el máximo legal es trabajo suplementario (Ley 2101).">+${exceso.toFixed(1)}h sobre el máx.</span>`
+        : `<span style="color:#16A34A;font-weight:700;" title="${desglose}">✓ dentro</span>`;
       const tardes    = g.sesiones.filter(r => r.tardanzaMin > 0).length;
       const diasUnicos = [...new Set(g.sesiones.map(r => r.fecha))].length;
-      const rowStyle  = tardes > 0 ? 'background:#FFF7ED;' : '';
+      const rowStyle  = exceso > 0.05 ? 'background:#FEF2F2;' : (tardes > 0 ? 'background:#FFF7ED;' : '');
       const tardeLabel = tardes > 0
         ? `<span style="color:#D97706;font-weight:700;">${tardes}</span>`
         : '<span style="color:var(--cf-gray-text);">0</span>';
+      const horasTitle = ` title="${desglose}"`;
       return `<tr style="${rowStyle}">
         <td><strong>${esc(g.nombre)}</strong></td>
         <td style="font-size:0.85rem;color:var(--cf-gray-text);">${esc(g.semana)}</td>
         <td style="font-weight:700;">${diasUnicos}</td>
-        <td style="font-weight:800;color:var(--cf-dark);">${horas.toFixed(1)}h</td>
+        <td style="font-weight:800;color:var(--cf-dark);"${horasTitle}>${horas.toFixed(1)}h</td>
+        <td style="color:var(--cf-gray-text);">${maxLegal}h</td>
+        <td>${jornadaLabel}</td>
         <td>${tardeLabel}</td>
       </tr>`;
     }).join('');
+  }
+
+  // Pausa de alimentación: 15 min por turno que NO computan como jornada.
+  // Con los turnos actuales (7,5h L-V + 6h sáb = 43,5h de presencia), descontando
+  // la pausa quedan exactamente 42h ordinarias — el máximo legal vigente.
+  const PAUSA_ALIMENTACION_H = 0.25;
+
+  // Ley 2101 de 2021 — jornada máxima legal semanal (espejo de getJornadaMaxSemanal
+  // en Code.gs; fechas fijadas por la ley, última fase: 42h desde 15-jul-2026).
+  function jornadaMaxSemanal(fechaISO) {
+    if (fechaISO >= '2026-07-15') return 42;
+    if (fechaISO >= '2025-07-15') return 44;
+    if (fechaISO >= '2024-07-15') return 46;
+    if (fechaISO >= '2023-07-15') return 47;
+    return 48;
   }
 
   function isoWeek(dateStr) {
@@ -1410,6 +1460,97 @@
       await cargarRegistros();
     } catch (e) { manejarError(e, 'eliminarRegistro'); }
   };
+
+  // ============================================================
+  // TAB: TARDANZAS — dashboard de análisis (réplica del análisis manual:
+  // el backend re-deriva tardanzas con turno real + detección de anomalías;
+  // el titular usa los números LIMPIOS, las anomalías se reportan aparte)
+  // ============================================================
+
+  let tardanzasCargado = false;
+
+  (function setDefaultTardanzas() {
+    const hoy = new Date();
+    const hace60 = new Date(hoy.getTime() - 60 * 86400000);
+    document.getElementById('tzDesde').value = fmtDate(hace60);
+    document.getElementById('tzHasta').value = fmtDate(hoy);
+  })();
+
+  document.getElementById('btnCargarTardanzas').addEventListener('click', cargarTardanzas);
+
+  async function cargarTardanzas() {
+    const desde = document.getElementById('tzDesde').value;
+    const hasta = document.getElementById('tzHasta').value;
+    if (!desde || !hasta) { toast('Selecciona el rango de fechas', 'warning'); return; }
+    const btn = document.getElementById('btnCargarTardanzas');
+    btn.disabled = true; btn.textContent = 'Analizando…';
+    try {
+      const res = await apiAdminDashboardTardanzas(token, desde, hasta);
+      tardanzasCargado = true;
+      renderTardanzas(res);
+    } catch (e) {
+      manejarError(e, 'cargar tardanzas');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Analizar';
+    }
+  }
+
+  function renderTardanzas(res) {
+    const k = res.kpis || {};
+    document.getElementById('tzSumJornadas').textContent = k.jornadas != null ? k.jornadas : '—';
+    document.getElementById('tzSumMin').textContent      = k.totalMinTarde != null ? k.totalMinTarde.toLocaleString('es-CO') : '—';
+    document.getElementById('tzSumAnomalo').textContent  = k.pctAnomalo != null ? k.pctAnomalo + '%' : '—';
+    document.getElementById('tzSumSinJust').textContent  = (k.sinJustificar != null)
+      ? k.sinJustificar + (k.justificadas ? ' (' + k.justificadas + ' just.)' : '') : '—';
+    const p = res.params || {};
+    document.getElementById('tzParams').textContent =
+      'Tolerancia ' + p.toleranciaMin + ' min · atípico > ' + p.umbralAtipicoMin + ' min';
+
+    // Ranking (ordenado por promedio limpio, el número justo)
+    const resumen = res.resumen || [];
+    document.getElementById('tzBodyResumen').innerHTML = resumen.length ? resumen.map(r =>
+      `<tr>
+        <td>${r.ranking}</td>
+        <td><strong>${esc(r.nombre)}</strong><br><span style="font-size:0.72rem;color:var(--cf-gray-text);">${esc(r.cargo)}</span></td>
+        <td>${r.jornadas}</td>
+        <td>${r.diasTarde}${r.anomalos ? ' <span style="color:var(--cf-gray-text);font-size:0.72rem;">(' + r.diasTardeLimpio + ' reales)</span>' : ''}</td>
+        <td>${r.pctDiasTarde}%</td>
+        <td>${r.promDiasTarde}</td>
+        <td>${r.maxMin}</td>
+        <td>${r.totalMin.toLocaleString('es-CO')}</td>
+        <td>${r.anomalos || 0}</td>
+        <td><strong>${r.promSinAnomalias}</strong> min</td>
+      </tr>`).join('')
+      : '<tr><td colspan="10" style="text-align:center;color:var(--cf-gray-text);padding:24px;">Sin jornadas en el periodo</td></tr>';
+
+    // Anomalías por tipo
+    const anom = res.anomalias || [];
+    document.getElementById('tzBodyAnomalias').innerHTML = anom.length ? anom.map(a =>
+      `<tr><td>${esc(a.label)}</td><td>${a.casos}</td><td>${a.minutos.toLocaleString('es-CO')}</td></tr>`).join('')
+      : '<tr><td colspan="3" style="text-align:center;color:var(--cf-gray-text);padding:24px;">Sin anomalías en el periodo 🎉</td></tr>';
+    document.getElementById('tzAnomNota').textContent = anom.length
+      ? 'Estos minutos NO cuentan en el promedio limpio — son errores de marcación, no llegadas tarde' : '';
+
+    // Detalle por jornada
+    const det = res.detalle || [];
+    document.getElementById('tzBodyDetalle').innerHTML = det.map(j => {
+      let estado, color;
+      if (j.anomalia)   { estado = '⚠ Anómala';   color = '#92400E'; }
+      else if (j.tarde) { estado = 'Tarde';        color = 'var(--cf-error)'; }
+      else              { estado = 'A tiempo';     color = 'var(--cf-success)'; }
+      return `<tr${j.anomalia ? ' style="opacity:0.6;"' : ''}>
+        <td>${esc(j.nombre)}</td>
+        <td>${esc(j.fecha)}</td>
+        <td>${esc(j.dia)}</td>
+        <td>${esc(j.horaEnt)}</td>
+        <td style="font-size:0.75rem;">${esc(j.turno)}</td>
+        <td>${esc(j.horaEsperada)}</td>
+        <td>${j.minTarde || 0}</td>
+        <td style="color:${color};font-weight:700;">${estado}</td>
+        <td style="font-size:0.75rem;">${esc(j.justificacion || '')}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--cf-gray-text);padding:24px;">—</td></tr>';
+  }
 
   // ============================================================
   // TAB: AUDITORÍA

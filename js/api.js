@@ -78,6 +78,10 @@ async function apiMarcar(token, lat, lng, override) {
 async function apiHistorial(token) {
   return apiCall('historial', { token });
 }
+// Justificar la llegada tarde de HOY (opcional, tras marcar entrada)
+async function apiJustificarTardanza(token, categoria, nota, minutos) {
+  return apiCall('marcar_justificar_tardanza', { token, categoria, nota, minutos });
+}
 
 // ── Admin ──
 async function apiAdminReporte(token, desde, hasta) {
@@ -100,6 +104,9 @@ async function apiAdminHorariosList(token) {
 }
 async function apiAdminAsistencia(token, desde, hasta) {
   return apiCall('admin_asistencia', { token, desde, hasta });
+}
+async function apiAdminDashboardTardanzas(token, desde, hasta) {
+  return apiCall('admin_dashboard_tardanzas', { token, desde, hasta });
 }
 async function apiAdminSesionUpdate(token, cedula, fecha, horaEntOriginal, horaEnt, horaSal, fechaSal) {
   return apiCall('admin_sesion_update', { token, cedula, fecha, horaEntOriginal, horaEnt, horaSal, fechaSal });

@@ -131,6 +131,33 @@
     </div>
   </div>
 
+  <!-- ── Modal: justificar llegada tarde (opcional) ── -->
+  <div id="modalTardanza" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+      <h2 style="font-size:1rem;font-weight:800;color:#071D49;margin:0 0 6px;">Llegaste tarde hoy</h2>
+      <p id="tardanzaMsg" style="font-size:0.88rem;line-height:1.5;color:#374151;margin:0 0 16px;"></p>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">Motivo</label>
+        <select id="tardanzaCategoria" style="width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;background:#fff;">
+          <option value="transporte">Transporte / tráfico</option>
+          <option value="salud">Salud</option>
+          <option value="cita">Cita médica / diligencia</option>
+          <option value="personal">Motivo personal</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px;">Detalle (opcional)</label>
+        <textarea id="tardanzaNota" rows="2" maxlength="200" placeholder="Ej: el metro estuvo detenido 20 minutos" style="width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.9rem;font-family:inherit;box-sizing:border-box;resize:vertical;"></textarea>
+      </div>
+      <div id="tardanzaError" style="display:none;font-size:0.82rem;color:#B91C1C;background:#FEE2E2;padding:10px 12px;border-radius:8px;margin-bottom:12px;line-height:1.4;"></div>
+      <div style="display:flex;gap:8px;">
+        <button id="tardanzaOmitir" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #E2E8F0;background:#fff;font-weight:600;font-size:0.85rem;cursor:pointer;font-family:inherit;color:#6B7280;">Ahora no</button>
+        <button id="tardanzaEnviar" style="flex:2;padding:10px;border-radius:8px;border:none;background:#071D49;color:#fff;font-weight:700;font-size:0.85rem;cursor:pointer;font-family:inherit;">Justificar</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/geo.js"></script>

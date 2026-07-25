@@ -146,6 +146,8 @@
       };
       actualizarUI();
       await cargarHistorial();
+      // Si el backend detectó llegada tarde, ofrecer justificarla (opcional)
+      if (res.tipo === 'ENTRADA' && res.tarde) abrirModalTardanza(res.tarde);
     } catch (err) {
       console.error('marcar', err);
       const msg = (err && err.name === 'ApiError') ? err.message : (err.message || 'Error inesperado.');
@@ -334,6 +336,41 @@
     svError.textContent    = msg;
     svError.style.display  = 'block';
   }
+
+  // ── Justificar llegada tarde (opcional) ─────────────────────
+  // El backend detecta la tardanza al marcar ENTRADA y este modal permite
+  // dejar el motivo registrado (queda en Novedades y se cruza en el dashboard).
+  var _tardanzaMinutos = 0;
+  function abrirModalTardanza(t) {
+    _tardanzaMinutos = t.minutos || 0;
+    document.getElementById('tardanzaMsg').textContent =
+      'Tu turno (' + (t.turno || '') + ') empezaba a las ' + (t.horaEsperada || '') +
+      ' y marcaste ' + t.minutos + ' min después. Si tuviste un motivo, déjalo registrado.';
+    document.getElementById('tardanzaNota').value = '';
+    document.getElementById('tardanzaError').style.display = 'none';
+    document.getElementById('modalTardanza').style.display = 'flex';
+  }
+  function cerrarModalTardanza() {
+    document.getElementById('modalTardanza').style.display = 'none';
+  }
+  document.getElementById('tardanzaOmitir').addEventListener('click', cerrarModalTardanza);
+  document.getElementById('tardanzaEnviar').addEventListener('click', async function () {
+    var btn = this;
+    var categoria = document.getElementById('tardanzaCategoria').value;
+    var nota      = document.getElementById('tardanzaNota').value.trim();
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      await apiJustificarTardanza(session.token, categoria, nota, _tardanzaMinutos);
+      cerrarModalTardanza();
+      showAlert('✅ Justificación registrada. Gracias.', 'success');
+    } catch (err) {
+      var el = document.getElementById('tardanzaError');
+      el.textContent = (err && err.message) || 'No se pudo enviar. Intenta de nuevo.';
+      el.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Justificar';
+    }
+  });
 
   // ── Init ──
   cargarEstado();
