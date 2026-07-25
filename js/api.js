@@ -184,6 +184,9 @@ async function apiProdColaFinalizar(token, archivo, fechaReal, fechaRealInicio) 
 async function apiProdColaIniciar(token, archivo, fechaRealInicio) {
   return apiCall('prod_cola_iniciar', { token, archivo, fechaRealInicio });
 }
+async function apiProdColaNota(token, archivo, nota) {
+  return apiCall('prod_cola_nota', { token, archivo, nota });
+}
 async function apiProdColaReabrir(token, archivo) {
   return apiCall('prod_cola_reabrir', { token, archivo });
 }

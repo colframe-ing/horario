@@ -370,6 +370,7 @@
             (c.fechaRealInicio?'<span class="prod-badge" title="Producción iniciada el '+esc(fechaCorta(c.fechaRealInicio))+'">▶ En producción</span>':'')+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+
             (c.fechaRealInicio?' · inició '+fechaCorta(c.fechaRealInicio):'')+'</div>'+
+          (c.notas?'<div class="cola-nota">📝 '+esc(c.notas)+'</div>':'')+
           '<div class="cola-fechas">'+rango+'</div>'+
         '</div>'+
         '<div class="cola-entrega">'+
@@ -378,6 +379,7 @@
           atraso+
         '</div>'+
         rowMenu(
+          '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+(c.notas?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
@@ -406,6 +408,9 @@
     body.querySelectorAll('[data-iniciar]').forEach(function(b){
       b.addEventListener('click', function(){ abrirIniciar(b.getAttribute('data-iniciar'), b.getAttribute('data-nombre')); });
     });
+    body.querySelectorAll('[data-nota]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirNota(b.getAttribute('data-nota'), b.getAttribute('data-nombre')); });
+    });
     bindRowMenus(body);
     bindDragDrop(body);
   }
@@ -426,9 +431,11 @@
         '<div class="cola-main">'+
           '<div class="cola-nombre">'+esc(c.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(c.consecutivo)+'</span>'+envioBadge(c)+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+'</div>'+
+          (c.notas?'<div class="cola-nota">📝 '+esc(c.notas)+'</div>':'')+
         '</div>'+
         '<button class="cola-toggle-btn add" data-agregar="'+esc(c.uid)+'" title="Agregar al Gantt (se programa al final de la cola)">+ Agregar a la cola</button>'+
         rowMenu(
+          '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+(c.notas?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
           '<div class="menu-sep"></div>'+
@@ -447,6 +454,9 @@
     });
     body.querySelectorAll('[data-partir]').forEach(function(b){
       b.addEventListener('click', function(){ abrirEnvios(b.getAttribute('data-partir')); });
+    });
+    body.querySelectorAll('[data-nota]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirNota(b.getAttribute('data-nota'), b.getAttribute('data-nombre')); });
     });
     bindRowMenus(body);
   }
@@ -514,6 +524,50 @@
         '<a class="cola-toggle-btn" href="https://drive.google.com/drive/folders/'+esc(x.carpetaId)+'" target="_blank" rel="noopener">Ver en Drive</a>'+
         '</div>';
       }).join('');
+  }
+
+  // ── Nota del proyecto (nombre legible sin tocar los archivos base) ──
+  var _notaUid = null;
+  function abrirNota(uid, nombre){
+    cerrarMenus();
+    _notaUid = uid;
+    var item = buscarItem(uid);
+    document.getElementById('notaProyectoNombre').textContent = nombre || '';
+    document.getElementById('notaTexto').value = (item && item.notas) || '';
+    document.getElementById('modalNota').classList.remove('hidden');
+    setTimeout(function(){ document.getElementById('notaTexto').focus(); }, 0);
+  }
+  function cerrarNota(){
+    document.getElementById('modalNota').classList.add('hidden');
+    _notaUid = null;
+  }
+  function guardarNota(){
+    var uid = _notaUid;
+    if(!uid) return;
+    var nota = document.getElementById('notaTexto').value.trim();
+    cerrarNota();
+    aplicarNota(uid, nota);
+  }
+  // La nota es del PROYECTO (archivo): al cambiarla se refleja en todas sus
+  // unidades hermanas (mismos archivos = mismo proyecto, ej. sus envíos).
+  function _setNotaArchivo(archivo, nota){
+    // La nota es por proyecto (archivo): aplicarla a todas sus unidades donde estén.
+    _data.cola.concat(_data.backlog||[], _data.finalizados||[]).forEach(function(c){ if(c.archivo===archivo) c.notas = nota; });
+  }
+  function aplicarNota(uid, nota){
+    var item = buscarItem(uid);
+    if(!item) return;
+    var archivo = item.archivo, before = item.notas || '';
+    _setNotaArchivo(archivo, nota);
+    recomputarYRenderizar();
+    beginSave();
+    apiProdColaNota(token, uid, nota).then(function(){
+      toast('Nota guardada','ok');
+    }).catch(function(e){
+      _setNotaArchivo(archivo, before);   // robusto: por archivo, no por referencia
+      recomputarYRenderizar();
+      manejarError(e);
+    }).finally(endSave);
   }
 
   // ── Iniciar producción: captura la fecha REAL de arranque ──
@@ -1055,6 +1109,9 @@
     document.getElementById('envGuardar').addEventListener('click', guardarEnvios);
     document.getElementById('envUnir').addEventListener('click', unirEnvios);
     document.getElementById('modalEnvios').addEventListener('click', function(e){ if(e.target.id==='modalEnvios') cerrarEnvios(); });
+    document.getElementById('notaCancelar').addEventListener('click', cerrarNota);
+    document.getElementById('notaGuardar').addEventListener('click', guardarNota);
+    document.getElementById('modalNota').addEventListener('click', function(e){ if(e.target.id==='modalNota') cerrarNota(); });
     document.getElementById('iniCancelar').addEventListener('click', cerrarIniciar);
     document.getElementById('iniConfirmar').addEventListener('click', confirmarIniciar);
     document.getElementById('iniQuitar').addEventListener('click', quitarInicio);

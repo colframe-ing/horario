@@ -61,6 +61,7 @@
     .cola-nombre { font-weight:700; font-size:0.84rem; color:var(--cf-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cola-meta { font-size:0.72rem; color:var(--cf-gray-text); }
     .cola-fechas { font-size:0.72rem; color:var(--cf-dark); font-weight:600; }
+    .cola-nota { font-size:0.72rem; color:#7C3AED; font-style:italic; margin-top:2px; white-space:normal; word-break:break-word; }
     .cola-entrega { display:flex; flex-direction:column; gap:2px; align-items:flex-end; }
     .cola-entrega input { padding:4px 6px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.72rem; font-family:inherit; }
     .cola-atraso { font-size:0.64rem; font-weight:800; color:#fff; background:#DC2626; padding:1px 6px; border-radius:999px; }
@@ -219,6 +220,25 @@
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="finCancelar">Cancelar</button>
         <button class="btn btn-primary btn-sm" id="finConfirmar">Finalizar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Nota del proyecto -->
+  <div id="modalNota" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="notaTitle">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h2 id="notaTitle" style="font-size:1rem;">Nota del proyecto</h2>
+      </div>
+      <div id="notaProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:12px;"></div>
+      <div class="cfg-field">
+        <label>Nota (nombre real, referencia, comentario…)</label>
+        <textarea id="notaTexto" rows="3" maxlength="500" style="padding:8px 10px;border:1.5px solid var(--cf-gray-mid);border-radius:8px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>
+      </div>
+      <p style="font-size:0.7rem;color:var(--cf-gray-text);margin:8px 0 0;">No modifica los archivos base ni el nombre en Drive. Solo es una etiqueta del proyecto aquí.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="notaCancelar">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="notaGuardar">Guardar</button>
       </div>
     </div>
   </div>
