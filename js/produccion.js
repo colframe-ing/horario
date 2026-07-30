@@ -142,15 +142,23 @@
   async function cargarAnomalias() {
     try {
       const res = await apiProdAnomaliasList(token);
-      renderAnomalias(res.anomalias || []);
+      renderAnomalias(res.anomalias || [], res);
     } catch (e) {
       manejarError(e, 'cargar anomalías');
     }
   }
-  function renderAnomalias(lista) {
+  function renderAnomalias(lista, meta) {
     const card  = document.getElementById('anomaliasCard');
     const count = document.getElementById('anomaliasCount');
     const body  = document.getElementById('anomaliasBody');
+    const nota  = document.getElementById('anomaliasDesde');
+    // Transparencia: decir desde cuándo se listan y cuántas antiguas se omiten,
+    // para que el filtro no parezca que "perdió" información.
+    if (nota) {
+      nota.textContent = (meta && meta.desde)
+        ? 'desde ' + _fechaES(meta.desde) + (meta.omitidas ? ' · ' + meta.omitidas + ' anteriores omitidas' : '')
+        : '';
+    }
     if (!lista.length) { card.style.display = 'none'; return; }
     card.style.display = '';
     count.textContent  = lista.length;
