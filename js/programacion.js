@@ -46,8 +46,14 @@
     var pct = configurado>0 ? Math.round(rr.valor/configurado*100) : null;
     var cls = 'ritmo-real-info' + (pct==null ? '' : pct<85 ? ' bajo' : pct>115 ? ' alto' : ' ok');
     el.className = cls;
-    el.title = 'Calculado con las últimas '+rr.n+' unidades finalizadas ('+fechaCorta(rr.desde)+' → '+fechaCorta(rr.hasta)+'): '+fmtNum(rr.ml,0)+' ML en '+rr.dias+' días hábiles.';
-    el.textContent = 'Ritmo real: '+fmtNum(rr.valor,0)+' ML/día'+(pct!=null?' ('+pct+'% del configurado)':'');
+    var base = 'Últimas '+rr.n+' unidades finalizadas ('+fechaCorta(rr.desde)+' → '+fechaCorta(rr.hasta)+'): '+
+               fmtNum(rr.ml,0)+' ML en '+rr.dias+' días hábiles.';
+    el.title = (rr.metodo === 'duracion')
+      ? base+'\nMedido por duración real de producción (inicio → fin de cada unidad), sin contar tiempos muertos entre proyectos.'+
+        (rr.sinFechaInicio ? '\n('+rr.sinFechaInicio+' unidad(es) sin fecha de inicio quedaron fuera del cálculo.)' : '')
+      : base+'\n⚠ Medido por salida de planta entre la primera y la última finalización: incluye tiempos muertos, así que SUBESTIMA el ritmo. Marca "Iniciar producción" en los proyectos para medirlo por duración real.';
+    el.textContent = 'Ritmo real: '+fmtNum(rr.valor,0)+' ML/día'+(pct!=null?' ('+pct+'% del configurado)':'')+
+                     (rr.metodo === 'throughput' ? ' ~' : '');
   }
   function metaAjustes(c){
     var s = '';
@@ -87,6 +93,14 @@
     if(c.notas)     s += '<div class="cola-nota">📝 '+esc(c.notas)+'</div>';
     if(c.notaEnvio) s += '<div class="cola-nota env">📝 <strong>E'+c.envioIdx+':</strong> '+esc(c.notaEnvio)+'</div>';
     return s;
+  }
+  // Duración real vs la estimada (solo si se capturó la fecha de inicio).
+  // Verde si cumplió lo estimado, ámbar si se pasó.
+  function duracionHtml(c){
+    if(!c.diasReales || !c.durDias) return '';
+    var estim = Math.max(1, Math.ceil(c.durDias - 1e-9));
+    var color = c.diasReales > estim ? '#92400E' : '#065F46';
+    return ' · <span style="color:'+color+';">'+fmtDias(c.diasReales)+' reales vs '+fmtDias(estim)+' estimados</span>';
   }
   function tamanoUnidad(c){
     if(c.esEnvio){
@@ -483,7 +497,8 @@
           '<div class="cola-nombre">'+esc(c.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(c.consecutivo)+'</span>'+envioBadge(c)+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+'</div>'+
           '<div class="cola-fechas">Entrega: '+(c.fechaEntrega?fechaCorta(c.fechaEntrega):'—')+' · Real: '+
-            (c.fechaRealInicio ? fechaCorta(c.fechaRealInicio)+' → '+fechaCorta(c.fechaReal) : fechaCorta(c.fechaReal))+'</div>'+
+            (c.fechaRealInicio ? fechaCorta(c.fechaRealInicio)+' → '+fechaCorta(c.fechaReal) : fechaCorta(c.fechaReal))+
+            duracionHtml(c)+'</div>'+
         '</div>'+
         badge+
         '<button class="cola-toggle-btn" data-reabrir="'+esc(c.uid)+'" title="Deshacer — vuelve a Aprobados sin cola">Reabrir</button>'+
@@ -516,7 +531,9 @@
       sc.map(function(x){
         return '<div class="cola-row"><div class="cola-main">'+
           '<div class="cola-nombre">'+esc(x.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(x.consecutivo)+'</span></div>'+
-          '<div class="cola-meta">'+nUnidades(x.cantidad)+' · '+fmtNum(x.mlTotal,0)+' ML · '+(x.estado==='backlog'?'sin cola':'en cola')+'</div>'+
+          '<div class="cola-meta">'+nUnidades(x.cantidad)+' · '+fmtNum(x.mlTotal,0)+' ML'+
+            (x.totalUnidades>1 ? ' pendientes ('+x.pendientes+' de '+x.totalUnidades+' envíos)' : '')+
+            ' · '+(x.estado==='backlog'?'sin cola':'en cola')+'</div>'+
         '</div>'+
         '<a class="cola-toggle-btn" href="cotizaciones.html?archivo='+encodeURIComponent(x.archivo)+'" target="_blank" rel="noopener" title="Abrir esta cotización para vincular su carpeta de producción">Vincular →</a>'+
         '</div>';

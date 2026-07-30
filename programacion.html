@@ -16,6 +16,7 @@
     .mod-nav-link { padding:10px 14px; font-size:0.82rem; font-weight:700; color:var(--cf-gray-text); text-decoration:none; border-bottom:3px solid transparent; white-space:nowrap; display:inline-block; }
     .mod-nav-link.active { color:var(--cf-blue); border-bottom-color:var(--cf-blue); }
     .mod-nav-link:hover:not(.active) { color:var(--cf-dark); }
+    .mod-nav-sep { width:1px; background:var(--cf-gray-mid); margin:8px 6px; flex-shrink:0; }
 
     .cfg-bar { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; margin-bottom:14px; }
     .cfg-field { display:flex; flex-direction:column; gap:3px; }
@@ -122,10 +123,11 @@
   </header>
 
   <nav id="modNav" class="mod-nav hidden">
-    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
-    <a href="produccion.html"   class="mod-nav-link">Producción</a>
     <a href="cotizaciones.html" class="mod-nav-link">Cotizaciones</a>
     <a href="programacion.html" class="mod-nav-link active">Programación</a>
+    <a href="produccion.html"   class="mod-nav-link">Producción</a>
+    <span class="mod-nav-sep" aria-hidden="true"></span>
+    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
   </nav>
 
   <div class="admin-main admin-panel">

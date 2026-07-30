@@ -39,10 +39,20 @@
     .proy-footer { display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem; color: var(--cf-gray-text); }
     .proy-metros-total { font-weight: 700; color: var(--cf-dark); }
 
+    /* Estado de la carpeta dentro del flujo de Programación */
+    .cola-info { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cola-info .cb { margin-left: auto; font-weight: 700; opacity: 0.7; }
+    .cola-info.cola { background: #DBEAFE; color: #1D4ED8; }
+    .cola-info.prod { background: #CFFAFE; color: #155E75; }
+    .cola-info.back { background: #F1F5F9; color: #475569; }
+    .cola-info.fin  { background: #D1FAE5; color: #065F46; }
+    .cola-info.atraso { box-shadow: 0 0 0 1.5px #DC2626 inset; }
+
     .mod-nav { background: #fff; border-bottom: 1px solid var(--cf-gray-mid); padding: 0 16px; display: flex; gap: 4px; overflow-x: auto; }
     .mod-nav-link { padding: 10px 14px; font-size: 0.82rem; font-weight: 700; color: var(--cf-gray-text); text-decoration: none; border-bottom: 3px solid transparent; white-space: nowrap; display: inline-block; }
     .mod-nav-link.active { color: var(--cf-blue); border-bottom-color: var(--cf-blue); }
     .mod-nav-link:hover:not(.active) { color: var(--cf-dark); }
+    .mod-nav-sep { width:1px; background:var(--cf-gray-mid); margin:8px 6px; flex-shrink:0; }
 
     .detalle-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
     .detalle-header h2 { flex: 1; min-width: 160px; font-size: 0.95rem; line-height: 1.4; }
@@ -80,10 +90,11 @@
 
   <!-- Nav módulos (solo visible para admins — JS remueve hidden) -->
   <nav id="modNav" class="mod-nav hidden">
-    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
-    <a href="produccion.html"   class="mod-nav-link active">Producción</a>
     <a href="cotizaciones.html" class="mod-nav-link">Cotizaciones</a>
     <a href="programacion.html" class="mod-nav-link">Programación</a>
+    <a href="produccion.html"   class="mod-nav-link active">Producción</a>
+    <span class="mod-nav-sep" aria-hidden="true"></span>
+    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
   </nav>
 
   <!-- ══ VISTA LISTA ══════════════════════════════════════════ -->
@@ -175,6 +186,15 @@
     </div>
 
     <div id="detalleAnomalia" class="anomalia-banner hidden"></div>
+
+    <!-- Estado en Programación (solo admin; oculto si la carpeta no está vinculada) -->
+    <div class="table-card" id="colaCard" style="margin-bottom:14px;display:none;">
+      <div class="table-header">
+        <h3>Programación · <span id="colaCardTitulo"></span></h3>
+        <a href="programacion.html" class="btn btn-ghost btn-sm" style="font-size:0.8rem;">Ver Gantt →</a>
+      </div>
+      <div id="colaBody" style="padding:14px 20px;display:flex;flex-direction:column;gap:4px;"></div>
+    </div>
 
     <!-- Resumen capas -->
     <div class="table-card" style="margin-bottom:14px;">

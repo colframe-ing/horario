@@ -68,6 +68,7 @@
     .mod-nav-link { padding: 10px 14px; font-size: 0.82rem; font-weight: 700; color: var(--cf-gray-text); text-decoration: none; border-bottom: 3px solid transparent; white-space: nowrap; display: inline-block; }
     .mod-nav-link.active { color: var(--cf-blue); border-bottom-color: var(--cf-blue); }
     .mod-nav-link:hover:not(.active) { color: var(--cf-dark); }
+    .mod-nav-sep { width:1px; background:var(--cf-gray-mid); margin:8px 6px; flex-shrink:0; }
   </style>
 </head>
 <body>
@@ -91,10 +92,11 @@
 
   <!-- Nav módulos (solo admins — JS remueve hidden) -->
   <nav id="modNav" class="mod-nav hidden">
-    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
-    <a href="produccion.html"   class="mod-nav-link">Producción</a>
     <a href="cotizaciones.html" class="mod-nav-link active">Cotizaciones</a>
     <a href="programacion.html" class="mod-nav-link">Programación</a>
+    <a href="produccion.html"   class="mod-nav-link">Producción</a>
+    <span class="mod-nav-sep" aria-hidden="true"></span>
+    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
   </nav>
 
   <div id="vistaLista" class="admin-main admin-panel">

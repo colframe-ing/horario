@@ -63,6 +63,74 @@
     }
   }
 
+  // ── Estado en Programación (cola/producción/finalizado) ──────────────────
+  // Cierra el hueco de que Producción no supiera nada del flujo. Solo admin
+  // (el backend devuelve `cola: null` para el resto).
+  var _MESES_COR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function _fechaCorta(iso) {
+    if (!iso) return '—';
+    var p = String(iso).substring(0, 10).split('-');
+    if (p.length < 3) return '—';
+    return parseInt(p[2]) + ' ' + (_MESES_COR[parseInt(p[1]) - 1] || p[1]);
+  }
+  // Resume las unidades de una carpeta en un solo estado legible.
+  function _resumenCola(cola) {
+    if (!cola || !cola.unidades || !cola.unidades.length) return null;
+    var us = cola.unidades;
+    var enProd = us.filter(function (u) { return u.enProduccion && u.seccion === 'cola'; });
+    var enCola = us.filter(function (u) { return u.seccion === 'cola'; });
+    var fin    = us.filter(function (u) { return u.seccion === 'finalizada'; });
+    var back   = us.filter(function (u) { return u.seccion === 'backlog'; });
+    var txt, cls, det = '';
+    if (enProd.length)      { txt = 'En producción'; cls = 'prod'; det = 'desde ' + _fechaCorta(enProd[0].fechaRealInicio); }
+    else if (enCola.length) { txt = 'En cola';       cls = 'cola'; det = _fechaCorta(enCola[0].inicio) + ' → ' + _fechaCorta(enCola[0].fin); }
+    else if (back.length)   { txt = 'Sin cola';      cls = 'back'; }
+    else                    { txt = 'Finalizado';    cls = 'fin';  det = _fechaCorta(fin[0].fechaReal); }
+    // Si está partido en envíos, decir en cuántos va
+    if (us.length > 1) det += (det ? ' · ' : '') + us.length + ' envíos';
+    if (us.some(function (u) { return u.atrasado; })) cls += ' atraso';
+    return { txt: txt, cls: cls, det: det, cb: cola.consecutivo, proyecto: cola.proyecto, notas: cola.notas, unidades: us };
+  }
+  // Detalle: una línea por unidad/envío, con su estado y fechas.
+  function renderColaDetalle(cola) {
+    const card = document.getElementById('colaCard');
+    const body = document.getElementById('colaBody');
+    if (!card) return;
+    const r = _resumenCola(cola);
+    if (!r) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    document.getElementById('colaCardTitulo').innerHTML =
+      esc(r.proyecto) + ' <span style="font-weight:400;color:var(--cf-gray-text);">CB' + esc(r.cb) + '</span>';
+    const nota = r.notas ? '<div style="font-size:0.78rem;color:#7C3AED;font-style:italic;padding:0 20px 8px;">📝 ' + esc(r.notas) + '</div>' : '';
+    const ETIQ = { cola: 'En cola', backlog: 'Sin cola', finalizada: 'Finalizado' };
+    body.innerHTML = nota + r.unidades.map(function (u) {
+      const nombre = u.esEnvio ? ('Envío ' + u.envioIdx + '/' + u.enviosTotal) : 'Proyecto completo';
+      const est = u.enProduccion && u.seccion === 'cola' ? 'En producción' : (ETIQ[u.seccion] || u.seccion);
+      let fechas;
+      if (u.seccion === 'finalizada') fechas = 'Real: ' + (u.fechaRealInicio ? _fechaCorta(u.fechaRealInicio) + ' → ' : '') + _fechaCorta(u.fechaReal);
+      else if (u.seccion === 'backlog') fechas = 'sin programar';
+      else fechas = _fechaCorta(u.inicio) + ' → ' + _fechaCorta(u.fin);
+      const atraso = u.atrasado ? '<span style="font-size:0.65rem;font-weight:800;color:#fff;background:#DC2626;padding:1px 6px;border-radius:999px;">Atrasado</span>' : '';
+      const notaE = u.notaEnvio ? '<div style="font-size:0.72rem;color:#0891B2;font-style:italic;">📝 ' + esc(u.notaEnvio) + '</div>' : '';
+      return '<div class="arch-row">' +
+        '<div class="arch-info" style="flex-direction:column;align-items:flex-start;gap:1px;">' +
+          '<span style="font-weight:700;font-size:0.78rem;">' + esc(nombre) + ' · ' + esc(est) + '</span>' +
+          '<span style="font-size:0.73rem;color:var(--cf-gray-text);">' + esc(fechas) +
+            (u.fechaEntrega ? ' · entrega ' + esc(_fechaCorta(u.fechaEntrega)) : '') + '</span>' + notaE +
+        '</div>' +
+        '<div class="arch-meta">' + (u.mlTotal ? u.mlTotal.toFixed(0) + ' ML ' : '') + atraso + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function badgeCola(p) {
+    var r = _resumenCola(p.cola);
+    if (!r) return '';
+    return '<div class="cola-info ' + r.cls + '" title="' + esc(r.proyecto + ' · CB' + r.cb) + '">' +
+      '<strong>' + esc(r.txt) + '</strong>' + (r.det ? ' · ' + esc(r.det) : '') +
+      ' <span class="cb">CB' + esc(r.cb) + '</span></div>';
+  }
+
   // ── Anomalías del escaneo (solo admin, solo lectura) ──────
   // Vista de AnomaliasScan (hoy invisible salvo el conteo en el toast del
   // escaneo). El backend ya deduplica por (tipo+ruta) a la ocurrencia más
@@ -122,6 +190,7 @@
           '<span class="estado-badge ' + esc(p.estado) + '">' + esc(p.estado) + '</span>' +
         '</div>' +
         '<div class="proy-fecha">' + fecha + '</div>' +
+        badgeCola(p) +
         '<div class="proy-capas">' + (capasHtml ||
           '<span style="font-size:0.75rem;color:var(--cf-gray-text);">Sin archivos EP2</span>') +
         '</div>' +
@@ -157,7 +226,7 @@
     try {
       const res = await apiProdProyectoDetalle(token, carpetaId);
       proyectoActual = res.proyecto;
-      renderDetalle(res.proyecto, res.archivos || []);
+      renderDetalle(res.proyecto, res.archivos || [], res.cola || null);
     } catch (e) {
       manejarError(e, 'cargar detalle');
       document.getElementById('detalleBody').innerHTML =
@@ -171,8 +240,9 @@
     proyectoActual = null;
   }
 
-  function renderDetalle(p, archivos) {
+  function renderDetalle(p, archivos, cola) {
     document.getElementById('detalleNombre').textContent = p.nombre;
+    renderColaDetalle(cola);
 
     const btnDrive = document.getElementById('btnDrive');
     btnDrive.href  = 'https://drive.google.com/drive/folders/' + p.carpetaId;
