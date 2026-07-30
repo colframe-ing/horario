@@ -215,6 +215,11 @@ async function apiProdAlertasHigiene(token) {
 async function apiProdAnomaliasList(token) {
   return apiCall('prod_anomalias_list', { token });
 }
+
+// ── Hoja de vida del proyecto (agrupado por consecutivo CB) ──────────────────
+async function apiProyectoHojaVida(token, cb) {
+  return apiCall('proyecto_hoja_vida', { token, cb });
+}
 async function apiProdColaConfig(token, ritmo, fechaInicio) {
   return apiCall('prod_cola_config', { token, ritmo, fechaInicio });
 }

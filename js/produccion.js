@@ -100,7 +100,8 @@
     if (!r) { card.style.display = 'none'; return; }
     card.style.display = '';
     document.getElementById('colaCardTitulo').innerHTML =
-      esc(r.proyecto) + ' <span style="font-weight:400;color:var(--cf-gray-text);">CB' + esc(r.cb) + '</span>';
+      esc(r.proyecto) + ' <a href="proyecto.html?cb=' + encodeURIComponent(r.cb) + '" target="_blank" rel="noopener"' +
+      ' style="font-weight:400;color:var(--cf-blue);text-decoration:none;" title="Ver hoja de vida del proyecto">CB' + esc(r.cb) + ' 📋</a>';
     const nota = r.notas ? '<div style="font-size:0.78rem;color:#7C3AED;font-style:italic;padding:0 20px 8px;">📝 ' + esc(r.notas) + '</div>' : '';
     const ETIQ = { cola: 'En cola', backlog: 'Sin cola', finalizada: 'Finalizado' };
     body.innerHTML = nota + r.unidades.map(function (u) {

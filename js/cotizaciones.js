@@ -262,7 +262,10 @@
 
     document.getElementById('detNombre').innerHTML = esc(c.proyecto || '(sin nombre)') +
       ' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.85rem;">CB' + esc(c.consecutivo) +
-      (c.version ? '.' + esc(c.version) : '') + ' · ' + cant + (cant > 1 ? ' casas' : ' casa') + '</span>';
+      (c.version ? '.' + esc(c.version) : '') + ' · ' + cant + (cant > 1 ? ' unidades' : ' unidad') + '</span>' +
+      ' <a href="proyecto.html?cb=' + encodeURIComponent(c.consecutivo) + '" target="_blank" rel="noopener"' +
+      ' class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:3px 9px;min-height:0;vertical-align:middle;"' +
+      ' title="Ver todo el proyecto CB' + esc(c.consecutivo) + '">📋 Hoja de vida</a>';
 
     // Comparativo POR UNIDAD. La carpeta de producción contiene los archivos de
     // UNA unidad y esos mismos archivos se reutilizan para las demás unidades

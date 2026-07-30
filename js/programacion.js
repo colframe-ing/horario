@@ -76,6 +76,11 @@
     document.querySelectorAll('.row-menu.open').forEach(function(m){ m.classList.remove('open'); });
   }
   function bindRowMenus(body){
+    // Los enlaces del menú abren en otra pestaña: cerrar el menú al usarlos
+    // para no dejarlo colgado al volver.
+    body.querySelectorAll('.row-menu a.menu-link').forEach(function(a){
+      a.addEventListener('click', function(){ cerrarMenus(); });
+    });
     body.querySelectorAll('.row-menu-btn').forEach(function(b){
       b.addEventListener('click', function(e){
         e.stopPropagation();
@@ -401,6 +406,7 @@
           atraso+
         '</div>'+
         rowMenu(
+          '<a class="menu-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'" target="_blank" rel="noopener">📋 Hoja de vida</a>'+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
@@ -457,6 +463,7 @@
         '</div>'+
         '<button class="cola-toggle-btn add" data-agregar="'+esc(c.uid)+'" title="Agregar al Gantt (se programa al final de la cola)">+ Agregar a la cola</button>'+
         rowMenu(
+          '<a class="menu-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'" target="_blank" rel="noopener">📋 Hoja de vida</a>'+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
