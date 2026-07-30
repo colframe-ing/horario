@@ -155,9 +155,11 @@
     // Transparencia: decir desde cuándo se listan y cuántas antiguas se omiten,
     // para que el filtro no parezca que "perdió" información.
     if (nota) {
-      nota.textContent = (meta && meta.desde)
-        ? 'desde ' + _fechaES(meta.desde) + (meta.omitidas ? ' · ' + meta.omitidas + ' anteriores omitidas' : '')
-        : '';
+      var partes = [];
+      if (meta && meta.desde)    partes.push('proyectos desde ' + _fechaES(meta.desde));
+      if (meta && meta.resueltas) partes.push(meta.resueltas + ' ya resueltas');
+      if (meta && meta.omitidas)  partes.push(meta.omitidas + ' anteriores omitidas');
+      nota.textContent = partes.join(' · ');
     }
     if (!lista.length) { card.style.display = 'none'; return; }
     card.style.display = '';
@@ -169,7 +171,8 @@
           '<span class="arch-perfil" style="background:#FEF3C7;color:#92400E;">' + esc(label) + '</span>' +
           '<span class="arch-nombre" title="' + esc(a.ruta) + '">' + esc(a.ruta) + '</span>' +
         '</div>' +
-        '<div class="arch-meta">' + esc(a.detalle) + ' · ' + _fechaES(a.ts) + '</div>' +
+        '<div class="arch-meta">' + esc(a.detalle) +
+          ' · ' + (a.fechaProyecto ? 'proyecto ' + _fechaES(a.fechaProyecto) : 'detectada ' + _fechaES(a.ts)) + '</div>' +
         '</div>';
     }).join('');
   }
