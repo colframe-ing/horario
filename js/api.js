@@ -191,8 +191,13 @@ async function apiProdColaFinalizar(token, archivo, fechaReal, fechaRealInicio) 
 async function apiProdColaIniciar(token, archivo, fechaRealInicio) {
   return apiCall('prod_cola_iniciar', { token, archivo, fechaRealInicio });
 }
-async function apiProdColaNota(token, archivo, nota) {
-  return apiCall('prod_cola_nota', { token, archivo, nota });
+// nota = del proyecto (compartida por sus envíos); notaEnvio = solo de ese envío.
+// Enviar undefined en cualquiera para no tocarla.
+async function apiProdColaNota(token, archivo, nota, notaEnvio) {
+  const payload = { token, archivo };
+  if (nota !== undefined)      payload.nota = nota;
+  if (notaEnvio !== undefined) payload.notaEnvio = notaEnvio;
+  return apiCall('prod_cola_nota', payload);
 }
 async function apiProdColaReabrir(token, archivo) {
   return apiCall('prod_cola_reabrir', { token, archivo });

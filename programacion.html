@@ -62,6 +62,8 @@
     .cola-meta { font-size:0.72rem; color:var(--cf-gray-text); }
     .cola-fechas { font-size:0.72rem; color:var(--cf-dark); font-weight:600; }
     .cola-nota { font-size:0.72rem; color:#7C3AED; font-style:italic; margin-top:2px; white-space:normal; word-break:break-word; }
+    /* Nota específica de un envío: se distingue de la del proyecto */
+    .cola-nota.env { color:#0891B2; }
     .cola-entrega { display:flex; flex-direction:column; gap:2px; align-items:flex-end; }
     .cola-entrega input { padding:4px 6px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.72rem; font-family:inherit; }
     .cola-atraso { font-size:0.64rem; font-weight:800; color:#fff; background:#DC2626; padding:1px 6px; border-radius:999px; }
@@ -232,8 +234,12 @@
       </div>
       <div id="notaProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:12px;"></div>
       <div class="cfg-field">
-        <label>Nota (nombre real, referencia, comentario…)</label>
-        <textarea id="notaTexto" rows="3" maxlength="500" style="padding:8px 10px;border:1.5px solid var(--cf-gray-mid);border-radius:8px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>
+        <label>Nota del proyecto <span id="notaAlcanceProy" style="font-weight:400;text-transform:none;letter-spacing:0;"></span></label>
+        <textarea id="notaTexto" rows="2" maxlength="500" placeholder="Nombre real, referencia, comentario…" style="padding:8px 10px;border:1.5px solid var(--cf-gray-mid);border-radius:8px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>
+      </div>
+      <div class="cfg-field" id="notaEnvioWrap" style="margin-top:12px;display:none;">
+        <label>Nota de <span id="notaEnvioLabel">este envío</span></label>
+        <textarea id="notaEnvioTexto" rows="2" maxlength="500" placeholder="Solo para este envío…" style="padding:8px 10px;border:1.5px solid var(--cf-gray-mid);border-radius:8px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>
       </div>
       <p style="font-size:0.7rem;color:var(--cf-gray-text);margin:8px 0 0;">No modifica los archivos base ni el nombre en Drive. Solo es una etiqueta del proyecto aquí.</p>
       <div class="modal-actions">

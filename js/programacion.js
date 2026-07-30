@@ -80,6 +80,14 @@
       });
     });
   }
+  // Nota del proyecto (compartida) + nota de este envío. La del envío se marca
+  // con su número para que se distinga de la del proyecto.
+  function notasHtml(c){
+    var s = '';
+    if(c.notas)     s += '<div class="cola-nota">📝 '+esc(c.notas)+'</div>';
+    if(c.notaEnvio) s += '<div class="cola-nota env">📝 <strong>E'+c.envioIdx+':</strong> '+esc(c.notaEnvio)+'</div>';
+    return s;
+  }
   function tamanoUnidad(c){
     if(c.esEnvio){
       if(c.tipoEnvio==='metros') return fmtNum(c.mlTotal,0)+' ML';
@@ -370,7 +378,7 @@
             (c.fechaRealInicio?'<span class="prod-badge" title="Producción iniciada el '+esc(fechaCorta(c.fechaRealInicio))+'">▶ En producción</span>':'')+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+
             (c.fechaRealInicio?' · inició '+fechaCorta(c.fechaRealInicio):'')+'</div>'+
-          (c.notas?'<div class="cola-nota">📝 '+esc(c.notas)+'</div>':'')+
+          notasHtml(c)+
           '<div class="cola-fechas">'+rango+'</div>'+
         '</div>'+
         '<div class="cola-entrega">'+
@@ -379,7 +387,7 @@
           atraso+
         '</div>'+
         rowMenu(
-          '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+(c.notas?'Editar nota':'Agregar nota')+'</button>'+
+          '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
@@ -431,11 +439,11 @@
         '<div class="cola-main">'+
           '<div class="cola-nombre">'+esc(c.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(c.consecutivo)+'</span>'+envioBadge(c)+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+'</div>'+
-          (c.notas?'<div class="cola-nota">📝 '+esc(c.notas)+'</div>':'')+
+          notasHtml(c)+
         '</div>'+
         '<button class="cola-toggle-btn add" data-agregar="'+esc(c.uid)+'" title="Agregar al Gantt (se programa al final de la cola)">+ Agregar a la cola</button>'+
         rowMenu(
-          '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+(c.notas?'Editar nota':'Agregar nota')+'</button>'+
+          '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
           '<div class="menu-sep"></div>'+
@@ -532,10 +540,18 @@
     cerrarMenus();
     _notaUid = uid;
     var item = buscarItem(uid);
+    var esEnvio = !!(item && item.esEnvio);
     document.getElementById('notaProyectoNombre').textContent = nombre || '';
     document.getElementById('notaTexto').value = (item && item.notas) || '';
+    // El campo de envío solo aparece si la unidad ES un envío.
+    document.getElementById('notaEnvioWrap').style.display = esEnvio ? '' : 'none';
+    document.getElementById('notaAlcanceProy').textContent = esEnvio ? '(se ve en todos sus envíos)' : '';
+    if(esEnvio){
+      document.getElementById('notaEnvioLabel').textContent = 'envío '+item.envioIdx+'/'+item.enviosTotal;
+      document.getElementById('notaEnvioTexto').value = item.notaEnvio || '';
+    }
     document.getElementById('modalNota').classList.remove('hidden');
-    setTimeout(function(){ document.getElementById('notaTexto').focus(); }, 0);
+    setTimeout(function(){ document.getElementById(esEnvio ? 'notaEnvioTexto' : 'notaTexto').focus(); }, 0);
   }
   function cerrarNota(){
     document.getElementById('modalNota').classList.add('hidden');
@@ -544,9 +560,12 @@
   function guardarNota(){
     var uid = _notaUid;
     if(!uid) return;
+    var item = buscarItem(uid);
+    var esEnvio = !!(item && item.esEnvio);
     var nota = document.getElementById('notaTexto').value.trim();
+    var notaEnvio = esEnvio ? document.getElementById('notaEnvioTexto').value.trim() : undefined;
     cerrarNota();
-    aplicarNota(uid, nota);
+    aplicarNota(uid, nota, notaEnvio);
   }
   // La nota es del PROYECTO (archivo): al cambiarla se refleja en todas sus
   // unidades hermanas (mismos archivos = mismo proyecto, ej. sus envíos).
@@ -554,17 +573,25 @@
     // La nota es por proyecto (archivo): aplicarla a todas sus unidades donde estén.
     _data.cola.concat(_data.backlog||[], _data.finalizados||[]).forEach(function(c){ if(c.archivo===archivo) c.notas = nota; });
   }
-  function aplicarNota(uid, nota){
+  function _setNotaEnvio(uid, nota){
+    _data.cola.concat(_data.backlog||[], _data.finalizados||[]).forEach(function(c){ if(c.uid===uid) c.notaEnvio = nota; });
+  }
+  function aplicarNota(uid, nota, notaEnvio){
     var item = buscarItem(uid);
     if(!item) return;
-    var archivo = item.archivo, before = item.notas || '';
+    var archivo = item.archivo;
+    var beforeProy  = item.notas || '';
+    var beforeEnvio = item.notaEnvio || '';
     _setNotaArchivo(archivo, nota);
+    if(notaEnvio !== undefined) _setNotaEnvio(uid, notaEnvio);
     recomputarYRenderizar();
     beginSave();
-    apiProdColaNota(token, uid, nota).then(function(){
+    apiProdColaNota(token, uid, nota, notaEnvio).then(function(){
       toast('Nota guardada','ok');
     }).catch(function(e){
-      _setNotaArchivo(archivo, before);   // robusto: por archivo, no por referencia
+      // Revertir por archivo/uid (no por referencia): el motor recrea los objetos.
+      _setNotaArchivo(archivo, beforeProy);
+      if(notaEnvio !== undefined) _setNotaEnvio(uid, beforeEnvio);
       recomputarYRenderizar();
       manejarError(e);
     }).finally(endSave);
