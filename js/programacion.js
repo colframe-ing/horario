@@ -91,6 +91,12 @@
       });
     });
   }
+  // Nombre del proyecto enlazado a su hoja de vida (agrupada por consecutivo CB).
+  function nombreProyectoHtml(c){
+    return '<a class="cola-proy-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'"'+
+      ' target="_blank" rel="noopener" title="Ver hoja de vida de CB'+esc(c.consecutivo)+'">'+
+      esc(c.proyecto)+' <span class="cb">CB'+esc(c.consecutivo)+'</span></a>';
+  }
   // Nota del proyecto (compartida) + nota de este envío. La del envío se marca
   // con su número para que se distinga de la del proyecto.
   function notasHtml(c){
@@ -393,7 +399,7 @@
         '<div class="cola-drag-handle" draggable="true" data-uid="'+esc(c.uid)+'" title="Arrastrar para reordenar">⠿</div>'+
         '<div class="cola-color" style="background:'+c.color+';"></div>'+
         '<div class="cola-main">'+
-          '<div class="cola-nombre">'+esc(c.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(c.consecutivo)+'</span>'+envioBadge(c)+
+          '<div class="cola-nombre">'+nombreProyectoHtml(c)+envioBadge(c)+
             (c.fechaRealInicio?'<span class="prod-badge" title="Producción iniciada el '+esc(fechaCorta(c.fechaRealInicio))+'">▶ En producción</span>':'')+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+
             (c.fechaRealInicio?' · inició '+fechaCorta(c.fechaRealInicio):'')+'</div>'+
@@ -457,7 +463,7 @@
       return '<div class="cola-row" data-uid="'+esc(c.uid)+'">'+
         '<div class="cola-color" style="background:var(--cf-gray-mid);"></div>'+
         '<div class="cola-main">'+
-          '<div class="cola-nombre">'+esc(c.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(c.consecutivo)+'</span>'+envioBadge(c)+'</div>'+
+          '<div class="cola-nombre">'+nombreProyectoHtml(c)+envioBadge(c)+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+'</div>'+
           notasHtml(c)+
         '</div>'+
@@ -501,7 +507,7 @@
       var badge = c.atrasado ? '<span class="cola-atraso">Atrasado</span>' : (c.fechaEntrega ? '<span class="cola-ok">A tiempo</span>' : '');
       return '<div class="cola-row">'+
         '<div class="cola-main">'+
-          '<div class="cola-nombre">'+esc(c.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(c.consecutivo)+'</span>'+envioBadge(c)+'</div>'+
+          '<div class="cola-nombre">'+nombreProyectoHtml(c)+envioBadge(c)+'</div>'+
           '<div class="cola-meta">'+tamanoUnidad(c)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+'</div>'+
           '<div class="cola-fechas">Entrega: '+(c.fechaEntrega?fechaCorta(c.fechaEntrega):'—')+' · Real: '+
             (c.fechaRealInicio ? fechaCorta(c.fechaRealInicio)+' → '+fechaCorta(c.fechaReal) : fechaCorta(c.fechaReal))+

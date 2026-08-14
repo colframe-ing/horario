@@ -229,3 +229,62 @@ async function apiProdColaEntrega(token, archivo, fechaEntrega) {
 async function apiProdCalExcepcion(token, fecha, laborable, accion, nota) {
   return apiCall('prod_cal_excepcion', { token, fecha, laborable, accion, nota });
 }
+
+// ── Remisiones (Fase 1) ──────────────────────────────────────────────────────
+// Maestros (productos + clientes con sus NIT). El backend los cachea 6 h;
+// refrescar=true fuerza la relectura tras editar el catálogo.
+async function apiRemMaestros(token, refrescar) {
+  return apiCall('remision_maestros', { token, refrescar: !!refrescar });
+}
+// Selector de cotizaciones aprobadas. Este endpoint NO devuelve subtotal,
+// total ni utilidad: el sistema de permisos es binario y los operarios
+// también lo usan.
+async function apiRemProyectos(token, buscar) {
+  return apiCall('remision_proyectos_buscar', { token, buscar: buscar || '' });
+}
+// Detalle sugerido desde la cotización (§6.1.2 del plan): traduce la hoja
+// REMISIONES de la plantilla (o, si no existe, las columnas de accesorios) a
+// líneas ya multiplicadas por número de casas y con lo ya despachado restado.
+async function apiRemSugerir(token, archivo, docIdActual) {
+  return apiCall('remision_sugerir', { token, archivo, docIdActual: docIdActual || '' });
+}
+async function apiRemList(token, filtros = {}) {
+  return apiCall('remision_list', { token, ...filtros });
+}
+async function apiRemDetalle(token, docId) {
+  return apiCall('remision_detalle', { token, docId });
+}
+// remision = cabecera; detalle = [{idProducto, descripcion, unidad, cantidad, pesoKg, ...}]
+// Sin docId crea un borrador nuevo; con docId edita el existente.
+async function apiRemGuardar(token, remision, detalle) {
+  return apiCall('remision_guardar', { token, remision, detalle });
+}
+async function apiRemEnviar(token, docId) {
+  return apiCall('remision_enviar', { token, docId });
+}
+async function apiRemCajasSet(token, docId, cajas) {
+  return apiCall('remision_cajas_set', { token, docId, cajas });
+}
+// Agrega una entidad de facturación (NIT/razón social) a un cliente que ya
+// existe en el catálogo, sin salir del formulario de la remisión. Útil cuando
+// un mismo cod_cliente agrupa varias entidades (ej. un fondo con muchos
+// constructores) que aún no están precargadas.
+async function apiRemClienteNitAgregar(token, codCliente, entidad) {
+  return apiCall('remision_cliente_nit_agregar', { token, codCliente, ...entidad });
+}
+// Admin: asigna el consecutivo RM- y escribe los movimientos de inventario.
+async function apiRemConciliar(token, docId) {
+  return apiCall('remision_conciliar', { token, docId });
+}
+async function apiRemRechazar(token, docId, motivo) {
+  return apiCall('remision_rechazar', { token, docId, motivo });
+}
+async function apiRemAnular(token, docId, motivo) {
+  return apiCall('remision_anular', { token, docId, motivo });
+}
+// tipo: 'remision' | 'manifiesto' | 'etiqueta'. caja solo aplica a los dos últimos.
+// paquetes: solo para 'etiqueta' — en cuántos bultos físicos se reparte esa
+// caja (si su contenido no cupo en uno solo); imprime una etiqueta por bulto.
+async function apiRemPdf(token, docId, tipo, caja, paquetes) {
+  return apiCall('remision_pdf', { token, docId, tipo: tipo || 'remision', caja, paquetes: paquetes || 1 });
+}

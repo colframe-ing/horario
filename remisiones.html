@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#071D49">
+  <title>COLFRAME — Remisiones</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .mod-nav { background:#fff; border-bottom:1px solid var(--cf-gray-mid); padding:0 16px; display:flex; gap:4px; overflow-x:auto; }
+    .mod-nav-link { padding:10px 14px; font-size:0.82rem; font-weight:700; color:var(--cf-gray-text); text-decoration:none; border-bottom:3px solid transparent; white-space:nowrap; }
+    .mod-nav-link.active { color:var(--cf-blue); border-bottom-color:var(--cf-blue); }
+    .mod-nav-link:hover:not(.active) { color:var(--cf-dark); }
+    .mod-nav-sep { width:1px; background:var(--cf-gray-mid); margin:8px 6px; flex-shrink:0; }
+
+    /* ── Estados ── */
+    .rem-badge { font-size:0.66rem; font-weight:800; padding:2px 8px; border-radius:999px; white-space:nowrap; letter-spacing:0.02em; }
+    .rem-badge.BORRADOR      { background:#F1F5F9; color:#475569; }
+    .rem-badge.POR_CONCILIAR { background:#FEF3C7; color:#92400E; }
+    .rem-badge.DESPACHADA    { background:#D1FAE5; color:#065F46; }
+    .rem-badge.ENTREGADA     { background:#DBEAFE; color:#1D4ED8; }
+    .rem-badge.FACTURADA     { background:#EDE9FE; color:#6D28D9; }
+    .rem-badge.ANULADA       { background:#FEE2E2; color:#991B1B; text-decoration:line-through; }
+
+    /* ── Aviso de borradores pendientes ── */
+    .rem-alerta { background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:12px 16px; margin-bottom:14px; font-size:0.86rem; color:#92400E; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .rem-alerta strong { font-weight:800; }
+    .rem-alerta .btn { margin-left:auto; }
+
+    /* ── Tabla ── */
+    .rem-tabla { width:100%; border-collapse:collapse; font-size:0.84rem; }
+    .rem-tabla th { text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); padding:8px 10px; border-bottom:2px solid var(--cf-gray-mid); white-space:nowrap; }
+    .rem-tabla td { padding:9px 10px; border-bottom:1px solid var(--cf-gray-light,#F1F5F9); vertical-align:middle; }
+    .rem-tabla tr:hover td { background:#F8FAFC; }
+    .rem-consec { font-weight:800; color:var(--cf-dark); }
+    .rem-consec.sin { color:var(--cf-gray-text); font-weight:600; font-style:italic; }
+    .rem-num { text-align:right; font-variant-numeric:tabular-nums; }
+
+    /* ── Editor ── */
+    .ed-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    .ed-bloque { border:1px solid var(--cf-gray-mid); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+    .ed-bloque > h3 { font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--cf-gray-text); margin:0 0 12px; font-weight:800; }
+
+    .lin-tabla { width:100%; border-collapse:collapse; font-size:0.82rem; }
+    .lin-tabla th { font-size:0.68rem; text-transform:uppercase; color:var(--cf-gray-text); padding:6px 6px; text-align:left; border-bottom:1px solid var(--cf-gray-mid); }
+    .lin-tabla td { padding:4px 6px; border-bottom:1px solid #F1F5F9; }
+    .lin-tabla input, .lin-tabla select { width:100%; padding:6px 8px; font-size:0.82rem; border:1px solid var(--cf-gray-mid); border-radius:6px; font-family:inherit; }
+    .lin-tabla input:focus, .lin-tabla select:focus { outline:2px solid var(--cf-blue); outline-offset:-1px; }
+    .lin-tabla input.peso-req { border-color:#DC2626; background:#FEF2F2; }
+    .lin-tabla .col-cant, .lin-tabla .col-peso { width:92px; }
+    .lin-tabla .col-und { width:70px; }
+    .lin-tabla .col-caja { width:62px; }
+    .lin-tabla .col-acc { width:36px; }
+    .lin-tabla input.orden-input { text-align:center; padding:6px 2px; font-weight:700; }
+    .lin-libre td:first-child::after { content:'libre'; font-size:0.6rem; background:#EDE9FE; color:#6D28D9; padding:1px 5px; border-radius:4px; margin-left:6px; font-weight:800; }
+    /* .btn-icon trae color blanco (pensado para el encabezado oscuro). Dentro
+       de la tabla de ítems, sobre fondo blanco, eso lo vuelve invisible —
+       sigue siendo clicable, solo que no se ve. Se sobreescribe aquí, con más
+       especificidad que la regla base, en vez de tocar cada botón uno por uno. */
+    .lin-tabla .btn-icon { color: var(--cf-gray-text); }
+    .lin-tabla .btn-icon:hover { background: #F1F5F9; color: var(--cf-dark); }
+    .lin-tabla .btn-icon:disabled { opacity: .25; }
+
+    .peso-aviso { font-size:0.72rem; color:#B91C1C; margin-top:6px; font-weight:600; }
+    .sug-chip { font-size:0.66rem; background:#DBEAFE; color:#1D4ED8; padding:1px 6px; border-radius:4px; cursor:pointer; font-weight:700; }
+    .desv { font-size:0.68rem; font-weight:700; }
+    .desv.alta { color:#B91C1C; } .desv.ok { color:#15803D; }
+
+    .empty { text-align:center; padding:40px 20px; color:var(--cf-gray-text); font-size:0.88rem; }
+    /* Encabezado de sección: título a la izquierda, acciones a la derecha. */
+    .rem-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+    .rem-head h2 { flex:1; min-width:160px; margin:0; }
+    .oculto { display:none !important; }
+    /* Pista de "escribe para buscar" junto a la etiqueta del campo. */
+    .pista { font-weight:600; font-size:0.66rem; color:var(--cf-blue); text-transform:none; letter-spacing:0; }
+    /* Campo con buscador: la flecha indica que hay lista desplegable. */
+    input[list] { background-image:linear-gradient(45deg,transparent 50%,var(--cf-gray-text) 50%),linear-gradient(135deg,var(--cf-gray-text) 50%,transparent 50%);
+                  background-position:calc(100% - 14px) center,calc(100% - 9px) center;
+                  background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:26px; }
+    .lin-tabla input[list] { background-position:calc(100% - 11px) center,calc(100% - 6px) center; padding-right:20px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header: misma estructura que produccion.html / cotizaciones.html.
+       El logo va como hijo DIRECTO de .app-header, que es flex con
+       space-between; envolverlo en otro div rompe el layout. -->
+  <header class="app-header">
+    <img src="assets/logo-horizontal-blanco.svg"
+         onerror="this.outerHTML='<span style=\'color:#fff;font-weight:800;font-size:1.1rem\'><span>COL</span><span style=\'color:#0072CE\'>FRAME</span></span>'"
+         alt="COLFRAME" class="header-logo">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="color:rgba(255,255,255,0.65);font-size:0.78rem;font-weight:600;letter-spacing:0.05em;">REMISIONES</span>
+      <!-- El nombre sí se muestra acá (a diferencia de los otros módulos):
+           en el flujo maker-checker importa saber con qué usuario estás
+           creando o conciliando. -->
+      <span id="userName" style="color:#fff;font-size:0.8rem;font-weight:700;"></span>
+      <button id="logoutBtn" class="btn-icon" title="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="mod-nav">
+    <a href="cotizaciones.html" class="mod-nav-link">Cotizaciones</a>
+    <a href="programacion.html" class="mod-nav-link">Programación</a>
+    <a href="produccion.html"   class="mod-nav-link">Producción</a>
+    <a href="remisiones.html"   class="mod-nav-link active">Remisiones</a>
+    <span class="mod-nav-sep" aria-hidden="true"></span>
+    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
+  </nav>
+
+  <main>
+
+    <!-- ══════════ VISTA: LISTADO ══════════ -->
+    <section id="vistaLista" class="admin-main admin-panel">
+      <div class="rem-head">
+        <h2>Remisiones</h2>
+        <button id="btnRefrescarCatalogo" class="btn btn-ghost btn-sm" title="Vuelve a traer productos, clientes y municipios (el catálogo se guarda en caché 6 h)">↻ Catálogo</button>
+        <button id="btnNueva" class="btn btn-primary btn-sm">+ Nueva remisión</button>
+      </div>
+
+      <div id="alertaConciliar" class="rem-alerta oculto"></div>
+
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label for="fEstado">Estado</label>
+          <select id="fEstado">
+            <option value="">Todos</option>
+            <option value="BORRADOR">Borrador</option>
+            <option value="POR_CONCILIAR">Por conciliar</option>
+            <option value="DESPACHADA">Despachada</option>
+            <option value="ENTREGADA">Entregada</option>
+            <option value="FACTURADA">Facturada</option>
+            <option value="ANULADA">Anulada</option>
+          </select>
+        </div>
+        <div class="filter-group"><label for="fDesde">Desde</label><input type="date" id="fDesde"></div>
+        <div class="filter-group"><label for="fHasta">Hasta</label><input type="date" id="fHasta"></div>
+        <div class="filter-group" style="flex:1;min-width:180px;">
+          <label for="fBuscar">Buscar</label>
+          <input type="text" id="fBuscar" placeholder="Consecutivo, cliente, proyecto, placa…">
+        </div>
+        <button id="btnBuscar" class="btn btn-primary btn-sm" style="align-self:flex-end;">Buscar</button>
+      </div>
+
+      <div class="card" style="padding:0;overflow-x:auto;margin-top:14px;">
+        <table class="rem-tabla">
+          <thead>
+            <tr>
+              <th>Remisión</th><th>Fecha</th><th>Estado</th><th>Cliente</th>
+              <th>Destinatario</th><th>Proyecto</th>
+              <th class="rem-num">Peso kg</th><th class="rem-num">Cajas</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="bodyLista">
+            <tr><td colspan="9" class="empty">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════ VISTA: EDITOR ══════════ -->
+    <section id="vistaEditor" class="admin-main admin-panel oculto">
+      <div class="rem-head">
+        <h2 id="edTitulo">Nueva remisión</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="btnVolver" class="btn btn-ghost btn-sm">← Volver</button>
+          <button id="btnGuardar" class="btn btn-primary btn-sm">Guardar borrador</button>
+          <button id="btnEnviar" class="btn btn-primary btn-sm oculto"
+                  style="background:#A16207;border-color:#A16207;">Enviar a conciliar</button>
+          <button id="btnConciliar" class="btn btn-primary btn-sm oculto"
+                  style="background:#15803D;border-color:#15803D;">✓ Conciliar y despachar</button>
+          <button id="btnRechazar" class="btn btn-ghost btn-sm oculto" style="color:#B91C1C;">Devolver</button>
+          <button id="btnAnular" class="btn btn-ghost btn-sm oculto" style="color:#B91C1C;">Anular</button>
+          <button id="btnImprimir" class="btn btn-ghost btn-sm oculto">Imprimir</button>
+        </div>
+      </div>
+
+      <div id="edEstadoBanner" class="rem-alerta oculto"></div>
+
+      <!-- Proyecto / cotización -->
+      <div class="ed-bloque">
+        <h3>Proyecto (desde la cotización aprobada)</h3>
+        <div class="ed-grid">
+          <div class="form-group"><label for="edFecha">Fecha</label><input type="date" id="edFecha"></div>
+          <div class="form-group" style="grid-column:1/-1;">
+            <label for="edProyBuscar">Buscar cotización aprobada</label>
+            <input type="text" id="edProyBuscar" placeholder="CB, proyecto…" autocomplete="off">
+            <select id="edProySelect" size="4" style="margin-top:6px;display:none;"></select>
+          </div>
+          <div class="form-group"><label for="edCb">CB</label><input type="text" id="edCb" readonly></div>
+          <div class="form-group"><label for="edVersion">Versión</label><input type="text" id="edVersion" readonly></div>
+          <div class="form-group" style="grid-column:1/-1;">
+            <label for="edProyecto">Proyecto</label><input type="text" id="edProyecto">
+          </div>
+        </div>
+      </div>
+
+      <div class="ed-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));">
+        <!-- Vendido a -->
+        <div class="ed-bloque">
+          <h3>Vendido a</h3>
+          <!-- Buscador en vez de <select>: son 357 clientes y una lista
+               desplegable nativa es imposible de recorrer. Se escribe parte del
+               nombre o del código y el navegador filtra. -->
+          <div class="form-group">
+            <label for="edCliente">Cliente <span class="pista">escribe para buscar</span></label>
+            <input type="text" id="edCliente" list="listaClientes" autocomplete="off"
+                   placeholder="Nombre o código del cliente…">
+            <datalist id="listaClientes"></datalist>
+          </div>
+          <div class="form-group">
+            <label for="edNit">Facturar a (NIT)</label>
+            <div style="display:flex;gap:6px;">
+              <select id="edNit" style="flex:1;"><option value="">— Seleccionar cliente primero —</option></select>
+              <button type="button" id="btnNitNuevo" class="btn btn-ghost btn-sm oculto"
+                      title="Agregar una entidad de facturación nueva para este cliente (ej. un constructor distinto bajo el mismo código)">+ Nuevo</button>
+            </div>
+            <p id="edNitAviso" class="peso-aviso oculto"></p>
+            <!-- Casos como un fondo/entidad que agrupa muchos constructores bajo
+                 un mismo cod_cliente: cada despacho puede facturar a una entidad
+                 distinta que todavía no está en el catálogo. Se agrega aquí mismo
+                 en vez de obligar a pre-cargarla en la hoja antes de poder usarla. -->
+            <div id="edNitNuevoForm" class="oculto" style="border:1px dashed var(--cf-gray-mid);border-radius:8px;padding:10px;margin-top:8px;">
+              <div class="ed-grid">
+                <div class="form-group"><label for="edNitNuevoNit">NIT o CC</label><input type="text" id="edNitNuevoNit" inputmode="numeric"></div>
+                <div class="form-group" style="grid-column:span 2;"><label for="edNitNuevoRazon">Razón social</label><input type="text" id="edNitNuevoRazon"></div>
+                <div class="form-group"><label for="edNitNuevoDireccion">Dirección (opcional)</label><input type="text" id="edNitNuevoDireccion"></div>
+                <div class="form-group"><label for="edNitNuevoCiudad">Ciudad (opcional)</label><input type="text" id="edNitNuevoCiudad"></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button type="button" id="btnNitNuevoGuardar" class="btn btn-primary btn-sm">Agregar entidad</button>
+                <button type="button" id="btnNitNuevoCancelar" class="btn btn-ghost btn-sm">Cancelar</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-group"><label for="edRazon">Razón social</label><input type="text" id="edRazon"></div>
+          <div class="form-group"><label for="edDireccion">Dirección</label><input type="text" id="edDireccion"></div>
+          <div class="ed-grid">
+            <div class="form-group"><label for="edCiudad">Ciudad</label><input type="text" id="edCiudad"></div>
+            <div class="form-group"><label for="edTelefono">Teléfono</label><input type="text" id="edTelefono"></div>
+          </div>
+        </div>
+
+        <!-- Despachado a -->
+        <div class="ed-bloque">
+          <h3>Despachado a</h3>
+          <div class="form-group"><label for="edDestinatario">Destinatario *</label><input type="text" id="edDestinatario"></div>
+          <div class="form-group"><label for="edDirEnvio">Dirección de envío</label><input type="text" id="edDirEnvio"></div>
+          <div class="ed-grid">
+            <div class="form-group"><label for="edContacto">Contacto</label><input type="text" id="edContacto"></div>
+            <div class="form-group"><label for="edTelDestino">Teléfono</label><input type="text" id="edTelDestino"></div>
+          </div>
+          <div class="form-group">
+            <label for="edMunicipio">Municipio <span class="pista">escribe para buscar</span></label>
+            <input type="text" id="edMunicipio" list="listaMunicipios" autocomplete="off"
+                   placeholder="Municipio o código DANE…">
+            <datalist id="listaMunicipios"></datalist>
+          </div>
+        </div>
+      </div>
+
+      <!-- Términos comerciales -->
+      <div class="ed-bloque">
+        <h3>Términos comerciales</h3>
+        <div class="ed-grid">
+          <div class="form-group"><label for="edOrdenCompra">Orden de compra</label><input type="text" id="edOrdenCompra"></div>
+          <div class="form-group"><label for="edNoContrato">No. contrato</label><input type="text" id="edNoContrato"></div>
+          <div class="form-group"><label for="edRepresentante">Representante comercial</label><input type="text" id="edRepresentante"></div>
+          <div class="form-group"><label for="edDoctoAlt">Docto. alterno</label><input type="text" id="edDoctoAlt"></div>
+        </div>
+      </div>
+
+      <!-- Transportador -->
+      <div class="ed-bloque">
+        <h3>Transportador</h3>
+        <div class="ed-grid">
+          <div class="form-group"><label for="edConductor">Conductor</label><input type="text" id="edConductor"></div>
+          <div class="form-group"><label for="edCedCond">Identificación</label><input type="text" id="edCedCond" inputmode="numeric"></div>
+          <div class="form-group"><label for="edPlaca">Placa</label><input type="text" id="edPlaca" style="text-transform:uppercase;"></div>
+          <div class="form-group"><label for="edTelCond">Teléfono</label><input type="text" id="edTelCond" inputmode="numeric"></div>
+          <div class="form-group"><label for="edTransportadora">Transportadora</label><input type="text" id="edTransportadora"></div>
+        </div>
+      </div>
+
+      <!-- Ítems -->
+      <div class="ed-bloque">
+        <h3>Ítems</h3>
+        <div style="overflow-x:auto;">
+          <table class="lin-tabla">
+            <thead>
+              <tr>
+                <th style="width:44px;" title="Cambia el número para reordenar">#</th>
+                <th style="min-width:230px;">Producto / descripción</th>
+                <th class="col-und">U.M.</th>
+                <th class="col-cant">Cantidad</th>
+                <th class="col-peso">Peso kg</th>
+                <th class="col-caja">Caja</th>
+                <th class="col-acc"></th>
+              </tr>
+            </thead>
+            <tbody id="bodyLineas"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;">
+          <button id="btnAddLinea" class="btn btn-ghost btn-sm">+ Ítem del catálogo</button>
+          <button id="btnAddLibre" class="btn btn-ghost btn-sm">+ Línea libre</button>
+          <button id="btnSugerir" class="btn btn-ghost btn-sm oculto">Sugerir desde la cotización</button>
+          <span style="margin-left:auto;font-size:0.86rem;font-weight:800;color:var(--cf-dark);">
+            Peso total: <span id="edPesoTotal">0</span> kg
+          </span>
+        </div>
+        <p id="edPesoAviso" class="peso-aviso oculto"></p>
+      </div>
+
+      <!-- Cajas -->
+      <div class="ed-bloque">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+          <!-- Ya no es hijo DIRECTO de .ed-bloque (queda envuelto en este div
+               para poner el botón a la derecha), así que la regla CSS
+               ".ed-bloque > h3" ya no le aplica — se repite en línea. -->
+          <h3 style="margin:0;font-size:0.74rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--cf-gray-text);font-weight:800;">Cajas / bultos</h3>
+          <button type="button" id="btnAgruparCajas" class="btn btn-ghost btn-sm"
+                  style="margin-left:auto;font-size:0.72rem;padding:4px 10px;"
+                  title="Reordena los ítems para que queden todos los de la caja 1 seguidos, luego la 2, etc.">
+            ↕ Agrupar ítems por caja
+          </button>
+        </div>
+        <p style="font-size:0.78rem;color:var(--cf-gray-text);margin:0 0 10px;">
+          Asigna cada ítem a una caja en la columna <strong>Caja</strong>. Cada caja tiene su
+          etiqueta y su manifiesto imprimibles.
+        </p>
+        <div id="cajasResumen" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      </div>
+
+      <div class="ed-bloque">
+        <h3>Observaciones</h3>
+        <textarea id="edObservaciones" rows="2" style="width:100%;padding:8px;border:1px solid var(--cf-gray-mid);border-radius:6px;font-family:inherit;font-size:0.86rem;"></textarea>
+      </div>
+    </section>
+  </main>
+
+  <!-- Catálogo de productos: una sola lista compartida por todas las filas de
+       ítems. Va aquí y no dentro de la tabla para no duplicarla por fila. -->
+  <datalist id="listaProductos"></datalist>
+
+  <!-- Modal genérico de confirmación -->
+  <div id="modalConfirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header"><h2 id="confirmTitle">Confirmar</h2></div>
+      <p id="confirmMsg" style="font-size:0.88rem;line-height:1.55;color:var(--cf-text);white-space:pre-line;"></p>
+      <div class="form-group oculto" id="confirmInputWrap" style="margin-top:12px;">
+        <label for="confirmInput">Motivo</label>
+        <input type="text" id="confirmInput" placeholder="Por qué se devuelve…">
+      </div>
+      <div class="modal-actions" style="justify-content:flex-end;margin-top:18px;">
+        <button id="confirmCancel" class="btn btn-ghost btn-sm">Cancelar</button>
+        <button id="confirmOk" class="btn btn-primary btn-sm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" style="position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999;pointer-events:none;"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/remisiones.js"></script>
+</body>
+</html>

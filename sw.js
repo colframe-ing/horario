@@ -1,15 +1,24 @@
 // Service Worker — COLFRAME Horas Extra
-const CACHE = 'colframe-v13';
+const CACHE = 'colframe-v18';
 const STATIC = [
-  './', './index.html', './app.html', './admin.html', './produccion.html', './cotizaciones.html', './programacion.html', './proyecto.html',
+  './', './index.html', './app.html', './admin.html', './produccion.html', './cotizaciones.html', './programacion.html', './proyecto.html', './remisiones.html',
   './css/styles.css',
-  './js/config.js', './js/api.js', './js/geo.js', './js/app.js', './js/admin.js', './js/produccion.js', './js/cotizaciones.js', './js/programacion.js', './js/proyecto.js',
+  './js/config.js', './js/api.js', './js/geo.js', './js/app.js', './js/admin.js', './js/produccion.js', './js/cotizaciones.js', './js/programacion.js', './js/proyecto.js', './js/remisiones.js',
   './manifest.json',
+];
+// Los recursos externos van aparte: cache.addAll es todo-o-nada, así que si
+// Google Fonts falla durante la instalación el SW nunca se activa y se pierde
+// el offline completo (hallazgo R2-22 del review).
+const STATIC_EXTERNOS = [
   'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap',
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => c.addAll(STATIC).then(() => c.addAll(STATIC_EXTERNOS).catch(() => {})))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
