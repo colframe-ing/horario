@@ -201,6 +201,11 @@
         </div>
       </div>
 
+      <!-- Solo para quien tiene sesión — nunca sale en el PDF (no hay razón
+           para que un cliente o transportador vea la cédula o el nombre de
+           quien elaboró la remisión). -->
+      <div id="edTrazabilidad" style="font-size:0.72rem;color:var(--cf-gray-text);margin:-6px 0 10px;"></div>
+
       <div id="edEstadoBanner" class="rem-alerta oculto"></div>
 
       <!-- Proyecto / cotización -->
@@ -299,6 +304,17 @@
       <!-- Transportador -->
       <div class="ed-bloque">
         <h3>Transportador</h3>
+        <!-- Es solo una etiqueta informativa — NO oculta ni deshabilita los
+             campos del conductor. Aunque el cliente recoja en planta, sigue
+             llegando alguien manejando, y esos datos se quedan igual de
+             obligatorios de capturar (para control de acceso a planta y
+             para el acuse). -->
+        <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;margin-bottom:10px;">
+          <input type="checkbox" id="edRecogeEnPlanta" style="width:auto;">
+          <label for="edRecogeEnPlanta" style="margin:0;text-transform:none;font-size:0.86rem;font-weight:600;">
+            El cliente recoge en planta
+          </label>
+        </div>
         <div class="ed-grid">
           <div class="form-group"><label for="edConductor">Conductor</label><input type="text" id="edConductor"></div>
           <div class="form-group"><label for="edCedCond">Identificación</label><input type="text" id="edCedCond" inputmode="numeric"></div>
@@ -306,6 +322,14 @@
           <div class="form-group"><label for="edTelCond">Teléfono</label><input type="text" id="edTelCond" inputmode="numeric"></div>
           <div class="form-group"><label for="edTransportadora">Transportadora</label><input type="text" id="edTransportadora"></div>
         </div>
+        <!-- Solo aparece cuando el resto del formulario está bloqueado para
+             quien lo abrió (no es su borrador, o ya se envió a conciliar) —
+             el botón "Guardar borrador" de arriba ya cubre el transportador
+             cuando SÍ se puede editar todo, así que mostrar los dos sería
+             confuso. -->
+        <button type="button" id="btnGuardarTransportador" class="btn btn-primary btn-sm oculto" style="margin-top:10px;">
+          Guardar transportador
+        </button>
       </div>
 
       <!-- Ítems -->

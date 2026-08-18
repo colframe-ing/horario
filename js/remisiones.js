@@ -387,12 +387,25 @@
     set('edMunicipio', doc.codDane ? textoDe(itemsMunicipios, doc.codDane) : (doc.municipio || ''));
     set('edOrdenCompra', doc.ordenCompra); set('edNoContrato', doc.noContrato);
     set('edRepresentante', doc.representanteComercial); set('edDoctoAlt', doc.doctoAlt);
+    // Checkbox: es una etiqueta aparte, no controla si los campos de abajo
+    // se llenan — por eso NO se toca su disabled/valor junto con los demás.
+    $('edRecogeEnPlanta').checked = String(doc.recogeEnPlanta) === '1' || doc.recogeEnPlanta === true;
     set('edConductor', doc.conductor); set('edCedCond', doc.cedulaConductor);
     set('edPlaca', doc.placa); set('edTelCond', doc.telefonoConductor);
     set('edTransportadora', doc.transportadora);
     set('edObservaciones', doc.observaciones);
 
     renderLineas();
+
+    // Trazabilidad: visible solo aquí (dentro del sistema, con sesión) —
+    // nunca se imprime, para no exponerle a un cliente o transportador el
+    // nombre o la cédula de un colaborador. El backend ya resuelve cédula →
+    // nombre (remDetalle), así que si algo no cruzó se ve el crudo y no un
+    // texto vacío — mejor una pista de que falta que silencio total.
+    const traza = [];
+    if (doc.creadoPorNombre) traza.push('Elaborada por ' + doc.creadoPorNombre);
+    if (doc.conciliadoPorNombre) traza.push('conciliada por ' + doc.conciliadoPorNombre);
+    $('edTrazabilidad').textContent = traza.join(' · ');
 
     // Banner de estado
     const banner = $('edEstadoBanner');
@@ -424,7 +437,41 @@
       if (el.id === 'edProyBuscar') return;
       el.disabled = !editable && el.tagName !== 'BUTTON';
     });
+
+    // El transportador tiene permiso propio, más suelto que el resto del
+    // documento (ver remTransportadorSet en Remisiones.gs): el vehículo o el
+    // conductor a veces se definen después de que el resto ya quedó
+    // congelado para quien lo creó — no tiene sentido que quien despacha se
+    // quede sin poder anotarlo solo porque no es su borrador o ya se envió a
+    // conciliar. Se reactivan a mano encima del disabled general de arriba,
+    // salvo en los dos estados donde el documento ya no debería moverse.
+    const puedeTransportador = !nuevo && est !== 'ANULADA' && est !== 'FACTURADA';
+    CAMPOS_TRANSPORTADOR.forEach(id => { $(id).disabled = !puedeTransportador; });
+    // El botón general "Guardar borrador" ya cubre el transportador cuando
+    // todo el formulario es editable — el botón aparte solo hace falta
+    // cuando ESE botón está oculto pero el transportador sigue disponible.
+    $('btnGuardarTransportador').classList.toggle('oculto', editable || !puedeTransportador);
   }
+
+  const CAMPOS_TRANSPORTADOR = ['edRecogeEnPlanta', 'edConductor', 'edCedCond', 'edPlaca', 'edTelCond', 'edTransportadora'];
+
+  onClick('btnGuardarTransportador', async () => {
+    const btn = $('btnGuardarTransportador');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const transportador = {
+      recogeEnPlanta: $('edRecogeEnPlanta').checked,
+      conductor: $('edConductor').value.trim(), cedulaConductor: $('edCedCond').value.trim(),
+      placa: $('edPlaca').value.trim().toUpperCase(), telefonoConductor: $('edTelCond').value.trim(),
+      transportadora: $('edTransportadora').value.trim(),
+    };
+    try {
+      await apiRemTransportadorSet(token, doc.docId, transportador);
+      Object.assign(doc, transportador);
+      dirty = false;
+      toast('Transportador guardado.', 'success');
+    } catch (e) { manejarError(e, 'transportador'); }
+    finally { btn.disabled = false; btn.textContent = 'Guardar transportador'; }
+  });
 
   // ── Cliente / NIT (relación 1:N) ─────────────────────────────
   // El campo es un buscador, así que se resuelve el código desde el texto.
@@ -1127,6 +1174,9 @@
       })(),
       ordenCompra: v('edOrdenCompra'), noContrato: v('edNoContrato'),
       representanteComercial: v('edRepresentante'), doctoAlt: v('edDoctoAlt'),
+      // Es una etiqueta informativa, no un interruptor: aunque esté marcada,
+      // conductor/placa/transportadora se guardan igual si se llenaron.
+      recogeEnPlanta: $('edRecogeEnPlanta').checked,
       conductor: v('edConductor'), cedulaConductor: v('edCedCond'),
       placa: v('edPlaca').toUpperCase(), telefonoConductor: v('edTelCond'),
       transportadora: v('edTransportadora'),

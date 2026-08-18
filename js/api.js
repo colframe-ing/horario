@@ -265,6 +265,12 @@ async function apiRemEnviar(token, docId) {
 async function apiRemCajasSet(token, docId, cajas) {
   return apiCall('remision_cajas_set', { token, docId, cajas });
 }
+// Guarda SOLO el transportador, con permiso propio (más suelto que el resto
+// del documento): funciona aunque la remisión ya no sea editable en general
+// para quien la llama — el conductor/vehículo a veces se define más tarde.
+async function apiRemTransportadorSet(token, docId, transportador) {
+  return apiCall('remision_transportador_set', { token, docId, ...transportador });
+}
 // Agrega una entidad de facturación (NIT/razón social) a un cliente que ya
 // existe en el catálogo, sin salir del formulario de la remisión. Útil cuando
 // un mismo cod_cliente agrupa varias entidades (ej. un fondo con muchos
