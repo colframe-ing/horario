@@ -863,6 +863,14 @@
     if (l.pesoFuente && l.pesoFuente !== 'CALCULADO_UNITARIO') return false;
     const p = l.idProducto ? prodIdx[l.idProducto] : null;
     if (!p || !(p.pesoUnitarioKg > 0)) return false;
+    // El kit estructural (y cualquier ítem a medida) no tiene un peso fijo
+    // por unidad — varía según el proyecto (una casa de 200 m² no pesa lo
+    // mismo que una de 80). "cantidad × peso unitario" solo tiene sentido
+    // para ítems de catálogo fijo (tornillos, anclajes, conectores). Si de
+    // todos modos quedó un pesoUnitarioKg cargado para un EST- por error de
+    // captura, esta línea evita que se proponga solo — el peso del kit sale
+    // de "Sugerir desde la cotización" o se digita a mano, nunca de aquí.
+    if (p.tipo === 'KIT' || p.tipo === 'A_MEDIDA') return false;
     const cant = num(l.cantidad);
     if (!(cant > 0)) {
       // Cantidad borrada: si el peso mostrado era una propuesta, se borra con

@@ -46,17 +46,32 @@
     .ed-bloque { border:1px solid var(--cf-gray-mid); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
     .ed-bloque > h3 { font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--cf-gray-text); margin:0 0 12px; font-weight:800; }
 
+    /* La página de remisiones necesita más aire que las demás: la tabla de
+       ítems tiene 7 columnas de inputs y a 900px (ancho compartido con todos
+       los módulos) queda apretada — encabezados partidos en dos líneas,
+       columnas angostas. Se ensancha solo aquí, sin tocar los otros módulos. */
+    #vistaEditor.admin-main, #vistaLista.admin-main { max-width:1180px; }
+
     .lin-tabla { width:100%; border-collapse:collapse; font-size:0.82rem; }
-    .lin-tabla th { font-size:0.68rem; text-transform:uppercase; color:var(--cf-gray-text); padding:6px 6px; text-align:left; border-bottom:1px solid var(--cf-gray-mid); }
-    .lin-tabla td { padding:4px 6px; border-bottom:1px solid #F1F5F9; }
+    .lin-tabla th { font-size:0.68rem; text-transform:uppercase; color:var(--cf-gray-text); padding:6px 6px; text-align:left; border-bottom:1px solid var(--cf-gray-mid); white-space:nowrap; }
+    .lin-tabla td { padding:6px 6px; border-bottom:1px solid #F1F5F9; }
     .lin-tabla input, .lin-tabla select { width:100%; padding:6px 8px; font-size:0.82rem; border:1px solid var(--cf-gray-mid); border-radius:6px; font-family:inherit; }
     .lin-tabla input:focus, .lin-tabla select:focus { outline:2px solid var(--cf-blue); outline-offset:-1px; }
     .lin-tabla input.peso-req { border-color:#DC2626; background:#FEF2F2; }
-    .lin-tabla .col-cant, .lin-tabla .col-peso { width:92px; }
-    .lin-tabla .col-und { width:70px; }
-    .lin-tabla .col-caja { width:62px; }
+    .lin-tabla .col-cant, .lin-tabla .col-peso { width:100px; }
+    .lin-tabla .col-und { width:74px; }
+    .lin-tabla .col-caja { width:66px; }
     .lin-tabla .col-acc { width:36px; }
-    .lin-tabla input.orden-input { text-align:center; padding:6px 2px; font-weight:700; }
+    /* El "#" quedaba ilegible porque las flechitas nativas del spinner (que
+       no se pueden encoger) se comían casi todo el ancho de una columna de
+       44px, dejando el dígito apretado contra el borde. Sin ellas sobra
+       espacio de sobra, así que la columna baja a 36px. Escribir
+       encima del número para reordenar sigue funcionando igual — el spinner
+       nunca fue el mecanismo real de esta columna, solo venía gratis con
+       type="number". */
+    .lin-tabla input.orden-input { text-align:center; padding:6px 2px; font-weight:700; -moz-appearance:textfield; }
+    .lin-tabla input.orden-input::-webkit-outer-spin-button,
+    .lin-tabla input.orden-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
     .lin-libre td:first-child::after { content:'libre'; font-size:0.6rem; background:#EDE9FE; color:#6D28D9; padding:1px 5px; border-radius:4px; margin-left:6px; font-weight:800; }
     /* .btn-icon trae color blanco (pensado para el encabezado oscuro). Dentro
        de la tabla de ítems, sobre fondo blanco, eso lo vuelve invisible —
@@ -300,11 +315,11 @@
           <table class="lin-tabla">
             <thead>
               <tr>
-                <th style="width:44px;" title="Cambia el número para reordenar">#</th>
+                <th style="width:36px;" title="Cambia el número para reordenar">#</th>
                 <th style="min-width:230px;">Producto / descripción</th>
                 <th class="col-und">U.M.</th>
                 <th class="col-cant">Cantidad</th>
-                <th class="col-peso">Peso kg</th>
+                <th class="col-peso" title="Peso en kg">Peso</th>
                 <th class="col-caja">Caja</th>
                 <th class="col-acc"></th>
               </tr>
