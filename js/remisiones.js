@@ -41,6 +41,11 @@
   // línea, aceptar sugerencia de peso).
   let dirty = false;
   function marcarSucio() { dirty = true; }
+  // Índice de descripciones/alias para reconocer texto pegado (ver
+  // candidatosMatch más abajo). Vive acá arriba porque cargarMaestros() lo
+  // invalida, y esa función corre en el arranque — declararlo junto a su
+  // función lo dejaría en zona muerta durante esa primera llamada.
+  let candidatosCache = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -177,6 +182,10 @@
     prodIdx = {}; cliIdx = {};
     (M.productos || []).forEach(p => { prodIdx[p.id] = p; });
     (M.clientes || []).forEach(c => { cliIdx[c.cod] = c; });
+    // El índice de candidatos para reconocer texto pegado se arma sobre el
+    // catálogo: si el catálogo se refresca, hay que rearmarlo (si no, "↻
+    // Catálogo" traería productos nuevos que el importador no reconocería).
+    candidatosCache = null;
     poblarBuscadores();
   }
 
@@ -407,6 +416,24 @@
     if (doc.conciliadoPorNombre) traza.push('conciliada por ' + doc.conciliadoPorNombre);
     $('edTrazabilidad').textContent = traza.join(' · ');
 
+    // Ajustes de cantidad/peso (remItemsAjustar) van anexados a
+    // observaciones, que es el último campo del formulario — sin esto, un
+    // admin podría darle "Conciliar y despachar" sin haber bajado a leerlo,
+    // justo el caso que más importa que no se le pase. Se parsean los
+    // marcadores "[Ajuste de ítems — ...]: motivo" y se muestran arriba,
+    // antes de que aparezca cualquier botón de conciliar.
+    const ajustes = String(doc.observaciones || '').split(' | ')
+      .filter(t => t.trim().startsWith('[Ajuste de ítems'));
+    const bannerAjuste = $('edAjusteBanner');
+    if (ajustes.length) {
+      bannerAjuste.innerHTML = '<span>⚠</span><div><strong>Esta remisión tiene ' + ajustes.length +
+        ' ajuste(s) de cantidad o peso — el pedido no sale tal como se cotizó.</strong>' +
+        ajustes.map(a => '<div style="margin-top:4px;">' + esc(a.trim()) + '</div>').join('') + '</div>';
+      bannerAjuste.classList.remove('oculto');
+    } else {
+      bannerAjuste.classList.add('oculto');
+    }
+
     // Banner de estado
     const banner = $('edEstadoBanner');
     if (est === 'POR_CONCILIAR') {
@@ -431,10 +458,19 @@
     $('btnAnular').classList.toggle('oculto', !(M.esAdmin && !nuevo && est !== 'ANULADA'));
     $('btnImprimir').classList.toggle('oculto', nuevo);
     $('btnSugerir').classList.toggle('oculto', !(editable && doc.cotizacionArchivo));
+    // Importar cambia la lista entera de ítems (agrega líneas), así que exige
+    // permiso completo — no el permiso suelto post-bloqueo de
+    // transportador/cajas/ajuste.
+    $('btnImportar').classList.toggle('oculto', !editable);
 
-    // Campos de solo lectura cuando ya no se puede editar
+    // Campos de solo lectura cuando ya no se puede editar. Caja, Cantidad y
+    // Peso de cada ítem quedan fuera de esta regla general — se administran
+    // solos dentro de renderLineas(), con su propio permiso (ver más abajo),
+    // así que aquí no se tocan sin importar cuántas veces se repinte la tabla.
+    const CAMPOS_ITEM_APARTE = ['cajaNum', 'cantidad', 'pesoKg'];
     $('vistaEditor').querySelectorAll('input,select,textarea').forEach(el => {
       if (el.id === 'edProyBuscar') return;
+      if (el.dataset && CAMPOS_ITEM_APARTE.includes(el.dataset.f)) return;
       el.disabled = !editable && el.tagName !== 'BUTTON';
     });
 
@@ -445,12 +481,15 @@
     // quede sin poder anotarlo solo porque no es su borrador o ya se envió a
     // conciliar. Se reactivan a mano encima del disabled general de arriba,
     // salvo en los dos estados donde el documento ya no debería moverse.
-    const puedeTransportador = !nuevo && est !== 'ANULADA' && est !== 'FACTURADA';
+    const puedeTransportador = puedeEditarPostBloqueo();
     CAMPOS_TRANSPORTADOR.forEach(id => { $(id).disabled = !puedeTransportador; });
     // El botón general "Guardar borrador" ya cubre el transportador cuando
     // todo el formulario es editable — el botón aparte solo hace falta
     // cuando ESE botón está oculto pero el transportador sigue disponible.
     $('btnGuardarTransportador').classList.toggle('oculto', editable || !puedeTransportador);
+    // Mismo criterio para la caja de cada ítem y para el ajuste de cantidad/peso.
+    $('btnGuardarCajas').classList.toggle('oculto', editable || !puedeEditarPostBloqueo());
+    $('btnGuardarAjusteItems').classList.toggle('oculto', editable || !puedeEditarPostBloqueo());
   }
 
   const CAMPOS_TRANSPORTADOR = ['edRecogeEnPlanta', 'edConductor', 'edCedCond', 'edPlaca', 'edTelCond', 'edTransportadora'];
@@ -471,6 +510,52 @@
       toast('Transportador guardado.', 'success');
     } catch (e) { manejarError(e, 'transportador'); }
     finally { btn.disabled = false; btn.textContent = 'Guardar transportador'; }
+  });
+
+  onClick('btnGuardarCajas', async () => {
+    const btn = $('btnGuardarCajas');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    // item identifica la línea en la hoja — viene del backend en toda línea
+    // ya guardada, que es la única situación en la que este botón aparece
+    // (nuevaRemision() nunca llega a este estado: ahí _puedeEditar es true).
+    const cajas = doc._detalle.map(l => ({ item: l.item, cajaNum: l.cajaNum === '' ? '' : l.cajaNum }));
+    try {
+      await apiRemDetalleCajasSet(token, doc.docId, cajas);
+      dirty = false;
+      toast('Cajas guardadas.', 'success');
+    } catch (e) { manejarError(e, 'cajas'); }
+    finally { btn.disabled = false; btn.textContent = 'Guardar cajas'; }
+  });
+
+  onClick('btnGuardarAjusteItems', async () => {
+    // El motivo se pide SIEMPRE antes de guardar, no solo la primera vez que
+    // se toca un campo — así no queda un cambio a medio explicar si cambian
+    // varias líneas antes de decidirse a guardar.
+    const motivo = await confirmar({
+      titulo: 'Ajuste de cantidad o peso',
+      mensaje: 'Vas a cambiar la cantidad o el peso de uno o más ítems — el pedido no va a salir tal como se cotizó.\n\n' +
+               'Explica por qué (ej. "no había stock de IN-016, solo 8.000 de las 10.230 unidades").',
+      btnOk: 'Guardar ajuste', peligro: true, pedirMotivo: true,
+    });
+    if (!motivo) return;
+    const btn = $('btnGuardarAjusteItems');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    // Igual que en Cajas: se envían todas las líneas (no solo las que
+    // cambiaron) — el backend las reescribe con el mismo valor si no hubo
+    // cambio real, así que es inofensivo y evita rastrear "qué se tocó".
+    const items = doc._detalle.map(l => ({
+      item: l.item,
+      cantidad: l.cantidad === '' ? '' : l.cantidad,
+      pesoKg: l.pesoKg === '' ? '' : l.pesoKg,
+    }));
+    try {
+      const res = await apiRemItemsAjustar(token, doc.docId, items, motivo);
+      doc.pesoTotalKg = res.pesoTotalKg;
+      doc.observaciones = res.observaciones;
+      dirty = false;
+      toast('Ajuste guardado · ' + fmtNum(res.pesoTotalKg) + ' kg', 'success', 5000);
+    } catch (e) { manejarError(e, 'items-ajuste'); }
+    finally { btn.disabled = false; btn.textContent = 'Guardar cambios en ítems'; }
   });
 
   // ── Cliente / NIT (relación 1:N) ─────────────────────────────
@@ -781,6 +866,610 @@
     }
   }
 
+  /** Permiso compartido por transportador, caja de cada ítem y ajuste de
+   *  cantidad/peso: cualquiera con sesión puede tocarlos aunque el resto del
+   *  documento ya no sea editable para él/ella, salvo en los dos estados
+   *  donde el documento no debería moverse más. Se calcula como función (no
+   *  como variable en pintarEditor) porque renderLineas() se repinta desde
+   *  varios lugares y los campos de la tabla necesitan quedar bien en todos,
+   *  no solo la primera vez que se abre el editor. */
+  function puedeEditarPostBloqueo() {
+    return !!doc.docId && !['ANULADA', 'FACTURADA'].includes(String(doc.estado || '').toUpperCase());
+  }
+
+  // ============================================================
+  // IMPORTAR PEGANDO UNA TABLA (Fase 1)
+  // ============================================================
+  // Reconoce tres formatos reales de la operación:
+  //   A) DESCRIPCION · UNIDAD · CANTIDAD        → matchea por descripción
+  //   B) ITEM · REF · DESCRIPCION · UND · CANT  → REF manda (la vía confiable)
+  //   C) alias · cantidad                       → alias del maestro de cotiz.
+  // Todo corre en el navegador: el catálogo ya está cargado para el datalist,
+  // así que no hace falta ningún endpoint nuevo — las líneas resultantes
+  // entran a doc._detalle como cualquier edición y se guardan con el
+  // "Guardar borrador" de siempre.
+
+  /** Normaliza para comparar: mayúsculas, sin acentos, sin comillas
+   *  tipográficas, fracciones unicode a texto. */
+  function normTxt(s) {
+    return String(s == null ? '' : s)
+      .toUpperCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[‘’“”]/g, '"')
+      .replace(/½/g, '1/2').replace(/¼/g, '1/4').replace(/¾/g, '3/4')
+      .replace(/×/g, 'X')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /** Clave de comparación: solo letras y dígitos. Es lo que hace que
+   *  `1-1/2"`, `1 1/2"` y `1½"` se consideren iguales sin tener que
+   *  enumerar cada variante de puntuación. */
+  function claveTxt(s) { return normTxt(s).replace(/[^A-Z0-9]/g, ''); }
+
+  // Alias conocidos → producto. Los primeros doce son los nombres de columna
+  // del maestro de cotizaciones (formato C); siete de ellos ya estaban
+  // hardcodeados en el array ACCESORIOS de remSugerirDetalle (Remisiones.gs)
+  // y el resto se deduce cruzando las tres listas de ejemplo, que son la
+  // misma remisión escrita de tres formas (las cantidades coinciden fila por
+  // fila). En la Fase 2 esto pasa a la hoja AliasProductos y aprende solo.
+  const ALIAS_SEMILLA_RAW = {
+    'ACERO': 'EST-001',
+    'CRUCES (m)': 'IN-001',
+    'HOLD full': 'IN-002',
+    'TENSORES Full': 'IN-003',
+    'CARTELAS': 'IN-004',
+    'ANGULOS': 'IN-005',
+    'TORNILLO HEX #10 3/4': 'IN-010',
+    'TORNILLO #12X1 1/2': 'IN-011',
+    'REMACHES': 'IN-016',
+    'PERNOS DE CUÑA': 'IN-026',
+    'TORNILLO REX #10 3/4': 'IN-036',
+    'TORNIILLO LENT #8 3/4': 'IN-052',
+    // Confirmado 2026-08-18: es el mismo IN-003 — el tamaño del ángulo cambió
+    // con el tiempo, así que la descripción vieja sigue apareciendo en las
+    // listas que se pegan. Cierra la discrepancia que FASE0_SANEAMIENTO
+    // §2.6.1 había dejado como "pendiente de confirmar".
+    'TENSOR EN ANGULO DE 1-1/2" x 1-1/2" x 1/8"': 'IN-003',
+  };
+  const ALIAS_SEMILLA = {};
+  Object.keys(ALIAS_SEMILLA_RAW).forEach(k => { ALIAS_SEMILLA[claveTxt(k)] = ALIAS_SEMILLA_RAW[k]; });
+
+  // Candidatos de match: descripciones del catálogo + los alias. Tenerlos en
+  // una sola lista hace que el paso exacto y el difuso recorran lo mismo, así
+  // un alias con el tamaño cambiado ("TENSOR EN ANGULO DE 1-1/4…") también
+  // se alcanza por similitud, no solo por coincidencia exacta.
+  // (`candidatosCache` se declara arriba, con el estado del módulo: la toca
+  // cargarMaestros(), que corre antes de llegar a esta parte del archivo.)
+  function candidatosMatch() {
+    if (candidatosCache) return candidatosCache;
+    const out = [];
+    (M.productos || []).forEach(p => { if (p.desc) out.push({ clave: claveTxt(p.desc), id: p.id }); });
+    Object.keys(ALIAS_SEMILLA).forEach(k => out.push({ clave: k, id: ALIAS_SEMILLA[k] }));
+    candidatosCache = out;
+    return out;
+  }
+
+  function trigramas(s) {
+    const out = [], p = '  ' + s + ' ';
+    for (let i = 0; i < p.length - 2; i++) out.push(p.substr(i, 3));
+    return out;
+  }
+
+  /** Similitud 0..1 (coeficiente de Dice sobre trigramas). */
+  function similitud(a, b) {
+    const A = trigramas(a), B = trigramas(b);
+    if (!A.length || !B.length) return 0;
+    const conteo = {};
+    B.forEach(t => { conteo[t] = (conteo[t] || 0) + 1; });
+    let hits = 0;
+    A.forEach(t => { if (conteo[t] > 0) { hits++; conteo[t]--; } });
+    return (2 * hits) / (A.length + B.length);
+  }
+
+  const IMP_UMBRAL = 0.72;    // por debajo, no se propone nada
+  const IMP_MARGEN = 0.05;    // si el 1.º y el 2.º empatan, es ambiguo → sin resolver
+
+  /** Mejor candidato por descripción. Devuelve {id, sim} o null.
+   *  El margen contra el segundo lugar es lo que protege los casos como
+   *  "TORNILLO REX #10 3/4" vs "TORNILLO HEX #10 3/4" — difieren en tres
+   *  caracteres, apuntan a productos distintos, y cualquier algoritmo difuso
+   *  los rankea casi igual. Ante el empate, mejor no adivinar. */
+  function mejorPorDescripcion(desc) {
+    const clave = claveTxt(desc);
+    if (!clave) return null;
+    let mejor = null, segundo = 0;
+    candidatosMatch().forEach(c => {
+      const s = similitud(clave, c.clave);
+      if (!mejor || s > mejor.sim) { segundo = mejor ? mejor.sim : 0; mejor = { id: c.id, sim: s }; }
+      else if (s > segundo) segundo = s;
+    });
+    if (!mejor || mejor.sim < IMP_UMBRAL) return null;
+    if (mejor.sim - segundo < IMP_MARGEN) return null;
+    return mejor;
+  }
+
+  /** Números que aparecen en un texto, ordenados. En estos nombres los
+   *  números SON la parte que discrimina (calibre #8 vs #10, medida 5-1/2 vs
+   *  3-3/4): dos descripciones que solo difieren en un dígito son productos
+   *  distintos, aunque como cadenas se parezcan en un 97%. */
+  function numerosDe(s) {
+    return (normTxt(s).match(/\d+/g) || []).map(Number).sort((a, b) => a - b).join(',');
+  }
+
+  /** ¿La descripción pegada corresponde de verdad al producto del código?
+   *  Se usa para avisar (no para bloquear) en el caso documentado de IN-009,
+   *  cuyo código apunta al tornillo #10 mientras las plantillas lo rotulan
+   *  como #8 (FASE0_SANEAMIENTO §2.6.1). Un alias conocido del mismo
+   *  producto vale como confirmación: es el caso de IN-003, donde el nombre
+   *  cambió de tamaño con los años y ya sabemos que es el mismo ítem. */
+  function descCuadraConProducto(desc, prod) {
+    if (!desc || !prod || !prod.desc) return true;
+    if (ALIAS_SEMILLA[claveTxt(desc)] === prod.id) return true;
+    if (numerosDe(desc) !== numerosDe(prod.desc)) return false;
+    return similitud(claveTxt(desc), claveTxt(prod.desc)) >= 0.6;
+  }
+
+  const IMP_RE_COD = /^(EST|IN|VA)-\d+$/i;
+  const IMP_ENCAB = ['DESCRIPCION', 'DESCRIPCIÓN', 'REF', 'REFERENCIA', 'CANTIDAD', 'UNIDAD', 'ITEM', 'CANT', 'UND', 'U.M.'];
+
+  /** Convierte el texto pegado en una matriz de celdas. Excel y Sheets pegan
+   *  con tabulador; de un PDF o Word suele venir con dos o más espacios. */
+  function impPartirCeldas(texto) {
+    return String(texto || '').split(/\r?\n/)
+      .map(l => l.replace(/\s+$/, ''))
+      .filter(l => l.trim())
+      .map(l => (l.indexOf('\t') >= 0 ? l.split('\t') : l.split(/\s{2,}/)).map(c => c.trim()));
+  }
+
+  /** Cantidad tolerante al formato local: "10.230" es diez mil doscientos
+   *  treinta (separador de miles), "1,5" es uno y medio. Vacío se conserva
+   *  como vacío — no se convierte a 0 (regla R1: vacío ≠ cero). */
+  function impParseCant(s) {
+    let t = String(s == null ? '' : s).trim();
+    if (!t) return '';
+    if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    else t = t.replace(',', '.');
+    const n = parseFloat(t);
+    return isNaN(n) ? '' : n;
+  }
+
+  /** Adivina qué columna es qué. Se muestra el resultado al usuario con
+   *  opción de que lo lea, en vez de pedirle que declare el formato. */
+  function impDetectar(matriz) {
+    if (!matriz.length) return null;
+    const hayEncab = matriz[0].some(c => IMP_ENCAB.includes(normTxt(c)));
+    const datos = matriz.slice(hayEncab ? 1 : 0);
+    if (!datos.length) return null;
+    const nCols = Math.max.apply(null, datos.map(f => f.length));
+
+    // Columna de código: la que más celdas con forma EST-/IN-/VA- tenga.
+    let colRef = -1, hitsRef = 0;
+    for (let c = 0; c < nCols; c++) {
+      const h = datos.filter(f => IMP_RE_COD.test(String(f[c] || '').trim())).length;
+      if (h > hitsRef) { hitsRef = h; colRef = c; }
+    }
+    if (hitsRef < datos.length * 0.5) colRef = -1;
+
+    // Cantidad: de derecha a izquierda, la primera mayormente numérica. De
+    // derecha porque en el formato B la columna ITEM también es numérica y
+    // está a la izquierda — tomar "la primera numérica" traería el ITEM.
+    let colCant = -1;
+    for (let c = nCols - 1; c >= 0; c--) {
+      if (c === colRef) continue;
+      const conDato = datos.filter(f => String(f[c] == null ? '' : f[c]).trim() !== '');
+      const nums = conDato.filter(f => /^-?[\d.,]+$/.test(String(f[c]).trim())).length;
+      if (conDato.length && nums >= conDato.length * 0.8) { colCant = c; break; }
+    }
+
+    // Descripción: la columna con más texto acumulado entre las que sobran
+    // (así se descarta sola la de UNIDAD, que viene vacía en los tres formatos).
+    let colDesc = -1, mejorLargo = 0;
+    for (let c = 0; c < nCols; c++) {
+      if (c === colRef || c === colCant) continue;
+      const largo = datos.reduce((s, f) => s + String(f[c] || '').trim().length, 0);
+      if (largo > mejorLargo) { mejorLargo = largo; colDesc = c; }
+    }
+    return { datos, colRef, colCant, colDesc, hayEncab };
+  }
+
+  /** Resuelve una fila pegada a un producto del catálogo. */
+  function impResolverFila(f, det) {
+    const ref = det.colRef >= 0 ? String(f[det.colRef] || '').trim().toUpperCase() : '';
+    const desc = det.colDesc >= 0 ? String(f[det.colDesc] || '').trim() : '';
+    const cant = impParseCant(det.colCant >= 0 ? f[det.colCant] : '');
+    const crudo = [ref, desc].filter(Boolean).join(' · ') || '(fila vacía)';
+    const base = { crudo, desc, cant, idProducto: '', confianza: '', nota: '' };
+
+    // 1. Código explícito — la vía confiable. Se avisa (sin bloquear) cuando
+    // la descripción pegada no cuadra con la del catálogo: ver
+    // descCuadraConProducto para el porqué y para los dos casos reales.
+    if (ref && prodIdx[ref]) {
+      const p = prodIdx[ref];
+      const nota = descCuadraConProducto(desc, p)
+        ? ''
+        : 'Ojo: el código es ' + ref + ' («' + p.desc + '»), pero pegaste otra descripción';
+      return Object.assign(base, { idProducto: ref, confianza: nota ? 'baja' : 'alta', nota });
+    }
+    if (ref && !prodIdx[ref]) base.nota = 'El código ' + ref + ' no está en el catálogo';
+
+    // 2. Alias exacto (incluye los del maestro de cotizaciones).
+    const porAlias = ALIAS_SEMILLA[claveTxt(desc)];
+    if (porAlias && prodIdx[porAlias]) return Object.assign(base, { idProducto: porAlias, confianza: 'alta' });
+
+    // 3. Descripción idéntica ya normalizada.
+    const claveDesc = claveTxt(desc);
+    const exacto = claveDesc && candidatosMatch().find(c => c.clave === claveDesc);
+    if (exacto && prodIdx[exacto.id]) return Object.assign(base, { idProducto: exacto.id, confianza: 'alta' });
+
+    // 4. Parecido — se propone, nunca se da por hecho.
+    const aprox = mejorPorDescripcion(desc);
+    if (aprox && prodIdx[aprox.id]) {
+      return Object.assign(base, { idProducto: aprox.id, confianza: 'baja',
+        nota: base.nota || 'Coincidencia aproximada — verifica que sea el correcto' });
+    }
+    return base;   // sin resolver
+  }
+
+  let impFilasCache = [];
+
+  function abrirModalImportar() {
+    $('impTexto').value = '';
+    $('impFilas').innerHTML = '';
+    $('impDeteccion').textContent = '';
+    $('impResumen').textContent = '';
+    $('impConfirmar').disabled = true;
+    impFilasCache = [];
+    // Si la remisión ya está ligada a una cotización, "Sugerir desde la
+    // cotización" es estrictamente mejor que pegar: trae las cantidades ya
+    // multiplicadas por número de casas y ya descuenta lo despachado antes.
+    const pista = $('impPistaCotiz');
+    if (doc.cotizacionArchivo) {
+      pista.textContent = 'Esta remisión ya está ligada a ' +
+        (doc.cb ? 'CB ' + doc.cb + (doc.version ? '.' + doc.version : '') : 'una cotización') +
+        ' — "Sugerir desde la cotización" trae las cantidades ya multiplicadas por número de casas ' +
+        'y descontando lo ya despachado. Pegar no puede hacer ninguna de las dos cosas.';
+      pista.classList.remove('oculto');
+    } else {
+      pista.classList.add('oculto');
+    }
+    $('modalImportar').classList.remove('hidden');
+    setTimeout(() => $('impTexto').focus(), 50);
+  }
+
+  function analizarPegado() {
+    const det = impDetectar(impPartirCeldas($('impTexto').value));
+    if (!det) {
+      $('impDeteccion').textContent = '';
+      $('impFilas').innerHTML = '';
+      $('impResumen').textContent = '';
+      $('impConfirmar').disabled = true;
+      impFilasCache = [];
+      return;
+    }
+    impFilasCache = det.datos.map(f => impResolverFila(f, det));
+    $('impDeteccion').textContent = 'Detecté ' + det.datos.length + ' fila(s)' +
+      (det.hayEncab ? ' (descarté el encabezado)' : '') +
+      (det.colRef >= 0 ? ' · con código de referencia' : ' · sin código, reconociendo por descripción');
+    renderImpFilas();
+  }
+
+  function renderImpFilas() {
+    // Solo los productos remisionables, con el mismo texto "COD · Desc" que
+    // el resto del módulo, para que el selector de corrección se lea igual
+    // que el buscador de la tabla de ítems.
+    const opciones = itemsProductos.map(p =>
+      `<option value="${esc(p.cod)}">${esc(p.cod + SEP + p.texto)}</option>`).join('');
+
+    $('impFilas').innerHTML = impFilasCache.map((f, i) => {
+      const sinCant = f.cant === '' || num(f.cant) <= 0;
+      const marca = f.idProducto
+        ? (f.confianza === 'alta' ? '<span class="imp-ok">✓</span>' : '<span class="imp-duda">⚠</span>')
+        : '<span class="imp-duda">⚠</span>';
+      const celdaProd = sinCant
+        ? `<span style="color:var(--cf-gray-text);">${f.cant === '' ? 'sin cantidad' : 'en cero'} — no se agrega</span>`
+        : `${marca} <select data-i="${i}" class="imp-sel"><option value="">— elegir producto —</option>${opciones}</select>` +
+          (f.nota ? `<div class="imp-nota">${esc(f.nota)}</div>` : '');
+      return `<tr class="${sinCant ? 'imp-cero' : ''}">
+        <td class="imp-crudo">${esc(f.crudo)}</td>
+        <td>${celdaProd}</td>
+        <td style="text-align:right;">${f.cant === '' ? '—' : fmtNum(f.cant, 2)}</td>
+      </tr>`;
+    }).join('');
+
+    // El <select> se preselecciona por JS y no con `selected` en el HTML:
+    // con ~66 opciones por fila, marcar el atributo obliga a reconstruir la
+    // cadena completa por fila y se nota en listas largas.
+    $('impFilas').querySelectorAll('.imp-sel').forEach(sel => {
+      const f = impFilasCache[parseInt(sel.dataset.i)];
+      if (f.idProducto) sel.value = f.idProducto;
+      sel.addEventListener('change', () => {
+        const fila = impFilasCache[parseInt(sel.dataset.i)];
+        fila.idProducto = sel.value;
+        fila.confianza = sel.value ? 'manual' : '';
+        fila.nota = '';
+        actualizarImpResumen();
+      });
+    });
+    actualizarImpResumen();
+  }
+
+  function actualizarImpResumen() {
+    let listas = 0, sinResolver = 0, ceros = 0, vacias = 0;
+    impFilasCache.forEach(f => {
+      if (f.cant === '') { vacias++; return; }
+      if (num(f.cant) <= 0) { ceros++; return; }
+      if (f.idProducto) listas++; else sinResolver++;
+    });
+    const partes = [listas + ' lista(s) para importar'];
+    if (sinResolver) partes.push(sinResolver + ' sin reconocer (entran como línea libre)');
+    if (ceros) partes.push(ceros + ' en cero');
+    if (vacias) partes.push(vacias + ' sin cantidad');
+    $('impResumen').textContent = partes.join(' · ');
+    $('impResumen').className = listas ? 'div-ok' : 'div-mal';
+    const total = listas + sinResolver;
+    $('impConfirmar').disabled = total === 0;
+    $('impConfirmar').textContent = total ? 'Importar ' + total + ' ítem(s)' : 'Importar';
+  }
+
+  onClick('btnImportar', abrirModalImportar);
+  onClick('impCancelar', () => $('modalImportar').classList.add('hidden'));
+  let tImp = null;
+  const elImpTexto = $('impTexto');
+  if (elImpTexto) elImpTexto.addEventListener('input', () => {
+    clearTimeout(tImp);
+    tImp = setTimeout(analizarPegado, 250);
+  });
+
+  onClick('impConfirmar', () => {
+    const modo = (document.querySelector('input[name="impModo"]:checked') || {}).value || 'completar';
+    // Solo entran las filas con cantidad real. Las de cero o vacías se
+    // leyeron y se descartan a propósito (regla R1: vacío ≠ cero, y ninguno
+    // de los dos es algo que se pueda despachar).
+    const utiles = impFilasCache.filter(f => f.cant !== '' && num(f.cant) > 0);
+    const nuevas = utiles.map(f => {
+      const p = f.idProducto ? prodIdx[f.idProducto] : null;
+      return p
+        ? { idProducto: f.idProducto, _libre: false, descripcion: p.desc, unidad: p.und || '',
+            cantidad: f.cant, pesoKg: '', cajaNum: '' }
+        // Sin reconocer → línea libre con la descripción pegada, en vez de
+        // perder el dato. Mismo criterio que ya usa "Sugerir desde la
+        // cotización" con los códigos que no están en el catálogo.
+        : { idProducto: '', _libre: true, descripcion: f.desc || f.crudo, unidad: 'Un',
+            cantidad: f.cant, pesoKg: '', cajaNum: '' };
+    });
+
+    if (modo === 'reemplazar') {
+      doc._detalle = nuevas;
+    } else {
+      // Completar sin pisar: si la línea ya existe, solo se llena la cantidad
+      // cuando está vacía — igual que btnSugerir, para no borrar algo que
+      // alguien ya digitó a mano.
+      nuevas.forEach(n => {
+        const ya = n.idProducto && doc._detalle.find(l => String(l.idProducto) === String(n.idProducto));
+        if (ya) {
+          if (ya.cantidad === '' || ya.cantidad == null) ya.cantidad = n.cantidad;
+        } else {
+          doc._detalle.push(n);
+        }
+      });
+    }
+    // Que el peso se proponga solo donde aplique, igual que al teclear.
+    doc._detalle.forEach(autoPesoSiAplica);
+    editandoDesc.clear();
+    marcarSucio();
+    renderLineas();
+    $('modalImportar').classList.add('hidden');
+    toast(`Importados ${nuevas.length} ítem(s). Revisa y guarda el borrador.`, 'success', 5000);
+  });
+
+  // ── Modal para dividir una línea entre varias cajas ──────────────────────
+  // El dato que quien empaca SÍ conoce es la capacidad por caja (5.000
+  // remaches por caja es una constante del empaque), no el número de partes
+  // — así que la capacidad manda y el número de cajas se deduce. La última
+  // fila nunca se digita: se calcula como el resto, de modo que la suma
+  // siempre cuadre con la cantidad original sin que nadie reste a mano.
+  const DIV_MAX_CAJAS = 20;
+  let divIdx = null;          // índice en doc._detalle de la línea que se divide
+  let divCantidades = [];     // una entrada por caja; la última se recalcula sola
+
+  function divLinea() { return divIdx == null ? null : doc._detalle[divIdx]; }
+
+  function abrirModalDividir(i) {
+    const l = doc._detalle[i];
+    if (!l) return;
+    divIdx = i;
+    const total = num(l.cantidad);
+    if (!(total > 0)) { toast('Esta línea no tiene cantidad que repartir.', 'warning'); return; }
+
+    $('divTitulo').textContent = 'Dividir ' + (l.descripcion || l.idProducto || 'ítem');
+    $('divTotal').textContent = fmtNum(total, 2) + (l.unidad ? ' ' + l.unidad : '');
+    const tienePeso = num(l.pesoKg) > 0;
+    $('divTotalPesoWrap').classList.toggle('oculto', !tienePeso);
+    if (tienePeso) $('divTotalPeso').textContent = fmtNum(l.pesoKg, 2) + ' kg';
+
+    // Primera caja = la siguiente libre, para no pisar cajas que ya estén
+    // usando otros ítems de la misma remisión. Editable por si sí van juntos.
+    const usadas = doc._detalle.map(x => parseInt(x.cajaNum) || 0).filter(n => n > 0);
+    $('divPrimeraCaja').value = usadas.length ? Math.max.apply(null, usadas) + 1 : 1;
+
+    $('divPorCaja').value = '';
+    $('divNumCajas').value = 2;
+    generarDivPorNumCajas();      // arranca con algo válido ya confirmable
+    $('modalDividir').classList.remove('hidden');
+    setTimeout(() => $('divPorCaja').focus(), 50);
+  }
+
+  function cerrarModalDividir() {
+    $('modalDividir').classList.add('hidden');
+    divIdx = null; divCantidades = [];
+  }
+
+  /** Capacidad por caja → cuántas cajas hacen falta. Es la vía principal. */
+  function generarDivPorCaja() {
+    const l = divLinea(); if (!l) return;
+    const total = num(l.cantidad), cap = num($('divPorCaja').value);
+    if (!(cap > 0)) return;
+    let n = Math.ceil(total / cap);
+    if (n < 2) {
+      $('divAviso').textContent = 'Con esa capacidad cabe todo en una sola caja — no hay nada que dividir.';
+      $('divAviso').className = 'div-mal';
+      $('divConfirmar').disabled = true;
+      $('divFilas').innerHTML = '';
+      return;
+    }
+    if (n > DIV_MAX_CAJAS) n = DIV_MAX_CAJAS;
+    divCantidades = [];
+    for (let k = 0; k < n - 1; k++) divCantidades.push(cap);
+    divCantidades.push(0);       // la última la calcula renderDivFilas()
+    $('divNumCajas').value = n;
+    renderDivFilas();
+  }
+
+  /** N cajas iguales — alternativa para cuando no hay una capacidad fija. */
+  function generarDivPorNumCajas() {
+    const l = divLinea(); if (!l) return;
+    const total = num(l.cantidad);
+    let n = parseInt($('divNumCajas').value) || 0;
+    if (n < 2) n = 2;
+    if (n > DIV_MAX_CAJAS) n = DIV_MAX_CAJAS;
+    $('divNumCajas').value = n;
+    // Con cantidades enteras (tornillos, remaches) se reparte en enteros y el
+    // sobrante cae en la última — repartir 4.687,5 remaches no significa nada.
+    const base = Number.isInteger(total)
+      ? Math.floor(total / n)
+      : Math.floor((total / n) * 100) / 100;
+    divCantidades = [];
+    for (let k = 0; k < n - 1; k++) divCantidades.push(base);
+    divCantidades.push(0);
+    renderDivFilas();
+  }
+
+  /** Peso de cada parte, proporcional a su cantidad. El de la última sale por
+   *  resta (no proporcional) para que la suma dé exactamente el peso original
+   *  y el total de la remisión no se mueva por redondeos. */
+  function divPesos(total, totalPeso) {
+    if (!(totalPeso > 0)) return divCantidades.map(() => null);
+    const out = []; let acum = 0;
+    divCantidades.forEach((c, k) => {
+      if (k < divCantidades.length - 1) {
+        const p = Math.round(totalPeso * (num(c) / total) * 1000) / 1000;
+        out.push(p); acum += p;
+      } else {
+        out.push(Math.round((totalPeso - acum) * 1000) / 1000);
+      }
+    });
+    return out;
+  }
+
+  function renderDivFilas() {
+    const l = divLinea(); if (!l) return;
+    const total = num(l.cantidad), totalPeso = num(l.pesoKg);
+    const primera = parseInt($('divPrimeraCaja').value) || 1;
+    const n = divCantidades.length;
+
+    // La última siempre es el resto: así la suma cuadra por construcción.
+    const sumaOtras = divCantidades.slice(0, n - 1).reduce((s, c) => s + num(c), 0);
+    divCantidades[n - 1] = Math.round((total - sumaOtras) * 100) / 100;
+
+    const pesos = divPesos(total, totalPeso);
+    $('divFilas').innerHTML = divCantidades.map((c, k) => {
+      const ultima = k === n - 1;
+      const peso = pesos[k];
+      return `<tr>
+        <td style="font-weight:700;">Caja ${primera + k}</td>
+        <td>${ultima
+          ? `<span class="div-auto">${fmtNum(c, 2)}</span><span class="div-auto-lbl">el resto</span>`
+          : `<input type="number" class="div-cant" data-k="${k}" min="0" step="0.01" value="${esc(c)}">`}</td>
+        <td style="text-align:right;color:var(--cf-gray-text);">${peso == null ? '—' : fmtNum(peso, 2)}</td>
+      </tr>`;
+    }).join('');
+
+    $('divFilas').querySelectorAll('.div-cant').forEach(inp => {
+      inp.addEventListener('input', () => {
+        divCantidades[parseInt(inp.dataset.k)] = inp.value === '' ? 0 : num(inp.value);
+        // Solo se repinta la última fila y el aviso: repintar todo le quitaría
+        // el foco al campo que se está digitando (mismo criterio que la tabla
+        // de ítems, ver refrescarFilaVisual).
+        actualizarDivResto();
+      });
+    });
+    actualizarDivResto();
+  }
+
+  /** Recalcula la última fila (el resto) y el estado del botón, sin repintar
+   *  los campos editables — para no perder el foco mientras se teclea. */
+  function actualizarDivResto() {
+    const l = divLinea(); if (!l) return;
+    const total = num(l.cantidad), totalPeso = num(l.pesoKg);
+    const n = divCantidades.length;
+    const sumaOtras = divCantidades.slice(0, n - 1).reduce((s, c) => s + num(c), 0);
+    const resto = Math.round((total - sumaOtras) * 100) / 100;
+    divCantidades[n - 1] = resto;
+
+    const filas = $('divFilas').querySelectorAll('tr');
+    const ultimaFila = filas[n - 1];
+    if (ultimaFila) {
+      const auto = ultimaFila.querySelector('.div-auto');
+      if (auto) auto.textContent = fmtNum(resto, 2);
+      const pesos = divPesos(total, totalPeso);
+      const celdaPeso = ultimaFila.children[2];
+      if (celdaPeso) celdaPeso.textContent = pesos[n - 1] == null ? '—' : fmtNum(pesos[n - 1], 2);
+    }
+
+    const aviso = $('divAviso'), btn = $('divConfirmar');
+    if (resto > 0) {
+      aviso.textContent = `✓ Las ${n} cajas suman ${fmtNum(total, 2)} ${l.unidad || ''}`.trim();
+      aviso.className = 'div-ok';
+      btn.disabled = false;
+      btn.textContent = `Dividir en ${n} cajas`;
+    } else {
+      const exceso = fmtNum(Math.abs(resto), 2);
+      aviso.textContent = resto === 0
+        ? 'Las cajas de arriba ya cubren todo — a la última no le queda nada. Baja alguna cantidad.'
+        : `Te pasaste por ${exceso} ${l.unidad || ''}`.trim();
+      aviso.className = 'div-mal';
+      btn.disabled = true;
+      btn.textContent = 'Dividir';
+    }
+  }
+
+  onClick('divCancelar', cerrarModalDividir);
+  // Cada generador limpia el otro campo: son dos formas de llegar al mismo
+  // reparto y dejar los dos con valor hace creer que ambos aplican a la vez.
+  const elPorCaja = $('divPorCaja'), elNumCajas = $('divNumCajas'), elPrimera = $('divPrimeraCaja');
+  if (elPorCaja) elPorCaja.addEventListener('input', () => { elNumCajas.value = ''; generarDivPorCaja(); });
+  if (elNumCajas) elNumCajas.addEventListener('input', () => { elPorCaja.value = ''; generarDivPorNumCajas(); });
+  if (elPrimera) elPrimera.addEventListener('input', renderDivFilas);
+
+  onClick('divConfirmar', async () => {
+    const l = divLinea(); if (!l) return;
+    const total = num(l.cantidad), totalPeso = num(l.pesoKg);
+    const primera = parseInt($('divPrimeraCaja').value) || 1;
+    const pesos = divPesos(total, totalPeso);
+    const partes = divCantidades.map((c, k) => {
+      const p = { cajaNum: primera + k, cantidad: num(c) };
+      if (pesos[k] != null) p.pesoKg = pesos[k];
+      return p;
+    });
+    const btn = $('divConfirmar');
+    btn.disabled = true; btn.textContent = 'Dividiendo…';
+    try {
+      const res = await apiRemItemDividir(token, doc.docId, l.item, partes);
+      doc._detalle = res.detalle;
+      doc.nCajas = res.nCajas;
+      doc.pesoTotalKg = res.pesoTotalKg;
+      editandoDesc.clear();
+      dirty = false;
+      cerrarModalDividir();
+      renderLineas();
+      toast(`Línea dividida en ${partes.length} cajas.`, 'success');
+    } catch (e) {
+      manejarError(e, 'dividir');
+      btn.disabled = false; btn.textContent = 'Dividir';
+    }
+  });
+
   function renderLineas() {
     const tb = $('bodyLineas');
     if (!doc._detalle.length) {
@@ -788,6 +1477,17 @@
       actualizarTotales();
       return;
     }
+    // Si el resto del formulario ya es editable, Caja/Cantidad/Peso se
+    // comportan como cualquier otro campo (el disable general de
+    // pintarEditor no los toca, así que aquí quedan habilitados). Si NO lo
+    // es, solo se salvan con su propio permiso — nunca al revés. Cantidad y
+    // peso SÍ exigen motivo al guardar (ver btnGuardarAjusteItems) porque,
+    // a diferencia de la caja, cambian lo que se factura.
+    const limitadosDeshabilitados = doc._puedeEditar === false && !puedeEditarPostBloqueo();
+    // Dividir una línea entre varias cajas solo tiene sentido si esa línea ya
+    // existe en la hoja (necesita su número de ítem) — una recién agregada y
+    // sin guardar todavía no tiene nada que dividir en el backend.
+    const puedeDividirItems = puedeEditarPostBloqueo();
     tb.innerHTML = doc._detalle.map((l, i) => {
       // Una línea es LIBRE si se creó como tal (_libre === true), o si viene del
       // backend (_libre undefined) sin producto pero con descripción.
@@ -835,12 +1535,15 @@
         </td>
         <td>${prodCell}</td>
         <td><input type="text" data-f="unidad" data-i="${i}" value="${esc(l.unidad)}"></td>
-        <td><input type="number" step="0.01" min="0" data-f="cantidad" data-i="${i}" value="${esc(l.cantidad)}"></td>
+        <td><input type="number" step="0.01" min="0" data-f="cantidad" data-i="${i}" value="${esc(l.cantidad)}" ${limitadosDeshabilitados ? 'disabled' : ''}></td>
         <td><input type="number" step="0.01" min="0" data-f="pesoKg" data-i="${i}" value="${esc(l.pesoKg)}"
                    class="${kitSinPeso ? 'peso-req' : ''}"
-                   title="${kitSinPeso ? 'Obligatorio: es el dato que se factura' : ''}">${sug}</td>
-        <td><input type="number" step="1" min="1" data-f="cajaNum" data-i="${i}" value="${esc(l.cajaNum)}"></td>
-        <td><button class="btn-icon btn-del" data-i="${i}" title="Quitar" style="color:#DC2626;">✕</button></td>
+                   title="${kitSinPeso ? 'Obligatorio: es el dato que se factura' : ''}" ${limitadosDeshabilitados ? 'disabled' : ''}>${sug}</td>
+        <td><input type="number" step="1" min="1" data-f="cajaNum" data-i="${i}" value="${esc(l.cajaNum)}" ${limitadosDeshabilitados ? 'disabled' : ''}></td>
+        <td style="white-space:nowrap;">
+          ${(puedeDividirItems && l.item != null) ? `<button type="button" class="btn-icon btn-dividir" data-i="${i}" title="Dividir en varias cajas (ej. no cabe todo por peso)" style="color:#1D4ED8;">⊞</button>` : ''}
+          <button class="btn-icon btn-del" data-i="${i}" title="Quitar" style="color:#DC2626;">✕</button>
+        </td>
       </tr>`;
     }).join('');
 
@@ -866,6 +1569,9 @@
         marcarSucio();
         renderLineas();
       };
+    });
+    tb.querySelectorAll('.btn-dividir').forEach(b => {
+      b.onclick = () => abrirModalDividir(parseInt(b.dataset.i));
     });
     // Reordenar escribiendo el número destino, en vez de flechas: con listas
     // largas, mover un ítem del final al principio a golpe de clic era muy

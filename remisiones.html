@@ -87,6 +87,29 @@
     .desv.alta { color:#B91C1C; } .desv.ok { color:#15803D; }
 
     .empty { text-align:center; padding:40px 20px; color:var(--cf-gray-text); font-size:0.88rem; }
+
+    /* ── Modal de división en cajas ── */
+    #divFilas td { padding:4px 8px; border-bottom:1px solid #F1F5F9; }
+    #divFilas input { width:100%; padding:5px 8px; font-size:0.84rem; border:1px solid var(--cf-gray-mid); border-radius:6px; font-family:inherit; }
+    #divFilas input:focus { outline:2px solid var(--cf-blue); outline-offset:-1px; }
+    /* La última fila se calcula sola: se muestra como texto, no como campo,
+       para que quede claro que no hay nada que digitar ahí. */
+    .div-auto { display:inline-block; padding:5px 8px; font-weight:800; color:var(--cf-dark); }
+    .div-auto-lbl { font-size:0.66rem; color:var(--cf-blue); font-weight:700; margin-left:6px; }
+    .div-ok  { color:#15803D; }
+    .div-mal { color:#B91C1C; }
+
+    /* ── Modal de importar (pegar lista) ── */
+    #impFilas td { padding:5px 8px; border-bottom:1px solid #F1F5F9; vertical-align:top; }
+    #impFilas select, #impFilas input { width:100%; padding:4px 6px; font-size:0.8rem; border:1px solid var(--cf-gray-mid); border-radius:6px; font-family:inherit; }
+    .imp-crudo { font-family:ui-monospace,Consolas,monospace; font-size:0.74rem; color:var(--cf-gray-text); }
+    .imp-ok    { color:#15803D; font-weight:700; }
+    .imp-duda  { color:#B45309; font-weight:700; }
+    .imp-nota  { font-size:0.7rem; color:#B45309; }
+    /* Filas en cero o vacías: se muestran apagadas para que se vea que se
+       leyeron y se decidió no traerlas — no que se perdieron en el camino. */
+    .imp-cero  { opacity:.45; }
+    .imp-cero .imp-crudo { text-decoration:line-through; }
     /* Encabezado de sección: título a la izquierda, acciones a la derecha. */
     .rem-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
     .rem-head h2 { flex:1; min-width:160px; margin:0; }
@@ -205,6 +228,12 @@
            para que un cliente o transportador vea la cédula o el nombre de
            quien elaboró la remisión). -->
       <div id="edTrazabilidad" style="font-size:0.72rem;color:var(--cf-gray-text);margin:-6px 0 10px;"></div>
+
+      <!-- El motivo de un ajuste de cantidad/peso (remItemsAjustar) va al
+           final de "Observaciones", el último campo del formulario — sin
+           esto, un admin podría conciliar sin bajar a leerlo, que es
+           justo el caso que más importa que no se le pase. -->
+      <div id="edAjusteBanner" class="rem-alerta oculto" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B;align-items:flex-start;"></div>
 
       <div id="edEstadoBanner" class="rem-alerta oculto"></div>
 
@@ -355,6 +384,17 @@
           <button id="btnAddLinea" class="btn btn-ghost btn-sm">+ Ítem del catálogo</button>
           <button id="btnAddLibre" class="btn btn-ghost btn-sm">+ Línea libre</button>
           <button id="btnSugerir" class="btn btn-ghost btn-sm oculto">Sugerir desde la cotización</button>
+          <button id="btnImportar" class="btn btn-ghost btn-sm oculto"
+                  title="Pega una lista de ítems desde Excel o Sheets y el sistema los reconoce">📋 Pegar lista</button>
+          <!-- Solo aparece cuando el resto del formulario está bloqueado
+               para quien lo abrió pero cantidad/peso de los ítems ya
+               existentes siguen disponibles (ver remItemsAjustar) — el caso
+               de "no hay 3000 tornillos sino 2500". Pide motivo antes de
+               guardar, nunca lo hace en silencio. -->
+          <button id="btnGuardarAjusteItems" class="btn btn-primary btn-sm oculto"
+                  style="background:#A16207;border-color:#A16207;">
+            Guardar cambios en ítems
+          </button>
           <span style="margin-left:auto;font-size:0.86rem;font-weight:800;color:var(--cf-dark);">
             Peso total: <span id="edPesoTotal">0</span> kg
           </span>
@@ -379,6 +419,13 @@
           Asigna cada ítem a una caja en la columna <strong>Caja</strong>. Cada caja tiene su
           etiqueta y su manifiesto imprimibles.
         </p>
+        <!-- Solo aparece cuando el resto del formulario está bloqueado para
+             quien lo abrió pero la caja de cada ítem sigue disponible (ver
+             remDetalleCajasSet) — quien empaca no siempre es quien puede
+             editar el resto de la remisión. -->
+        <button type="button" id="btnGuardarCajas" class="btn btn-primary btn-sm oculto" style="margin-bottom:10px;">
+          Guardar cajas
+        </button>
         <div id="cajasResumen" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
 
@@ -405,6 +452,111 @@
       <div class="modal-actions" style="justify-content:flex-end;margin-top:18px;">
         <button id="confirmCancel" class="btn btn-ghost btn-sm">Cancelar</button>
         <button id="confirmOk" class="btn btn-primary btn-sm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dividir una línea entre varias cajas.
+       El dato que el operario SÍ conoce es cuántos caben por caja (5.000
+       remaches por caja es una constante del empaque) — no en cuántas partes.
+       Por eso la capacidad es el campo principal y el número de cajas se
+       deduce; "en N cajas iguales" queda como alternativa. La última fila
+       nunca es editable: se calcula como el resto, así siempre cuadra con la
+       cantidad original y nadie tiene que hacer la resta a mano. -->
+  <div id="modalDividir" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header"><h2 id="divTitulo">Dividir en varias cajas</h2></div>
+
+      <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px;font-size:0.86rem;margin-bottom:14px;">
+        A repartir: <strong id="divTotal">—</strong>
+        <span id="divTotalPesoWrap" style="color:var(--cf-gray-text);"> · <span id="divTotalPeso">—</span></span>
+      </div>
+
+      <div class="ed-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
+        <div class="form-group">
+          <label for="divPorCaja">¿Cuántos caben por caja?</label>
+          <input type="number" id="divPorCaja" min="1" step="0.01" placeholder="ej. 5000">
+        </div>
+        <div class="form-group">
+          <label for="divNumCajas">…o en cuántas cajas iguales</label>
+          <input type="number" id="divNumCajas" min="2" max="20" step="1">
+        </div>
+        <div class="form-group">
+          <label for="divPrimeraCaja">Primera caja</label>
+          <input type="number" id="divPrimeraCaja" min="1" step="1" value="1">
+        </div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:0.84rem;margin-top:14px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--cf-gray-mid);font-size:0.7rem;text-transform:uppercase;color:var(--cf-gray-text);">Caja</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--cf-gray-mid);font-size:0.7rem;text-transform:uppercase;color:var(--cf-gray-text);">Cantidad</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cf-gray-mid);font-size:0.7rem;text-transform:uppercase;color:var(--cf-gray-text);">Peso kg</th>
+          </tr>
+        </thead>
+        <tbody id="divFilas"></tbody>
+      </table>
+
+      <p id="divAviso" style="font-size:0.82rem;font-weight:700;margin:12px 0 0;"></p>
+
+      <div class="modal-actions" style="justify-content:flex-end;margin-top:18px;">
+        <button id="divCancelar" class="btn btn-ghost btn-sm">Cancelar</button>
+        <button id="divConfirmar" class="btn btn-primary btn-sm">Dividir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Importar detalle pegando una tabla.
+       Reconoce tres formatos sin preguntarle al usuario cuál es (esa pregunta
+       es justo lo que vuelve técnica la herramienta): por código de
+       referencia, por descripción, o por los alias del maestro de
+       cotizaciones. Nada se aplica sin pasar por la previsualización — un
+       match equivocado que se ve confiado es peor que una fila sin resolver. -->
+  <div id="modalImportar" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal" style="max-width:840px;">
+      <div class="modal-header"><h2>Pegar lista de ítems</h2></div>
+
+      <p id="impPistaCotiz" class="oculto" style="font-size:0.82rem;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;border-radius:8px;padding:9px 12px;margin:0 0 12px;"></p>
+
+      <div class="form-group">
+        <label for="impTexto">Pega aquí la tabla (desde Excel, Sheets o Word)</label>
+        <textarea id="impTexto" rows="5" placeholder="DESCRIPCION&#9;UNIDAD&#9;CANTIDAD&#10;KIT ESTRUCTURAL&#9;&#9;1&#10;CONECTOR HOLD DOWN&#9;&#9;28"
+                  style="width:100%;padding:8px;border:1px solid var(--cf-gray-mid);border-radius:6px;font-family:ui-monospace,Consolas,monospace;font-size:0.78rem;"></textarea>
+      </div>
+
+      <p id="impDeteccion" style="font-size:0.8rem;color:var(--cf-gray-text);margin:8px 0 0;"></p>
+
+      <div style="max-height:300px;overflow-y:auto;margin-top:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--cf-gray-mid);font-size:0.68rem;text-transform:uppercase;color:var(--cf-gray-text);">Lo que pegaste</th>
+              <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--cf-gray-mid);font-size:0.68rem;text-transform:uppercase;color:var(--cf-gray-text);">Producto</th>
+              <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cf-gray-mid);font-size:0.68rem;text-transform:uppercase;color:var(--cf-gray-text);width:80px;">Cant.</th>
+            </tr>
+          </thead>
+          <tbody id="impFilas"></tbody>
+        </table>
+      </div>
+
+      <p id="impResumen" style="font-size:0.84rem;font-weight:700;margin:12px 0 0;"></p>
+
+      <div class="form-group" style="margin-top:12px;">
+        <label>Al importar</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:0.86rem;">
+          <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:600;margin:0;">
+            <input type="radio" name="impModo" value="completar" checked style="width:auto;"> Completar las vacías
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:600;margin:0;">
+            <input type="radio" name="impModo" value="reemplazar" style="width:auto;"> Reemplazar todo el detalle
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="justify-content:flex-end;margin-top:18px;">
+        <button id="impCancelar" class="btn btn-ghost btn-sm">Cancelar</button>
+        <button id="impConfirmar" class="btn btn-primary btn-sm" disabled>Importar</button>
       </div>
     </div>
   </div>

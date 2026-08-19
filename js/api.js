@@ -271,6 +271,25 @@ async function apiRemCajasSet(token, docId, cajas) {
 async function apiRemTransportadorSet(token, docId, transportador) {
   return apiCall('remision_transportador_set', { token, docId, ...transportador });
 }
+// Guarda SOLO la columna Caja de cada ítem, mismo permiso suelto que el
+// transportador: el personal administrativo no sabe en qué caja física va a
+// terminar cada cosa — eso lo decide quien empaca. cajas: [{item, cajaNum}]
+async function apiRemDetalleCajasSet(token, docId, cajas) {
+  return apiCall('remision_detalle_cajas_set', { token, docId, cajas });
+}
+// Ajusta cantidad/peso de ítems ya existentes (nunca producto, descripción ni
+// unidad), mismo permiso suelto — pero motivo es obligatorio: a diferencia de
+// transportador/cajas, esto sí cambia lo que se factura y lo que ve el
+// cliente. items: [{item, cantidad, pesoKg}]
+async function apiRemItemsAjustar(token, docId, items, motivo) {
+  return apiCall('remision_items_ajustar', { token, docId, items, motivo });
+}
+// Reparte una línea entre varias cajas (ej. 18.750 remaches en 4 cajas de
+// máximo 5.000 por peso). No pide motivo: la cantidad total no cambia, solo
+// cómo se reparte físicamente. partes: [{cajaNum, cantidad, pesoKg?}]
+async function apiRemItemDividir(token, docId, item, partes) {
+  return apiCall('remision_item_dividir', { token, docId, item, partes });
+}
 // Agrega una entidad de facturación (NIT/razón social) a un cliente que ya
 // existe en el catálogo, sin salir del formulario de la remisión. Útil cuando
 // un mismo cod_cliente agrupa varias entidades (ej. un fondo con muchos
