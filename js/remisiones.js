@@ -866,15 +866,26 @@
     }
   }
 
-  /** Permiso compartido por transportador, caja de cada ítem y ajuste de
-   *  cantidad/peso: cualquiera con sesión puede tocarlos aunque el resto del
-   *  documento ya no sea editable para él/ella, salvo en los dos estados
-   *  donde el documento no debería moverse más. Se calcula como función (no
-   *  como variable en pintarEditor) porque renderLineas() se repinta desde
-   *  varios lugares y los campos de la tabla necesitan quedar bien en todos,
-   *  no solo la primera vez que se abre el editor. */
+  /** Permiso compartido por transportador, caja de cada ítem, ajuste de
+   *  cantidad/peso y división en cajas. Espejo EXACTO de _remVetoDespacho en
+   *  Remisiones.gs — si los dos se separan, la pantalla habilita campos que
+   *  el backend después rechaza al guardar, que es peor que tenerlos grises
+   *  desde el principio:
+   *
+   *    BORRADOR · POR_CONCILIAR   cualquiera con sesión
+   *    DESPACHADA · ENTREGADA     solo admin (el libro de inventario ya se
+   *                               escribió al conciliar y es append-only)
+   *    FACTURADA · ANULADA        nadie
+   *
+   *  Se calcula como función (no como variable en pintarEditor) porque
+   *  renderLineas() se repinta desde varios lugares y los campos de la tabla
+   *  necesitan quedar bien en todos, no solo al abrir el editor. */
   function puedeEditarPostBloqueo() {
-    return !!doc.docId && !['ANULADA', 'FACTURADA'].includes(String(doc.estado || '').toUpperCase());
+    if (!doc.docId) return false;
+    const e = String(doc.estado || '').toUpperCase();
+    if (e === 'BORRADOR' || e === 'POR_CONCILIAR') return true;
+    if (e === 'DESPACHADA' || e === 'ENTREGADA') return !!M.esAdmin;
+    return false;
   }
 
   // ============================================================
