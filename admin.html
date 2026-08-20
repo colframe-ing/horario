@@ -516,21 +516,13 @@
         </div>
         <div class="filter-group">
           <label>Acción</label>
+          <!-- Solo las dos opciones que NO son una acción del backend. El resto
+               las agrega poblarFiltroAuditoria() desde ACCION_LABEL, agrupadas
+               por módulo: mantener la lista aquí a mano la dejaba desactualizada
+               (hallazgo R3-04). -->
           <select id="audFiltroAccion">
             <option value="">Todas</option>
-            <option value="OPERARIO_CREADO">Operario creado</option>
-            <option value="OPERARIO_ACTUALIZADO">Operario actualizado</option>
-            <option value="DESBLOQUEO">Desbloqueo</option>
-            <option value="MARCACION_ADMIN">Marcación por admin</option>
             <option value="CORRECCIONES_MANUALES">⚡ Correcciones manuales</option>
-            <option value="REGISTRO_ELIMINADO">Registro eliminado</option>
-            <option value="TURNO_CREADO">Turno creado</option>
-            <option value="TURNO_ACTUALIZADO">Turno actualizado</option>
-            <option value="TURNO_ELIMINADO">Turno eliminado</option>
-            <option value="POBLAR_SEMANA">Poblar semana</option>
-            <option value="NOVEDAD_CREADA">Novedad creada</option>
-            <option value="NOVEDAD_ACTUALIZADA">Novedad actualizada</option>
-            <option value="NOVEDAD_ELIMINADA">Novedad eliminada</option>
           </select>
         </div>
         <button id="btnCargarAud" class="btn btn-dark btn-sm">Buscar</button>

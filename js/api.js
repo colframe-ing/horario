@@ -53,7 +53,37 @@ function getSession() {
 function setSession(data) {
   localStorage.setItem('cf_session', JSON.stringify(data));
 }
+/**
+ * Cierra la sesión: revoca el token en el servidor y borra el local.
+ *
+ * La revocación va aquí adentro, y no en cada botón de "Salir", porque
+ * `clearSession()` se llama desde ocho páginas y desde los manejadores de error
+ * de autenticación: ponerlo en un solo sitio hace que todas lo hereden sin
+ * repetir código y sin que se olvide en la próxima página que se agregue.
+ *
+ * Se usa `fetch` directo con `keepalive` en vez de `apiCall`, porque casi todos
+ * los llamadores hacen `location.replace()` inmediatamente después: sin
+ * `keepalive` el navegador cancela la petición al navegar y el token nunca se
+ * revoca. Por eso tampoco se espera la respuesta — no hay nada que hacer con
+ * ella, y el backend es idempotente.
+ *
+ * Si la revocación falla (sin red, por ejemplo) la sesión local se borra igual:
+ * el token expira solo a las 12 h. Antes esa era la ÚNICA forma de cerrarla
+ * (hallazgo R2-08).
+ */
 function clearSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem('cf_session'));
+    if (s && s.token) {
+      fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        keepalive: true,
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'logout', token: s.token }),
+      }).catch(() => {});
+    }
+  } catch (e) { /* sesión ilegible: no hay token que revocar */ }
   localStorage.removeItem('cf_session');
 }
 
@@ -256,8 +286,11 @@ async function apiRemDetalle(token, docId) {
 }
 // remision = cabecera; detalle = [{idProducto, descripcion, unidad, cantidad, pesoKg, ...}]
 // Sin docId crea un borrador nuevo; con docId edita el existente.
-async function apiRemGuardar(token, remision, detalle) {
-  return apiCall('remision_guardar', { token, remision, detalle });
+// motivo: obligatorio SOLO si la remisión ya está despachada o entregada y el
+// cambio mueve cantidades o pesos — el backend corrige el libro de inventario
+// con ese delta y deja el motivo en el documento (ver remGuardar, R4-02).
+async function apiRemGuardar(token, remision, detalle, motivo) {
+  return apiCall('remision_guardar', { token, remision, detalle, motivo: motivo || '' });
 }
 async function apiRemEnviar(token, docId) {
   return apiCall('remision_enviar', { token, docId });
@@ -307,9 +340,16 @@ async function apiRemRechazar(token, docId, motivo) {
 async function apiRemAnular(token, docId, motivo) {
   return apiCall('remision_anular', { token, docId, motivo });
 }
-// tipo: 'remision' | 'manifiesto' | 'etiqueta'. caja solo aplica a los dos últimos.
+// tipo: 'remision' | 'manifiesto' | 'etiqueta' | 'etiquetas' | 'manifiestos'.
+//   caja  → solo para 'manifiesto' y 'etiqueta' (una caja puntual).
+//   Los plurales cubren TODAS las cajas de la remisión en un solo PDF.
 // paquetes: solo para 'etiqueta' — en cuántos bultos físicos se reparte esa
-// caja (si su contenido no cupo en uno solo); imprime una etiqueta por bulto.
-async function apiRemPdf(token, docId, tipo, caja, paquetes) {
-  return apiCall('remision_pdf', { token, docId, tipo: tipo || 'remision', caja, paquetes: paquetes || 1 });
+//   caja (si su contenido no cupo en uno solo); imprime una etiqueta por bulto.
+// porHoja: 1, 2 o 3 etiquetas por hoja. Solo aplica a etiquetas — el manifiesto
+//   va dentro de la caja que describe, así que siempre lleva hoja propia.
+async function apiRemPdf(token, docId, tipo, caja, paquetes, porHoja) {
+  return apiCall('remision_pdf', {
+    token, docId, tipo: tipo || 'remision', caja,
+    paquetes: paquetes || 1, porHoja: porHoja || 1,
+  });
 }

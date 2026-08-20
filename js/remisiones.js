@@ -422,8 +422,12 @@
     // justo el caso que más importa que no se le pase. Se parsean los
     // marcadores "[Ajuste de ítems — ...]: motivo" y se muestran arriba,
     // antes de que aparezca cualquier botón de conciliar.
+    // Dos marcadores, no uno: remItemsAjustar escribe "[Ajuste de ítems …]" y
+    // remGuardar sobre un documento ya firme escribe "[Corrección
+    // post-despacho …]" (R4-02). Las dos son lo mismo para quien va a conciliar
+    // —el pedido no sale como se cotizó— así que van al mismo banner.
     const ajustes = String(doc.observaciones || '').split(' | ')
-      .filter(t => t.trim().startsWith('[Ajuste de ítems'));
+      .filter(t => /^\[(Ajuste de ítems|Corrección post-despacho)/.test(t.trim()));
     const bannerAjuste = $('edAjusteBanner');
     if (ajustes.length) {
       bannerAjuste.innerHTML = '<span>⚠</span><div><strong>Esta remisión tiene ' + ajustes.length +
@@ -451,7 +455,13 @@
     const editable = doc._puedeEditar !== false;
     const puedeEnviar = editable && est === 'BORRADOR' && !nuevo;
     const puedeConciliar = M.esAdmin && (est === 'BORRADOR' || est === 'POR_CONCILIAR') && !nuevo;
+    // El botón no puede seguir diciendo "Guardar borrador" sobre una remisión ya
+    // despachada: no es un borrador, y lo que hace ahí es corregir un documento
+    // firme —con motivo obligatorio y corrección del libro de inventario
+    // (R4-02)—. La etiqueta es la única pista que tiene quien está a punto de
+    // apretarlo.
     $('btnGuardar').classList.toggle('oculto', !editable);
+    $('btnGuardar').textContent = esFirme() ? 'Guardar corrección' : 'Guardar borrador';
     $('btnEnviar').classList.toggle('oculto', !puedeEnviar);
     $('btnConciliar').classList.toggle('oculto', !puedeConciliar);
     $('btnRechazar').classList.toggle('oculto', !(M.esAdmin && est === 'POR_CONCILIAR'));
@@ -1762,7 +1772,30 @@
       cont.innerHTML = `<span style="font-size:0.82rem;color:var(--cf-gray-text);">Ningún ítem asignado a caja${sinAsignar ? ' (' + sinAsignar + ' sin asignar)' : ''}.</span>`;
       return;
     }
-    cont.innerHTML = nums.map(n =>
+    // Botones de LOTE, antes de las cajas una por una: con siete cajas, sacar
+    // las etiquetas de a una eran siete descargas y siete hojas. Acá salen en un
+    // solo PDF y, con 2 o 3 por hoja, en dos o tres hojas en total. Los botones
+    // por caja se quedan para cuando hay que reimprimir una sola.
+    const lote = doc.docId && nums.length > 1 ? `
+      <div style="flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+                  padding:8px 10px;margin-bottom:4px;border:1px solid var(--cf-gray-mid);
+                  border-radius:8px;background:var(--cf-gray-soft,#F8FAFC);">
+        <strong style="font-size:0.8rem;">Las ${nums.length} cajas de una vez:</strong>
+        <button class="btn btn-primary btn-sm" id="btnTodasEtiquetas" style="font-size:0.74rem;">
+          Todas las etiquetas</button>
+        <label style="display:flex;align-items:center;gap:4px;font-size:0.72rem;color:var(--cf-gray-text);"
+               title="Cuántas etiquetas caben en cada hoja. A 2 o 3 por hoja el texto se achica, pero el número de caja y el consecutivo siguen legibles de lejos.">
+          <select id="selEtiquetasPorHoja" style="padding:2px 4px;border:1px solid var(--cf-gray-mid);border-radius:4px;">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+          </select>
+          por hoja
+        </label>
+        <button class="btn btn-ghost btn-sm" id="btnTodosManifiestos" style="font-size:0.74rem;">
+          Todos los manifiestos</button>
+      </div>` : '';
+    cont.innerHTML = lote + nums.map(n =>
       `<div style="border:1px solid var(--cf-gray-mid);border-radius:8px;padding:8px 12px;font-size:0.8rem;">
         <strong>Caja ${n} de ${nums.length}</strong>
         <div style="color:var(--cf-gray-text);">${porCaja[n].n} ítem(s) · ${fmtNum(porCaja[n].peso)} kg</div>
@@ -1791,6 +1824,13 @@
         imprimir(b.dataset.tipo, n, paquetes);
       };
     });
+    const btnEtiq = $('btnTodasEtiquetas');
+    if (btnEtiq) btnEtiq.onclick = () => {
+      const porHoja = parseInt(($('selEtiquetasPorHoja') || {}).value) || 1;
+      imprimir('etiquetas', null, 1, porHoja);
+    };
+    const btnMan = $('btnTodosManifiestos');
+    if (btnMan) btnMan.onclick = () => imprimir('manifiestos');
   }
 
   // El PDF de la remisión imprime el detalle en el mismo orden en que quedó
@@ -1914,6 +1954,14 @@
     return antes - doc._detalle.length;
   }
 
+  /** ¿El documento ya es firme? Sobre uno firme, guardar deja de ser "guardar un
+   *  borrador": si el cambio mueve cantidades o pesos, el backend exige motivo y
+   *  corrige el libro de inventario (ver remGuardar, hallazgo R4-02). */
+  function esFirme() {
+    return ['DESPACHADA', 'ENTREGADA', 'FACTURADA']
+      .indexOf(String(doc.estado || '').toUpperCase()) !== -1;
+  }
+
   async function guardar(silencioso) {
     const quitadas = quitarPrecargadasVacias();
     if (quitadas) {
@@ -1925,18 +1973,48 @@
       toast('Agrega al menos un ítem con cantidad antes de guardar.', 'warning');
       return false;
     }
+
+    // El motivo se pide SIEMPRE que el documento sea firme, aunque el backend
+    // solo lo exija cuando de verdad cambien cantidades o pesos: acá no se sabe
+    // qué se movió —el delta se calcula por producto contra lo que hay en la
+    // hoja— y preguntar de más es preferible a que el guardado se rechace
+    // después de que la persona ya creyó haber guardado.
+    let motivo = '';
+    if (esFirme()) {
+      motivo = await confirmar({
+        titulo: 'Corregir una remisión ya despachada',
+        mensaje: 'Esta remisión ya está ' + String(doc.estado).toLowerCase() + ' y sus salidas de ' +
+                 'inventario ya están registradas.\n\n' +
+                 'Si cambias cantidades o pesos, el libro se corrige con la diferencia y el motivo ' +
+                 'queda en el documento. Explica qué pasó (ej. "el kit pesó 3.800 kg reales, no los ' +
+                 '4.000 calculados").',
+        btnOk: 'Guardar corrección', peligro: true, pedirMotivo: true,
+      });
+      if (!motivo) return false;
+    }
+
     const btn = $('btnGuardar');
+    const etiqueta = btn.textContent;
     btn.disabled = true; btn.textContent = 'Guardando…';
     try {
-      const res = await apiRemGuardar(token, leerCabecera(), doc._detalle);
+      const res = await apiRemGuardar(token, leerCabecera(), doc._detalle, motivo);
       doc.docId = res.docId;
       doc.pesoTotalKg = res.pesoTotalKg;
+      // El backend pudo anexar la marca del motivo a observaciones: se refleja
+      // acá para que el banner de ajustes la muestre y para que el próximo
+      // guardado no la mande de vuelta sin ella.
+      if (res.observaciones !== undefined) doc.observaciones = res.observaciones;
       dirty = false;
-      if (!silencioso) toast('Borrador guardado · ' + res.lineas + ' línea(s) · ' + fmtNum(res.pesoTotalKg) + ' kg', 'success');
+      if (!silencioso) {
+        toast((esFirme() ? 'Corrección guardada' : 'Borrador guardado') +
+              ' · ' + res.lineas + ' línea(s) · ' + fmtNum(res.pesoTotalKg) + ' kg' +
+              (res.movsCorreccion ? ' · ' + res.movsCorreccion + ' corrección(es) de inventario' : ''),
+              'success', res.movsCorreccion ? 6000 : 3500);
+      }
       pintarEditor();
       return true;
     } catch (e) { manejarError(e, 'guardar'); return false; }
-    finally { btn.disabled = false; btn.textContent = 'Guardar borrador'; }
+    finally { btn.disabled = false; btn.textContent = etiqueta; }
   }
 
   $('btnEnviar').addEventListener('click', async () => {
@@ -2007,10 +2085,10 @@
 
   $('btnImprimir').addEventListener('click', () => imprimir('remision'));
 
-  async function imprimir(tipo, caja, paquetes) {
+  async function imprimir(tipo, caja, paquetes, porHoja) {
     toast('Generando documento…', 'info', 2500);
     try {
-      const res = await apiRemPdf(token, doc.docId, tipo, caja, paquetes);
+      const res = await apiRemPdf(token, doc.docId, tipo, caja, paquetes, porHoja);
       if (!res.base64) { toast('El servidor no devolvió el documento.', 'error'); return; }
       const bin = atob(res.base64);
       const bytes = new Uint8Array(bin.length);

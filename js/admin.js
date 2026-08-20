@@ -1356,7 +1356,16 @@
     try {
       const operario = { nombre, cedula, pin, cargo, horario, email, activo, esAdmin };
       if (operarioEditar) {
-        await apiAdminOperarioUpdate(token, { ...operario, fila: parseInt(fila) });
+        // cedulaOriginal identifica la FILA; `cedula` es el valor nuevo (el campo
+        // es editable, así que pueden diferir cuando se corrige un dígito). El
+        // backend rechaza el guardado si la fila dejó de corresponder a esta
+        // cédula — sin eso, una lista desactualizada sobrescribía a otra persona
+        // (hallazgo R3-08).
+        await apiAdminOperarioUpdate(token, {
+          ...operario,
+          fila: parseInt(fila),
+          cedulaOriginal: operarioEditar.cedula,
+        });
       } else {
         await apiAdminOperarioAdd(token, operario);
       }
@@ -1556,19 +1565,63 @@
   // TAB: AUDITORÍA
   // ============================================================
 
+  // Las 39 acciones que el backend escribe hoy (28 en Code.gs → hoja Auditoria,
+  // 11 en Remisiones.gs → AuditoriaRemisiones). Antes el mapa conocía 12 y las
+  // otras 27 caían al fallback: toda la actividad de producción, cotizaciones y
+  // remisiones se auditaba bien en el backend y se veía como código crudo en gris
+  // (hallazgo R3-04). El módulo más activo era el peor representado en su propia
+  // auditoría.
+  //
+  // Convención de color: verde crear · azul actualizar · rojo eliminar/anular ·
+  // violeta actuar en nombre de otro · ámbar mover/reprogramar · teal producción ·
+  // índigo remisiones.
   const ACCION_LABEL = {
-    OPERARIO_CREADO:      { txt: 'Operario creado',       color: '#16A34A' },
-    OPERARIO_ACTUALIZADO: { txt: 'Operario actualizado',  color: '#2563EB' },
-    DESBLOQUEO:           { txt: 'Desbloqueo',             color: '#D97706' },
-    MARCACION_ADMIN:      { txt: 'Marcación por admin',    color: '#7C3AED' },
-    REGISTRO_ELIMINADO:   { txt: 'Registro eliminado',     color: '#DC2626' },
-    TURNO_CREADO:         { txt: 'Turno creado',           color: '#16A34A' },
-    TURNO_ACTUALIZADO:    { txt: 'Turno actualizado',      color: '#2563EB' },
-    TURNO_ELIMINADO:      { txt: 'Turno eliminado',        color: '#DC2626' },
-    POBLAR_SEMANA:        { txt: 'Poblar semana',          color: '#0D9488' },
-    NOVEDAD_CREADA:       { txt: 'Novedad creada',         color: '#16A34A' },
-    NOVEDAD_ACTUALIZADA:  { txt: 'Novedad actualizada',    color: '#2563EB' },
-    NOVEDAD_ELIMINADA:    { txt: 'Novedad eliminada',      color: '#DC2626' },
+    // — Operarios y asistencia —
+    OPERARIO_CREADO:            { txt: 'Operario creado',            color: '#16A34A', g: 'Operarios y asistencia' },
+    OPERARIO_ACTUALIZADO:       { txt: 'Operario actualizado',       color: '#2563EB', g: 'Operarios y asistencia' },
+    DESBLOQUEO:                 { txt: 'Desbloqueo',                 color: '#D97706', g: 'Operarios y asistencia' },
+    MARCACION_ADMIN:            { txt: 'Marcación por admin',        color: '#7C3AED', g: 'Operarios y asistencia' },
+    REGISTRO_ELIMINADO:         { txt: 'Registro eliminado',         color: '#DC2626', g: 'Operarios y asistencia' },
+    SESION_EDITADA:             { txt: 'Sesión editada',             color: '#7C3AED', g: 'Operarios y asistencia' },
+    // — Turnos, programación y novedades —
+    TURNO_CREADO:               { txt: 'Turno creado',               color: '#16A34A', g: 'Turnos, programación y novedades' },
+    TURNO_ACTUALIZADO:          { txt: 'Turno actualizado',          color: '#2563EB', g: 'Turnos, programación y novedades' },
+    TURNO_ELIMINADO:            { txt: 'Turno eliminado',            color: '#DC2626', g: 'Turnos, programación y novedades' },
+    POBLAR_SEMANA:              { txt: 'Poblar semana',              color: '#0D9488', g: 'Turnos, programación y novedades' },
+    NOVEDAD_CREADA:             { txt: 'Novedad creada',             color: '#16A34A', g: 'Turnos, programación y novedades' },
+    NOVEDAD_ACTUALIZADA:        { txt: 'Novedad actualizada',        color: '#2563EB', g: 'Turnos, programación y novedades' },
+    NOVEDAD_ELIMINADA:          { txt: 'Novedad eliminada',          color: '#DC2626', g: 'Turnos, programación y novedades' },
+    // — Cotizaciones —
+    COTIZ_MARCAR:               { txt: 'Cotización marcada',         color: '#0891B2', g: 'Cotizaciones' },
+    COTIZ_VINCULAR:             { txt: 'Cotización vinculada',       color: '#0891B2', g: 'Cotizaciones' },
+    // — Producción y cola —
+    SCAN_PRODUCCION_MANUAL:     { txt: 'Escaneo manual',             color: '#0D9488', g: 'Producción y cola' },
+    PROYECTO_ESTADO:            { txt: 'Estado de proyecto',         color: '#2563EB', g: 'Producción y cola' },
+    PROD_COLA_INICIAR:          { txt: 'Producción iniciada',        color: '#16A34A', g: 'Producción y cola' },
+    PROD_COLA_FINALIZAR:        { txt: 'Producción finalizada',      color: '#0D9488', g: 'Producción y cola' },
+    PROD_COLA_REABRIR:          { txt: 'Producción reabierta',       color: '#D97706', g: 'Producción y cola' },
+    PROD_COLA_REORDENAR:        { txt: 'Cola reordenada',            color: '#D97706', g: 'Producción y cola' },
+    PROD_COLA_TOGGLE:           { txt: 'Entrada de cola alternada',  color: '#D97706', g: 'Producción y cola' },
+    PROD_COLA_NOTA:             { txt: 'Nota de cola',               color: '#64748B', g: 'Producción y cola' },
+    PROD_COLA_CONFIG:           { txt: 'Configuración de la cola',   color: '#2563EB', g: 'Producción y cola' },
+    PROD_AJUSTES_SET:           { txt: 'Ajustes de proyecto',        color: '#2563EB', g: 'Producción y cola' },
+    PROD_ENVIOS_SET:            { txt: 'Envíos redefinidos',         color: '#D97706', g: 'Producción y cola' },
+    PROD_ENTREGA:               { txt: 'Fecha de entrega',           color: '#2563EB', g: 'Producción y cola' },
+    PROD_CAL_EXCEPCION:         { txt: 'Excepción de calendario',    color: '#D97706', g: 'Producción y cola' },
+    // — Remisiones (hoja AuditoriaRemisiones) —
+    REMISION_CREADA:            { txt: 'Remisión creada',            color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_EDITADA:           { txt: 'Remisión editada',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_ESTADO:            { txt: 'Cambio de estado',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_CONCILIADA:        { txt: 'Remisión conciliada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_ITEMS_AJUSTADOS:   { txt: 'Ítems ajustados',            color: '#D97706', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_ITEM_DIVIDIDO:     { txt: 'Ítem dividido en cajas',     color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_ITEM_CAJAS:        { txt: 'Caja de ítems',              color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_CAJAS:             { txt: 'Cajas de la remisión',       color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_TRANSPORTADOR:     { txt: 'Transportador',              color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_IMPRESA:           { txt: 'Remisión impresa',           color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    CLIENTE_NIT_AGREGADO:       { txt: 'NIT de cliente agregado',    color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    // — Fallos del propio rastro —
+    ERROR_AUDITORIA_REMISIONES: { txt: '⚠ Auditoría no registrada',  color: '#DC2626', g: 'Fallos del propio rastro' },
   };
 
   let audData = [];
@@ -1584,6 +1637,39 @@
   })();
 
   btnCargarAud.addEventListener('click', cargarAuditoria);
+  /**
+   * Llena el desplegable de filtros desde ACCION_LABEL, agrupado por módulo.
+   *
+   * Antes el `<select>` traía 13 opciones escritas a mano en admin.html — o sea
+   * una TERCERA copia de la lista de acciones, además del backend y de este mapa.
+   * Estaba desactualizada: 26 de las 39 acciones no se podían filtrar aunque el
+   * backend las auditara (hallazgo R3-04).
+   *
+   * El HTML conserva solo las dos opciones que no son acciones: "Todas" y el
+   * filtro virtual de correcciones manuales.
+   */
+  function poblarFiltroAuditoria() {
+    const sel = document.getElementById('audFiltroAccion');
+    if (!sel) return;
+    const grupos = {};
+    Object.keys(ACCION_LABEL).forEach(k => {
+      const g = ACCION_LABEL[k].g || 'Otras';
+      (grupos[g] = grupos[g] || []).push(k);
+    });
+    Object.keys(grupos).forEach(g => {
+      const og = document.createElement('optgroup');
+      og.label = g;
+      grupos[g].forEach(k => {
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = ACCION_LABEL[k].txt;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+  }
+  poblarFiltroAuditoria();
+
   document.getElementById('audFiltroAccion').addEventListener('change', () => {
     if (audData.length) renderAuditoria(audData);
   });
@@ -1597,6 +1683,13 @@
       const res = await apiAdminAuditoriaGet(token, desde, hasta);
       audData = res.eventos || [];
       renderAuditoria(audData);
+      // Una auditoría que se muestra incompleta sin decirlo es peor que una que
+      // no se muestra: quien la revisa concluye que "no pasó nada".
+      if (res.faltoRemisiones) {
+        toast('No se pudo leer la auditoría de remisiones: la lista está incompleta.', 'warning');
+      } else if (res.truncado) {
+        toast('Se muestran los 500 eventos más recientes. Acota el rango de fechas para ver el resto.', 'warning');
+      }
     } catch (e) { manejarError(e, 'cargarAuditoria'); }
     finally {
       btnCargarAud.disabled = false;
@@ -1628,9 +1721,18 @@
     }
 
     body.innerHTML = filtradas.map(r => {
-      const meta = ACCION_LABEL[r.accion] || { txt: r.accion, color: '#6B7280' };
+      // El fallback va escapado: era la ÚNICA interpolación sin esc() de todo el
+      // render (hallazgo R3-04). Con el mapa completo ya casi no se usa, pero una
+      // acción nueva en el backend vuelve a caer aquí, y entonces el valor sale
+      // de una hoja de cálculo que un admin puede editar a mano.
+      const meta = ACCION_LABEL[r.accion] || { txt: esc(String(r.accion || '—')), color: '#6B7280' };
       const det  = formatDetalle(r.detalle);
       const ts   = formatTimestamp(r.timestamp);
+      // Las remisiones traen el consecutivo (RM-0247) o el docId; los eventos de
+      // la hoja principal no traen referencia y la pastilla se omite.
+      const ref = r.ref
+        ? `<div style="margin-top:3px;"><span style="font-family:ui-monospace,monospace;font-size:0.68rem;background:#EEF2FF;color:#4F46E5;border-radius:4px;padding:1px 5px;">${esc(r.ref)}</span></div>`
+        : '';
       return `<tr>
         <td style="white-space:nowrap;font-size:0.82rem;">
           <strong>${ts.fecha}</strong><br>
@@ -1640,7 +1742,7 @@
           <strong>${esc(r.adminNombre || '—')}</strong><br>
           <span style="color:var(--cf-gray-text);font-size:0.75rem;">${esc(r.adminCedula)}</span>
         </td>
-        <td><span style="display:inline-block;padding:3px 8px;border-radius:6px;background:${meta.color}15;color:${meta.color};font-weight:700;font-size:0.75rem;">${meta.txt}</span></td>
+        <td><span style="display:inline-block;padding:3px 8px;border-radius:6px;background:${meta.color}15;color:${meta.color};font-weight:700;font-size:0.75rem;">${meta.txt}</span>${ref}</td>
         <td style="font-size:0.78rem;line-height:1.5;color:var(--cf-dark);">${det}</td>
       </tr>`;
     }).join('');
