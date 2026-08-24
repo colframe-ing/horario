@@ -1622,6 +1622,7 @@
     CLIENTE_NIT_AGREGADO:       { txt: 'NIT de cliente agregado',    color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     // — Fallos del propio rastro —
     ERROR_AUDITORIA_REMISIONES: { txt: '⚠ Auditoría no registrada',  color: '#DC2626', g: 'Fallos del propio rastro' },
+    ERROR_DETECCION_ANOMALIAS:  { txt: '⚠ Anomalías no detectadas',  color: '#DC2626', g: 'Fallos del propio rastro' },
   };
 
   let audData = [];
