@@ -229,6 +229,15 @@ async function apiProdColaNota(token, archivo, nota, notaEnvio) {
   if (notaEnvio !== undefined) payload.notaEnvio = notaEnvio;
   return apiCall('prod_cola_nota', payload);
 }
+// Pausa una unidad EN PRODUCCIÓN registrando cuánto se produjo. La unidad se
+// queda en su puesto de la cola pero deja de consumir días, lo que libera el cupo
+// para la que se acaba de priorizar (ver PLAN_PROGRAMACION §7).
+async function apiProdColaPausar(token, archivo, avanceMl) {
+  return apiCall('prod_cola_pausar', { token, archivo, avanceMl });
+}
+async function apiProdColaReanudar(token, archivo) {
+  return apiCall('prod_cola_reanudar', { token, archivo });
+}
 async function apiProdColaReabrir(token, archivo) {
   return apiCall('prod_cola_reabrir', { token, archivo });
 }
@@ -236,6 +245,11 @@ async function apiProdColaAjustesSet(token, archivo, ritmo, fechaInicioMin) {
   return apiCall('prod_cola_ajustes_set', { token, archivo, ritmo, fechaInicioMin });
 }
 // archivo = proyecto (no uid). envios = [{id?, tipo:'casas'|'metros', valor, fechaEntrega?}]; [] = unir.
+// Parte UN envío en varias partes, conservando su puesto en la cola. Distinto de
+// apiProdEnviosSet, que redefine el reparto completo (ver PLAN_PROGRAMACION §6).
+async function apiProdEnvioPartir(token, archivo, envioId, partes) {
+  return apiCall('prod_envio_partir', { token, archivo, envioId, partes });
+}
 async function apiProdEnviosSet(token, archivo, envios) {
   return apiCall('prod_envios_set', { token, archivo, envios });
 }
@@ -275,8 +289,11 @@ async function apiRemProyectos(token, buscar) {
 // Detalle sugerido desde la cotización (§6.1.2 del plan): traduce la hoja
 // REMISIONES de la plantilla (o, si no existe, las columnas de accesorios) a
 // líneas ya multiplicadas por número de casas y con lo ya despachado restado.
-async function apiRemSugerir(token, archivo, docIdActual) {
-  return apiCall('remision_sugerir', { token, archivo, docIdActual: docIdActual || '' });
+// `envioId` vacío = sugerir contra el proyecto completo, como antes de existir
+// el vínculo remisión-envío (PLAN_PROGRAMACION §8).
+async function apiRemSugerir(token, archivo, docIdActual, envioId) {
+  return apiCall('remision_sugerir', { token, archivo, docIdActual: docIdActual || '',
+                                       envioId: envioId || '' });
 }
 async function apiRemList(token, filtros = {}) {
   return apiCall('remision_list', { token, ...filtros });

@@ -48,6 +48,9 @@
     /* En producción: activo, con anillo para que resalte sobre lo planeado */
     .cal-casa.prod { box-shadow:0 0 0 2px #0891B2 inset; }
     .prod-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#0891B2; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    /* Pausada: ámbar, para que se lea como "detenida" y no como "en marcha"
+       (cian) ni como "atrasada" (rojo) — está parada, que es otra cosa. */
+    .pausa-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#B45309; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
 
     .leg { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
     .leg-item { display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--cf-dark); }
@@ -76,7 +79,17 @@
     .cola-mover { display:flex; flex-direction:column; gap:2px; }
     .cola-mover button { width:26px; height:22px; border:1px solid var(--cf-gray-mid); background:#fff; border-radius:5px; cursor:pointer; font-size:0.7rem; line-height:1; }
     .cola-mover button:disabled { opacity:0.35; cursor:default; }
-    .cola-drag-handle { cursor:grab; color:var(--cf-gray-text); font-size:1rem; padding:0 4px; user-select:none; flex-shrink:0; }
+    /* Reorden: el número escrito es el método principal (la cola es larga y
+       arrastrar de punta a punta era impracticable); el ⠿ queda como grip
+       secundario, que sigue siendo natural para mover una o dos posiciones. */
+    .cola-orden { display:flex; flex-direction:column; align-items:center; gap:1px; flex-shrink:0; }
+    .cola-orden input.orden-input { width:34px; text-align:center; padding:5px 2px; font-weight:700;
+      font-size:0.78rem; font-family:inherit; border:1.5px solid var(--cf-gray-mid); border-radius:6px;
+      color:var(--cf-dark); -moz-appearance:textfield; }
+    .cola-orden input.orden-input:focus { outline:none; border-color:var(--cf-blue); }
+    .cola-orden input.orden-input::-webkit-outer-spin-button,
+    .cola-orden input.orden-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+    .cola-drag-handle { cursor:grab; color:var(--cf-gray-text); font-size:0.8rem; padding:0 4px; user-select:none; flex-shrink:0; line-height:1; }
     .cola-drag-handle:active { cursor:grabbing; }
     .cola-row.dragging { opacity:0.4; }
     .cola-row.drop-before { box-shadow:inset 0 3px 0 0 var(--cf-blue); }
@@ -94,6 +107,10 @@
     .higiene-titulo:first-child { margin-top:0; }
     .envio-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#7C3AED; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
     .env-row select, .env-row input { padding:6px 8px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.82rem; font-family:inherit; }
+    /* Envío ya producido: tamaño en solo lectura. El freno se ve antes de
+       intentar el cambio, en vez de aparecer como error al guardar. */
+    .env-row-congelado { background:var(--cf-gray); border-radius:6px; padding:2px 6px; }
+    .env-badge { font-size:0.6rem; font-weight:800; color:#fff; background:var(--cf-gray-text); padding:2px 7px; border-radius:999px; white-space:nowrap; }
     .row-actions { position:relative; flex-shrink:0; }
     .row-menu-btn { border:1px solid var(--cf-gray-mid); background:#fff; border-radius:6px; cursor:pointer; font-size:1.1rem; font-weight:700; line-height:1; padding:3px 9px; color:var(--cf-gray-text); }
     .row-menu-btn:hover { background:#F1F5F9; }
@@ -331,6 +348,61 @@
           <button class="btn btn-ghost btn-sm" id="envCancelar">Cancelar</button>
           <button class="btn btn-primary btn-sm" id="envGuardar">Guardar</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pausar producción registrando el avance. El avance se pide porque sin él,
+       al reanudar, el cronograma volvería a agendar la unidad completa. Ver
+       PLAN_PROGRAMACION §7. -->
+  <div id="modalPausar" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pauTitle">
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2 id="pauTitle" style="font-size:1rem;">Pausar producción</h2>
+      </div>
+      <div id="pauNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:4px;"></div>
+      <div id="pauInfo" style="font-size:0.75rem;color:var(--cf-gray-text);margin-bottom:12px;"></div>
+      <label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--cf-gray-text);margin-bottom:4px;">
+        ¿Cuántos ML se produjeron?
+      </label>
+      <input id="pauAvance" type="number" min="0" step="0.01"
+             style="width:100%;padding:8px 10px;border:1.5px solid var(--cf-gray-mid);border-radius:6px;font-size:0.9rem;font-family:inherit;">
+      <div style="font-size:0.7rem;color:var(--cf-gray-text);margin-top:4px;">
+        Viene prellenado con lo que se habría producido a ritmo normal. Ajústalo si no cuadra.
+      </div>
+      <div id="pauResumen" style="font-size:0.8rem;font-weight:700;margin-top:12px;"></div>
+      <div style="font-size:0.72rem;color:var(--cf-gray-text);margin-top:8px;padding-top:8px;border-top:1px solid var(--cf-gray-mid);">
+        La unidad se queda en su puesto de la cola, pero deja de ocupar días — así lo que priorices ahora toma el cupo.
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="pauCancelar">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="pauGuardar">Pausar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Partir UN envío en varias partes, conservando su puesto en la cola.
+       Separado de "Partir en envíos" porque la regla es otra: aquí las partes
+       tienen que sumar exactamente lo que tenía el envío. Ver PLAN_PROGRAMACION §6. -->
+  <div id="modalPartir" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="parTitle">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h2 id="parTitle" style="font-size:1rem;">Partir este envío</h2>
+      </div>
+      <div id="parEnvioNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:4px;"></div>
+      <div id="parTotalInfo" style="font-size:0.75rem;color:var(--cf-gray-text);margin-bottom:12px;"></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--cf-gray-mid);">
+        <span style="font-size:0.75rem;color:var(--cf-gray-text);">Dividir en</span>
+        <input id="parPartesN" type="number" min="2" step="1" value="2" style="width:56px;padding:6px 8px;border:1.5px solid var(--cf-gray-mid);border-radius:6px;font-size:0.82rem;">
+        <span id="parPartesUnidad" style="font-size:0.75rem;color:var(--cf-gray-text);">partes iguales</span>
+        <button class="btn btn-ghost btn-sm" id="parPartesAplicar">Aplicar</button>
+      </div>
+      <div id="parRows"></div>
+      <button class="btn btn-ghost btn-sm" id="parAgregar" style="margin-top:4px;">+ Agregar parte</button>
+      <div id="parResumen" style="font-size:0.8rem;font-weight:700;margin-top:12px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="parCancelar">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="parGuardar">Partir</button>
       </div>
     </div>
   </div>

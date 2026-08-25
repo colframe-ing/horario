@@ -141,6 +141,18 @@
     while(!esLaborable(iso) && guard++<400) iso=isoAddDays(iso,1);
     return iso;
   }
+  // Espejo de _pausaAbierta / _ultimoReanude del backend. Un tramo sin `hasta`
+  // es la pausa en curso.
+  function pausaAbiertaDesde(pausas){
+    var ps = pausas || [];
+    for(var i=0;i<ps.length;i++) if(ps[i] && ps[i].desde && !ps[i].hasta) return ps[i].desde;
+    return '';
+  }
+  function ultimoReanude(pausas){
+    var out = '';
+    (pausas||[]).forEach(function(p){ if(p && p.hasta && p.hasta > out) out = p.hasta; });
+    return out;
+  }
   function computarLocal(items, inicioISO){
     var ritmoG = (_data && _data.config && _data.config.ritmoMlDia) || 300;
     var day0 = nextLaborable(inicioISO);
@@ -174,13 +186,39 @@
       // mlTotal ya es el ML de la UNIDAD (mlUnidad para envíos; mlCasa×cantidad
       // para proyecto entero) y es invariante al ritmo → usarlo directo.
       var totalML = (it.mlTotal != null) ? it.mlTotal : (it.mlCasa||0) * (it.cantidad||1);
-      var durDias = ritmo > 0 ? totalML / ritmo : 0;
+      // Espejo de _computarCronograma: con avance registrado se agenda solo lo
+      // que falta, no la unidad completa.
+      var pend    = Math.max(0, totalML - (it.mlAvance||0));
+      var durDias = ritmo > 0 ? pend / ritmo : 0;
       var iniCot, finCot, diasSpan, enProd = false;
+
+      if(it.pausada){
+        // PAUSADA: barra solo del tramo ya producido, sin proyección futura, y
+        // sin tocar dayCursor — es lo que libera el cupo para la priorizada.
+        var desdePausa = it.pausadaDesde || pausaAbiertaDesde(it.pausas);
+        iniCot = it.fechaRealInicio || desdePausa || '';
+        finCot = desdePausa || iniCot;
+        if(finCot && iniCot && finCot < iniCot) finCot = iniCot;
+        diasSpan = 0; var cp = iniCot, gp = 0;
+        while(cp && finCot && cp <= finCot && gp++ < 800){ if(esLaborable(cp)) diasSpan++; cp = isoAddDays(cp,1); }
+        if(diasSpan < 1) diasSpan = 1;
+        cola.push(Object.assign({}, it, {
+          inicio: iniCot, fin: finCot, atrasado: false,
+          orden: idx+1, color: color, ritmo: ritmo, enProduccion: false, pausada: true,
+          pausadaDesde: desdePausa,
+          mlTotal: Math.round(totalML*100)/100,
+          mlFalta: Math.round(pend*100)/100,
+          durDias: Math.round(durDias*100)/100, dias: diasSpan,
+        }));
+        return;
+      }
 
       if(it.fechaRealInicio){
         // EN PRODUCCIÓN: anclado a su inicio REAL (aunque sea pasado), no a la cola.
+        // Si estuvo pausada y se reanudó, la barra arranca en la última
+        // reanudación: representa el tramo que corre ahora, no el histórico.
         enProd = true;
-        iniCot = it.fechaRealInicio;
+        iniCot = ultimoReanude(it.pausas) || it.fechaRealInicio;
         var diasToca = Math.max(1, Math.ceil(durDias - EPS));
         finCot = addLaborables(nextLaborable(iniCot), diasToca);
         var finIdx = diaIndiceDe(finCot);
@@ -205,8 +243,9 @@
       cola.push(Object.assign({}, it, {
         inicio: iniCot, fin: finCot,
         atrasado: !!(it.fechaEntrega && finCot && finCot > it.fechaEntrega),
-        orden: idx+1, color: color, ritmo: ritmo, enProduccion: enProd,
-        mlTotal: Math.round(totalML*100)/100, durDias: Math.round(durDias*100)/100, dias: diasSpan,
+        orden: idx+1, color: color, ritmo: ritmo, enProduccion: enProd, pausada: false,
+        mlTotal: Math.round(totalML*100)/100, mlFalta: Math.round(pend*100)/100,
+        durDias: Math.round(durDias*100)/100, dias: diasSpan,
       }));
     });
     return { cola: cola };
@@ -396,13 +435,25 @@
                    (c.fechaEntrega ? '<span class="cola-ok">A tiempo</span>' : '');
       var rango = fechaCorta(c.inicio)+' → '+fechaCorta(c.fin);
       return '<div class="cola-row" data-uid="'+esc(c.uid)+'">'+
-        '<div class="cola-drag-handle" draggable="true" data-uid="'+esc(c.uid)+'" title="Arrastrar para reordenar">⠿</div>'+
+        '<div class="cola-orden">'+
+          '<input type="number" class="orden-input" data-orden="'+i+'" min="1" max="'+cola.length+'" '+
+                 'value="'+(i+1)+'" title="Escribe el puesto al que quieres mover este proyecto y presiona Enter">'+
+          '<span class="cola-drag-handle" draggable="true" data-uid="'+esc(c.uid)+'" title="Arrastrar para reordenar">⠿</span>'+
+        '</div>'+
         '<div class="cola-color" style="background:'+c.color+';"></div>'+
         '<div class="cola-main">'+
           '<div class="cola-nombre">'+nombreProyectoHtml(c)+envioBadge(c)+
-            (c.fechaRealInicio?'<span class="prod-badge" title="Producción iniciada el '+esc(fechaCorta(c.fechaRealInicio))+'">▶ En producción</span>':'')+'</div>'+
-          '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+
-            (c.fechaRealInicio?' · inició '+fechaCorta(c.fechaRealInicio):'')+'</div>'+
+            (c.pausada
+              ? '<span class="pausa-badge" title="Pausada el '+esc(fechaCorta(c.pausadaDesde))+' — no consume días de la cola">⏸ Pausada</span>'
+              : (c.fechaRealInicio?'<span class="prod-badge" title="Producción iniciada el '+esc(fechaCorta(c.fechaRealInicio))+'">▶ En producción</span>':''))+'</div>'+
+          '<div class="cola-meta">'+tamanoUnidad(c)+' · '+
+            // Con avance registrado, lo que importa es lo que FALTA: es lo que se
+            // va a agendar cuando se reanude.
+            (c.mlAvance > 0 ? 'faltan '+fmtNum(c.mlFalta,0)+' ML · ≈'+fmtDias(c.durDias)
+                            : '≈'+fmtDias(c.durDias))+
+            (c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+
+            (c.fechaRealInicio?' · inició '+fechaCorta(c.fechaRealInicio):'')+
+            (c.pausada?' · pausada desde '+fechaCorta(c.pausadaDesde):'')+'</div>'+
           notasHtml(c)+
           '<div class="cola-fechas">'+rango+'</div>'+
         '</div>'+
@@ -415,7 +466,19 @@
           '<a class="menu-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'" target="_blank" rel="noopener">📋 Hoja de vida</a>'+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción')+'</button>'+
+          // Pausar / reanudar. Solo tiene sentido sobre algo que ya arrancó: lo
+          // que no arrancó se saca de la cola, que es otra operación.
+          (c.pausada
+            ? '<button data-reanudar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ Reanudar producción</button>'
+            : (c.fechaRealInicio
+                ? '<button data-pausar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⏸ Pausar producción</button>'
+                : ''))+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
+          // Partir ESTE envío, no el proyecto entero. Solo si es un envío y no
+          // arrancó: con producción encima habría que decidir a cuál parte
+          // pertenece lo ya fabricado, y eso no se puede adivinar.
+          ((c.esEnvio && !c.fechaRealInicio)
+            ? '<button data-partir-envio="'+esc(c.uid)+'">✂ Partir este envío en partes</button>' : '')+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
           '<div class="menu-sep"></div>'+
           '<button data-sacar="'+esc(c.uid)+'">Sacar de la cola</button>'+
@@ -424,6 +487,14 @@
       '</div>';
     }).join('');
 
+    // Reordenar escribiendo el puesto. En 'change' (Enter o al salir del campo),
+    // no en cada tecla: si no, escribir "12" reordenaría primero al puesto 1.
+    body.querySelectorAll('.orden-input').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        reordenarUnidad(parseInt(inp.getAttribute('data-orden'), 10), inp.value);
+      });
+      inp.addEventListener('keydown', function(e){ if(e.key==='Enter') inp.blur(); });
+    });
     body.querySelectorAll('[data-entrega]').forEach(function(inp){
       inp.addEventListener('change', function(){ cambiarEntrega(inp.getAttribute('data-entrega'), inp.value); });
     });
@@ -438,6 +509,15 @@
     });
     body.querySelectorAll('[data-partir]').forEach(function(b){
       b.addEventListener('click', function(){ abrirEnvios(b.getAttribute('data-partir')); });
+    });
+    body.querySelectorAll('[data-partir-envio]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirPartir(b.getAttribute('data-partir-envio')); });
+    });
+    body.querySelectorAll('[data-pausar]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirPausar(b.getAttribute('data-pausar'), b.getAttribute('data-nombre')); });
+    });
+    body.querySelectorAll('[data-reanudar]').forEach(function(b){
+      b.addEventListener('click', function(){ reanudarUnidad(b.getAttribute('data-reanudar'), b.getAttribute('data-nombre')); });
     });
     body.querySelectorAll('[data-iniciar]').forEach(function(b){
       b.addEventListener('click', function(){ abrirIniciar(b.getAttribute('data-iniciar'), b.getAttribute('data-nombre')); });
@@ -472,6 +552,11 @@
           '<a class="menu-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'" target="_blank" rel="noopener">📋 Hoja de vida</a>'+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
+          // Partir ESTE envío, no el proyecto entero. Solo si es un envío y no
+          // arrancó: con producción encima habría que decidir a cuál parte
+          // pertenece lo ya fabricado, y eso no se puede adivinar.
+          ((c.esEnvio && !c.fechaRealInicio)
+            ? '<button data-partir-envio="'+esc(c.uid)+'">✂ Partir este envío en partes</button>' : '')+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
           '<div class="menu-sep"></div>'+
           '<button class="danger" data-finalizar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">Finalizar</button>'
@@ -489,6 +574,15 @@
     });
     body.querySelectorAll('[data-partir]').forEach(function(b){
       b.addEventListener('click', function(){ abrirEnvios(b.getAttribute('data-partir')); });
+    });
+    body.querySelectorAll('[data-partir-envio]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirPartir(b.getAttribute('data-partir-envio')); });
+    });
+    body.querySelectorAll('[data-pausar]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirPausar(b.getAttribute('data-pausar'), b.getAttribute('data-nombre')); });
+    });
+    body.querySelectorAll('[data-reanudar]').forEach(function(b){
+      b.addEventListener('click', function(){ reanudarUnidad(b.getAttribute('data-reanudar'), b.getAttribute('data-nombre')); });
     });
     body.querySelectorAll('[data-nota]').forEach(function(b){
       b.addEventListener('click', function(){ abrirNota(b.getAttribute('data-nota'), b.getAttribute('data-nombre')); });
@@ -849,18 +943,30 @@
     _enviosArchivo = archivo;
     _enviosProy = { cantidad: any.cantidad, mlCasa: any.mlCasa, totalML: Math.round((any.mlCasa||0)*(any.cantidad||1)*100)/100, proyecto: any.proyecto };
     var envs = unidades.filter(function(c){ return c.esEnvio; }).sort(function(a,b){ return a.envioIdx-b.envioIdx; });
-    _enviosRows = envs.map(function(c){ return { id:c.envioId, tipo:c.tipoEnvio, valor:c.valorEnvio, fechaEntrega:c.fechaEntrega||'' }; });
+    // Un envío ya producido (cerrado o arrancado) tiene el tamaño congelado: el
+    // backend lo rechaza y aquí se pinta en solo lectura, para que el freno se
+    // vea antes de intentarlo. `finalizado` lo marca el cronograma en la lista de
+    // finalizados; `fechaRealInicio` viene en toda unidad que ya arrancó.
+    _enviosRows = envs.map(function(c){
+      return { id:c.envioId, tipo:c.tipoEnvio, valor:c.valorEnvio, fechaEntrega:c.fechaEntrega||'',
+               congelado: !!(c.finalizado || c.fechaRealInicio),
+               motivo: c.finalizado ? 'Finalizado' : (c.fechaRealInicio ? 'En producción' : '') };
+    });
     if(!_enviosRows.length){
       _enviosRows = [_soloMetros()
         ? { id:null, tipo:'metros', valor:'', fechaEntrega:'' }
         : { id:null, tipo:'unidades', valor:Math.ceil(_enviosProy.cantidad/2), fechaEntrega:'' }];
     }
+    var hayCongelado = _enviosRows.some(function(r){ return r.congelado; });
     document.getElementById('envProyectoNombre').textContent = _enviosProy.proyecto || '';
     document.getElementById('envTotalInfo').textContent = 'Total del proyecto: '+nUnidades(_enviosProy.cantidad)+' · '+fmtNum(_enviosProy.totalML,0)+' ML'+
-      (_soloMetros() ? ' — proyecto de 1 unidad: solo se puede partir por metros' : '');
+      (_soloMetros() ? ' — proyecto de 1 unidad: solo se puede partir por metros' : '')+
+      (hayCongelado ? ' — hay envíos ya producidos: su tamaño no se puede cambiar' : '');
     // Etiqueta de "partir en N partes": por unidades o por metros según el proyecto
     document.getElementById('envPartesUnidad').textContent = _soloMetros() ? 'partes iguales (por metros)' : 'partes iguales';
-    document.getElementById('envUnir').style.display = envs.length ? '' : 'none';
+    // Unir borraría el registro de lo producido, así que el backend lo rechaza:
+    // se esconde el botón en vez de ofrecer algo que va a fallar.
+    document.getElementById('envUnir').style.display = (envs.length && !hayCongelado) ? '' : 'none';
     renderEnviosRows();
     document.getElementById('modalEnvios').classList.remove('hidden');
   }
@@ -868,6 +974,16 @@
     var cont = document.getElementById('envRows');
     var soloM = _soloMetros();
     cont.innerHTML = _enviosRows.map(function(r,i){
+      // Congelado: tipo y cantidad como texto, sin ✕. La fecha de entrega sigue
+      // editable — es el compromiso comercial, no el tamaño de lo que se fabricó.
+      if(r.congelado){
+        return '<div class="env-row env-row-congelado" data-i="'+i+'" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'+
+          '<span style="font-size:0.82rem;color:var(--cf-gray-text);width:70px;display:inline-block;">'+esc(r.tipo)+'</span>'+
+          '<span style="width:100px;font-size:0.82rem;font-weight:700;color:var(--cf-dark);">'+esc(r.valor)+'</span>'+
+          '<input data-f="fechaEntrega" type="date" value="'+esc(r.fechaEntrega)+'" title="Fecha de entrega de este envío" style="flex:1;">'+
+          '<span class="env-badge" title="Ya se produjo: su tamaño no se puede cambiar">🔒 '+esc(r.motivo)+'</span>'+
+        '</div>';
+      }
       var tipoCtrl = soloM
         ? '<span style="font-size:0.82rem;color:var(--cf-gray-text);width:70px;display:inline-block;">metros</span>'
         : '<select data-f="tipo">'+
@@ -887,7 +1003,8 @@
         inp.addEventListener('input', function(){ _enviosRows[i][inp.getAttribute('data-f')] = inp.value; actualizarResumenEnvios(); });
         if(inp.getAttribute('data-f')==='tipo') inp.addEventListener('change', function(){ _enviosRows[i].tipo = inp.value; renderEnviosRows(); });
       });
-      row.querySelector('[data-del]').addEventListener('click', function(){ _enviosRows.splice(i,1); renderEnviosRows(); });
+      var del = row.querySelector('[data-del]');
+      if(del) del.addEventListener('click', function(){ _enviosRows.splice(i,1); renderEnviosRows(); });
     });
     actualizarResumenEnvios();
   }
@@ -908,27 +1025,250 @@
   function aplicarPartesIguales(){
     var N = parseInt(document.getElementById('envPartesN').value) || 0;
     if(N < 2){ toast('Indica al menos 2 partes','error'); return; }
+    // Los envíos ya producidos se conservan tal cual y NO entran en el reparto:
+    // reemplazar la lista completa los borraría y el backend rechazaría el
+    // guardado. Se reparte únicamente lo que queda libre.
+    var fijos = _enviosRows.filter(function(r){ return r.congelado; });
+    var mlFijo = 0, unidFijas = 0;
+    fijos.forEach(function(r){
+      mlFijo += _mlDeRow(r);
+      if(r.tipo !== 'metros') unidFijas += (parseFloat(r.valor)||0);
+    });
+    var mlLibre = Math.round((_enviosProy.totalML - mlFijo)*100)/100;
+    var unidLibres = _enviosProy.cantidad - unidFijas;
+    if(mlLibre <= 0){ toast('No queda nada por repartir: todo el proyecto ya se produjo','error'); return; }
     var rows = [];
     if(_soloMetros()){
-      var base = Math.floor(_enviosProy.totalML / N * 100) / 100;
+      var base = Math.floor(mlLibre / N * 100) / 100;
       var acum = 0;
       for(var i=0;i<N;i++){
-        var v = (i===N-1) ? Math.round((_enviosProy.totalML - acum)*100)/100 : base;
+        var v = (i===N-1) ? Math.round((mlLibre - acum)*100)/100 : base;
         acum += v;
         rows.push({ id:null, tipo:'metros', valor:v, fechaEntrega:'' });
       }
     } else {
-      if(N > _enviosProy.cantidad){ toast('No puedes partir en más partes que unidades ('+_enviosProy.cantidad+')','error'); return; }
-      var base2 = Math.floor(_enviosProy.cantidad / N);
-      var rem = _enviosProy.cantidad % N;   // las primeras `rem` partes llevan una unidad extra
+      if(N > unidLibres){
+        toast('No puedes partir en más partes que unidades por repartir ('+unidLibres+')','error');
+        return;
+      }
+      var base2 = Math.floor(unidLibres / N);
+      var rem = unidLibres % N;   // las primeras `rem` partes llevan una unidad extra
       for(var k=0;k<N;k++){
         rows.push({ id:null, tipo:'unidades', valor: base2 + (k<rem?1:0), fechaEntrega:'' });
       }
     }
-    _enviosRows = rows;
+    _enviosRows = fijos.concat(rows);
     renderEnviosRows();
   }
   function cerrarEnvios(){ document.getElementById('modalEnvios').classList.add('hidden'); _enviosArchivo=null; }
+
+  // ── Pausar / reanudar producción ─────────────────────────────────────────
+  // Pausar pide el avance porque sin él, al reanudar, el cronograma volvería a
+  // agendar la unidad completa. Para que pedirlo no sea una carga, el campo
+  // llega prellenado con lo que se habría producido a ritmo normal desde el
+  // arranque: el caso normal es confirmar (PLAN_PROGRAMACION.md §7).
+  var _pauUid = null, _pauItem = null;
+
+  function abrirPausar(uid, nombre){
+    cerrarMenus();
+    var c = (_data.cola||[]).filter(function(x){ return x.uid===uid; })[0];
+    if(!c){ toast('No se encontró la unidad','error'); return; }
+    if(!c.fechaRealInicio){ toast('Esta unidad no ha arrancado producción','error'); return; }
+    _pauUid = uid; _pauItem = c;
+    // Prellenado: días hábiles trabajados (descontando pausas anteriores) × ritmo.
+    var trabajados = 0, cur = c.fechaRealInicio, hoy = todayISO(), guard = 0;
+    while(cur <= hoy && guard++ < 1200){ if(esLaborable(cur)) trabajados++; cur = isoAddDays(cur,1); }
+    (c.pausas||[]).forEach(function(p){
+      if(!p.desde || !p.hasta) return;
+      var d = p.desde, g2 = 0;
+      while(d <= p.hasta && g2++ < 800){ if(esLaborable(d)) trabajados--; d = isoAddDays(d,1); }
+    });
+    if(trabajados < 0) trabajados = 0;
+    var sugerido = Math.min(Math.round(trabajados * (c.ritmo||0)), Math.max(0, c.mlTotal - 1));
+    document.getElementById('pauNombre').textContent = nombre || etiquetaUnidad(c);
+    document.getElementById('pauInfo').textContent =
+      'Unidad de '+fmtNum(c.mlTotal,0)+' ML · arrancó el '+fechaCorta(c.fechaRealInicio)+
+      ' · '+trabajados+(trabajados===1?' día hábil':' días hábiles')+' de producción';
+    var inp = document.getElementById('pauAvance');
+    inp.max = Math.max(0, c.mlTotal - 1);
+    inp.value = sugerido;
+    actualizarResumenPausa();
+    document.getElementById('modalPausar').classList.remove('hidden');
+  }
+
+  function actualizarResumenPausa(){
+    if(!_pauItem) return;
+    var v = parseFloat(document.getElementById('pauAvance').value);
+    var el = document.getElementById('pauResumen');
+    if(isNaN(v) || v < 0){ el.textContent = 'Escribe cuántos ML se produjeron.'; el.style.color = '#DC2626'; return; }
+    if(v >= _pauItem.mlTotal){
+      el.textContent = 'Eso es toda la unidad: si ya terminó, usa "Finalizar" en vez de pausar.';
+      el.style.color = '#DC2626'; return;
+    }
+    var falta = Math.round((_pauItem.mlTotal - v)*100)/100;
+    var dias = (_pauItem.ritmo > 0) ? Math.round(falta/_pauItem.ritmo*10)/10 : 0;
+    el.textContent = 'Quedarían '+fmtNum(falta,0)+' ML por producir (≈'+fmtDias(dias)+' al reanudar).';
+    el.style.color = 'var(--cf-dark)';
+  }
+
+  function cerrarPausar(){ document.getElementById('modalPausar').classList.add('hidden'); _pauUid=null; _pauItem=null; }
+
+  function guardarPausar(){
+    if(!_pauUid || !_pauItem) return;
+    var v = parseFloat(document.getElementById('pauAvance').value);
+    if(isNaN(v) || v < 0){ toast('Escribe cuántos ML se produjeron','error'); return; }
+    if(v >= _pauItem.mlTotal){ toast('El avance cubre toda la unidad: usa "Finalizar"','error'); return; }
+    var uid = _pauUid;
+    cerrarPausar();
+    beginSave();
+    apiProdColaPausar(token, uid, v)
+      .then(function(){ toast('Producción pausada','ok'); return cargar(); })
+      .catch(manejarError).finally(endSave);
+  }
+
+  async function reanudarUnidad(uid, nombre){
+    cerrarMenus();
+    if(!await confirmar({ titulo:'Reanudar producción',
+      mensaje:'¿Reanudar "'+(nombre||uid)+'"? Vuelve a la cola en su mismo puesto y se agenda solo lo que falta.',
+      btnOk:'Reanudar' })) return;
+    beginSave();
+    apiProdColaReanudar(token, uid)
+      .then(function(){ toast('Producción reanudada','ok'); return cargar(); })
+      .catch(manejarError).finally(endSave);
+  }
+
+  // ── Partir UN envío, conservando su puesto en la cola ────────────────────
+  // Distinto de "Partir en envíos": ese redefine el reparto del proyecto entero
+  // y valida contra el total; este CONSERVA — las partes tienen que sumar lo
+  // mismo que tenía el envío. Y el backend les da el `orden` del padre, así que
+  // las partes no se van al final de la cola.
+  var _parUid = null, _parEnvio = null, _parRows = [];
+
+  function abrirPartir(uid){
+    cerrarMenus();
+    var c = _data.cola.concat(_data.backlog||[]).filter(function(x){ return x.uid===uid; })[0];
+    if(!c){ toast('No se encontró el envío','error'); return; }
+    if(!c.esEnvio){ toast('Este proyecto no está partido en envíos: usa "Partir en envíos"','error'); return; }
+    if(c.fechaRealInicio){
+      toast('Este envío ya arrancó su producción: no se puede partir','error');
+      return;
+    }
+    _parUid = uid;
+    _parEnvio = { archivo:c.archivo, envioId:c.envioId, ml:c.mlTotal, mlCasa:c.mlCasa,
+                  tipo:c.tipoEnvio, valor:c.valorEnvio, fechaEntrega:c.fechaEntrega||'',
+                  etiqueta:etiquetaUnidad(c) };
+    // Una sola casa no se parte por unidades: solo por metros.
+    var porUnidades = (c.tipoEnvio !== 'metros' && c.valorEnvio > 1);
+    _parRows = [porUnidades
+      ? { tipo:'unidades', valor:'', fechaEntrega:'' }
+      : { tipo:'metros', valor:'', fechaEntrega:'' }];
+    document.getElementById('parEnvioNombre').textContent = _parEnvio.etiqueta;
+    document.getElementById('parTotalInfo').textContent =
+      'Este envío: '+fmtNum(_parEnvio.ml,0)+' ML'+
+      (c.tipoEnvio!=='metros' ? ' ('+nUnidades(c.valorEnvio)+')' : '')+
+      ' — las partes tienen que sumar exactamente eso.';
+    document.getElementById('parPartesUnidad').textContent = porUnidades ? 'partes iguales' : 'partes iguales (por metros)';
+    aplicarPartirIguales();   // arranca con la propuesta de 2 mitades, que es el caso común
+    document.getElementById('modalPartir').classList.remove('hidden');
+  }
+
+  function _mlDeParte(r){
+    var v = parseFloat(r.valor) || 0;
+    return r.tipo === 'metros' ? v : v * (_parEnvio.mlCasa || 0);
+  }
+
+  function renderPartirRows(){
+    var cont = document.getElementById('parRows');
+    var porUnidades = (_parEnvio.tipo !== 'metros' && _parEnvio.valor > 1);
+    cont.innerHTML = _parRows.map(function(r,i){
+      var tipoCtrl = porUnidades
+        ? '<select data-f="tipo">'+
+            '<option value="unidades"'+(r.tipo!=='metros'?' selected':'')+'>unidades</option>'+
+            '<option value="metros"'+(r.tipo==='metros'?' selected':'')+'>metros</option>'+
+          '</select>'
+        : '<span style="font-size:0.82rem;color:var(--cf-gray-text);width:70px;display:inline-block;">metros</span>';
+      return '<div class="env-row" data-i="'+i+'" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'+
+        tipoCtrl+
+        '<input data-f="valor" type="number" min="0" step="'+(r.tipo==='metros'?'0.01':'1')+'" value="'+esc(r.valor)+'" placeholder="'+(r.tipo==='metros'?'ML':'nº unidades')+'" style="width:100px;">'+
+        '<input data-f="fechaEntrega" type="date" value="'+esc(r.fechaEntrega)+'" title="Fecha de entrega de esta parte (vacío = hereda la del envío)" style="flex:1;">'+
+        '<button data-del="'+i+'" class="cola-toggle-btn" title="Quitar parte">✕</button>'+
+      '</div>';
+    }).join('');
+    cont.querySelectorAll('.env-row').forEach(function(row){
+      var i = +row.getAttribute('data-i');
+      row.querySelectorAll('[data-f]').forEach(function(inp){
+        inp.addEventListener('input', function(){ _parRows[i][inp.getAttribute('data-f')] = inp.value; actualizarResumenPartir(); });
+        if(inp.getAttribute('data-f')==='tipo') inp.addEventListener('change', function(){ _parRows[i].tipo = inp.value; renderPartirRows(); });
+      });
+      row.querySelector('[data-del]').addEventListener('click', function(){ _parRows.splice(i,1); renderPartirRows(); });
+    });
+    actualizarResumenPartir();
+  }
+
+  function actualizarResumenPartir(){
+    var suma = 0;
+    _parRows.forEach(function(r){ suma += _mlDeParte(r); });
+    suma = Math.round(suma*100)/100;
+    var dif = Math.round((_parEnvio.ml - suma)*100)/100;
+    var el = document.getElementById('parResumen');
+    var txt = 'Asignado: '+fmtNum(suma,0)+' ML de '+fmtNum(_parEnvio.ml,0)+' ML';
+    if(Math.abs(dif) > 0.5) txt += ' — ⚠ '+(dif>0 ? 'faltan '+fmtNum(dif,0)+' ML' : 'sobran '+fmtNum(-dif,0)+' ML');
+    else txt += ' — ✓ cuadra';
+    el.textContent = txt;
+    el.style.color = (Math.abs(dif) > 0.5) ? '#DC2626' : '#16A34A';
+  }
+
+  function aplicarPartirIguales(){
+    var N = parseInt(document.getElementById('parPartesN').value) || 0;
+    if(N < 2){ toast('Indica al menos 2 partes','error'); return; }
+    var porUnidades = (_parEnvio.tipo !== 'metros' && _parEnvio.valor > 1);
+    var rows = [];
+    if(porUnidades && N <= _parEnvio.valor){
+      // Reparto por casas enteras: las primeras `rem` partes llevan una extra.
+      var base = Math.floor(_parEnvio.valor / N), rem = _parEnvio.valor % N;
+      for(var k=0;k<N;k++) rows.push({ tipo:'unidades', valor: base + (k<rem?1:0), fechaEntrega:'' });
+    } else {
+      // Por metros: la última parte absorbe el redondeo para que la suma cuadre
+      // exacta — el backend exige que conserve, con 0,5 ML de tolerancia.
+      var b = Math.floor(_parEnvio.ml / N * 100) / 100, acum = 0;
+      for(var i=0;i<N;i++){
+        var v = (i===N-1) ? Math.round((_parEnvio.ml - acum)*100)/100 : b;
+        acum += v;
+        rows.push({ tipo:'metros', valor:v, fechaEntrega:'' });
+      }
+    }
+    _parRows = rows;
+    renderPartirRows();
+  }
+
+  function cerrarPartir(){ document.getElementById('modalPartir').classList.add('hidden'); _parUid=null; _parEnvio=null; }
+
+  function guardarPartir(){
+    if(!_parEnvio) return;
+    if(_parRows.length < 2){ toast('Para partir hay que indicar al menos 2 partes','error'); return; }
+    var suma = 0;
+    for(var i=0;i<_parRows.length;i++){
+      var r = _parRows[i], v = parseFloat(r.valor);
+      if(!(v>0)){ toast('Cada parte debe tener un valor mayor a 0','error'); return; }
+      if(r.tipo!=='metros' && v!==Math.floor(v)){ toast('Las partes por unidades deben ser un número entero','error'); return; }
+      suma += _mlDeParte(r);
+    }
+    if(Math.abs(suma - _parEnvio.ml) > 0.5){
+      toast('Las partes suman '+fmtNum(Math.round(suma),0)+' ML y el envío tiene '+fmtNum(_parEnvio.ml,0)+' ML','error');
+      return;
+    }
+    var partes = _parRows.map(function(r){
+      var o = { tipo:r.tipo, valor:parseFloat(r.valor) };
+      if(r.fechaEntrega) o.fechaEntrega = r.fechaEntrega;
+      return o;
+    });
+    var archivo = _parEnvio.archivo, envioId = _parEnvio.envioId, n = partes.length;
+    cerrarPartir();
+    beginSave();
+    apiProdEnvioPartir(token, archivo, envioId, partes)
+      .then(function(){ toast('Envío partido en '+n+' partes','ok'); return cargar(); })
+      .catch(manejarError).finally(endSave);
+  }
   function guardarEnvios(){
     var archivo = _enviosArchivo; if(!archivo) return;
     if(!_enviosRows.length){ toast('Agrega al menos un envío, o usa "Unir"','error'); return; }
@@ -1020,6 +1360,47 @@
       });
     });
   }
+  // Mueve el elemento que está en `desde` (índice 0-based) al puesto
+  // `destino1based` (1..n, con clamp), y devuelve una lista NUEVA.
+  //
+  // Pura a propósito: es la única pieza de este reorden que decide prioridades de
+  // producción, y así se puede probar caso por caso sin DOM
+  // (tests/cola_reorden.test.js). No muta la lista recibida porque
+  // aplicarNuevoOrden se queda con la anterior para revertir si falla el guardado.
+  //
+  // El destino se aplica sobre la lista ya SIN el elemento, que es lo que
+  // significa "ponelo en el puesto 3" para quien lo escribe. Misma semántica que
+  // reordenarLinea en los ítems de la remisión, para que las dos pantallas no se
+  // comporten distinto ante el mismo gesto.
+  function nuevoOrdenPorNumero(lista, desde, destino1based){
+    var n = lista.length;
+    if (desde < 0 || desde >= n) return lista.slice();
+    var destino = parseInt(destino1based, 10);
+    if (!destino || destino < 1) destino = 1;
+    if (destino > n) destino = n;
+    var destino0 = destino - 1;
+    if (destino0 === desde) return lista.slice();
+    var out = lista.slice();
+    var item = out.splice(desde, 1)[0];
+    out.splice(destino0, 0, item);
+    return out;
+  }
+
+  // Reordena escribiendo el puesto destino, en vez de arrastrar: con la cola ya
+  // larga, llevar un proyecto del final al principio a fuerza de arrastre era
+  // impracticable. Se confirma en 'change' (Enter o al salir del campo), no en
+  // cada tecla, para no reordenar a media cifra de un número de dos dígitos.
+  function reordenarUnidad(i, destino){
+    var cola = nuevoOrdenPorNumero(_data.cola, i, destino);
+    // Sin cambio real: se repinta igual para que el input vuelva a mostrar el
+    // número que le corresponde si se escribió algo fuera de rango.
+    if (cola.map(function(c){return c.uid;}).join('|') === _data.cola.map(function(c){return c.uid;}).join('|')) {
+      recomputarYRenderizar();
+      return;
+    }
+    aplicarNuevoOrden(cola);
+  }
+
   // Arrastra `uid` a la posición de `targetUid` (antes o después, según `after`).
   function reordenarPorDrop(uid, targetUid, after){
     if(uid === targetUid) return;
@@ -1165,6 +1546,16 @@
     document.getElementById('envCancelar').addEventListener('click', cerrarEnvios);
     document.getElementById('envGuardar').addEventListener('click', guardarEnvios);
     document.getElementById('envUnir').addEventListener('click', unirEnvios);
+    document.getElementById('parAgregar').addEventListener('click', function(){
+      _parRows.push({ tipo:(_parEnvio && _parEnvio.tipo!=='metros' && _parEnvio.valor>1)?'unidades':'metros', valor:'', fechaEntrega:'' });
+      renderPartirRows();
+    });
+    document.getElementById('parPartesAplicar').addEventListener('click', aplicarPartirIguales);
+    document.getElementById('parCancelar').addEventListener('click', cerrarPartir);
+    document.getElementById('parGuardar').addEventListener('click', guardarPartir);
+    document.getElementById('pauCancelar').addEventListener('click', cerrarPausar);
+    document.getElementById('pauGuardar').addEventListener('click', guardarPausar);
+    document.getElementById('pauAvance').addEventListener('input', actualizarResumenPausa);
     document.getElementById('modalEnvios').addEventListener('click', function(e){ if(e.target.id==='modalEnvios') cerrarEnvios(); });
     document.getElementById('notaCancelar').addEventListener('click', cerrarNota);
     document.getElementById('notaGuardar').addEventListener('click', guardarNota);

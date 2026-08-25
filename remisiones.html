@@ -252,6 +252,13 @@
           <div class="form-group" style="grid-column:1/-1;">
             <label for="edProyecto">Proyecto</label><input type="text" id="edProyecto">
           </div>
+          <!-- Solo aparece si el proyecto está partido en envíos. Elegir el envío
+               hace que la sugerencia de kg de acero se calcule contra ESE envío y
+               no contra la obra completa (PLAN_PROGRAMACION §8). -->
+          <div class="form-group oculto" id="edEnvioWrap" style="grid-column:1/-1;">
+            <label for="edEnvio">Envío que despacha esta remisión</label>
+            <select id="edEnvio"></select>
+          </div>
         </div>
       </div>
 

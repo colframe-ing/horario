@@ -33,6 +33,9 @@
   // no es la misma tras el reordenamiento.
   let editandoDesc = new Set();
   let proyectosCache = [];
+  // Envíos del proyecto vinculado a la remisión abierta. Va aquí y no junto a
+  // pintarEnvios porque la carga del formulario lo usa mucho antes en el archivo.
+  let enviosCache = [];
   // Cambios sin guardar en el editor. Se usa para avisar antes de salir sin
   // guardar (botón Volver) o cerrar/recargar la pestaña (beforeunload). Se
   // marca por delegación desde #vistaEditor (input/change burbujean incluso
@@ -386,6 +389,19 @@
     const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? '' : v; };
     set('edFecha', doc.fecha || hoyISO());
     set('edCb', doc.cb); set('edVersion', doc.version); set('edProyecto', doc.proyecto);
+    // Envíos del proyecto vinculado: hacen falta para poder MOSTRAR a qué envío
+    // apunta la remisión, porque el id guardado no le dice nada a nadie. Se piden
+    // solo si hay proyecto vinculado, y si la consulta falla el resto del
+    // formulario sigue funcionando: el envío ya está guardado en doc.envioId.
+    enviosCache = [];
+    pintarEnvios();
+    if (doc.cotizacionArchivo && doc.cb) {
+      apiRemProyectos(token, String(doc.cb)).then(res => {
+        const p = (res.proyectos || []).filter(x => x.archivo === doc.cotizacionArchivo)[0];
+        enviosCache = (p && p.envios) || [];
+        pintarEnvios();
+      }).catch(() => {});
+    }
     // Los buscadores muestran "CÓDIGO · Descripción"; el código real vive en doc.
     set('edCliente', textoDe(itemsClientes, doc.codCliente));
     pintarNits(doc.codCliente, doc.nit);
@@ -730,10 +746,46 @@
     $('edCb').value = p.cb; $('edVersion').value = p.version;
     $('edProyecto').value = p.proyecto;
     doc.cotizacionArchivo = p.archivo;
+    // Al cambiar de proyecto el envío anterior deja de tener sentido.
+    doc.envioId = '';
+    enviosCache = p.envios || [];
+    pintarEnvios();
     $('edProySelect').style.display = 'none';
     $('edProyBuscar').value = '';
     $('btnSugerir').classList.remove('oculto');
     toast('Proyecto vinculado: CB ' + p.cb + '.' + p.version, 'success');
+  });
+
+  // ── Envío del proyecto que despacha esta remisión ──────────────────────
+  // Producción parte los proyectos en envíos; el despacho se contabilizaba
+  // contra el proyecto completo, así que la sugerencia de kg de acero salía
+  // calculada sobre toda la obra (PLAN_PROGRAMACION §8). Eligiendo el envío,
+  // el backend sugiere contra ESE envío y descuenta solo sus despachos.
+  // Sin envío elegido todo se comporta como antes.
+
+  function etiquetaEnvio(e) {
+    const tam = (e.tipo === 'metros')
+      ? fmtNum(e.valor) + ' ml'
+      : e.valor + (e.valor > 1 ? ' casas' : ' casa');
+    const est = e.estado === 'FINALIZADA' ? ' · ya producido'
+              : (e.estado === 'PAUSADA'   ? ' · pausado' : '');
+    return 'Envío ' + e.idx + ' de ' + e.total + ' · ' + tam + est;
+  }
+
+  function pintarEnvios() {
+    const cont = $('edEnvioWrap'), sel = $('edEnvio');
+    if (!cont || !sel) return;
+    if (!enviosCache.length) { cont.classList.add('oculto'); sel.innerHTML = ''; return; }
+    cont.classList.remove('oculto');
+    sel.innerHTML = '<option value="">Todo el proyecto</option>' +
+      enviosCache.map(e => `<option value="${esc(e.id)}"${doc.envioId === e.id ? ' selected' : ''}>` +
+                            `${esc(etiquetaEnvio(e))}</option>`).join('');
+  }
+
+  const selEnvio = $('edEnvio');
+  if (selEnvio) selEnvio.addEventListener('change', () => {
+    doc.envioId = selEnvio.value || '';
+    marcarSucio();
   });
 
   // ── Sugerir detalle desde la cotización (§6.1.2 del plan) ────────────────
@@ -745,7 +797,7 @@
     const btn = $('btnSugerir');
     btn.disabled = true; btn.textContent = 'Consultando…';
     try {
-      const res = await apiRemSugerir(token, doc.cotizacionArchivo, doc.docId);
+      const res = await apiRemSugerir(token, doc.cotizacionArchivo, doc.docId, doc.envioId);
       const lineas = res.lineas || [];
       if (!lineas.length) { toast('La cotización no tiene nada que sugerir.', 'info'); return; }
       marcarSucio();
@@ -1906,6 +1958,7 @@
       // lo permita, igual que el resto del formulario).
       fecha: v('edFecha') || doc.fecha || hoyISO(),
       cotizacionArchivo: doc.cotizacionArchivo || '',
+      envioId: doc.envioId || '',
       cb: v('edCb'), version: v('edVersion'), proyecto: v('edProyecto'),
       // De los buscadores se envía el CÓDIGO, nunca el texto visible. Si lo
       // escrito no resuelve a un cliente real del catálogo, se manda vacío en
