@@ -195,11 +195,15 @@
         return '<span style="' + estiloCapaBadge(capa) + '">' + esc(capa) + ' ' + m + 'm</span>';
       }).join('');
       const fecha = _fechaES(p.fecha);
+      // Cerrada por el sistema al terminar la producción: se distingue de un
+      // cierre manual para que nadie la reabra creyendo que fue un error.
+      var autoTag = (p.estado === 'CERRADO' && p.cerradoAuto)
+        ? ' <span class="proy-auto" title="La cerró el sistema al terminar la producción de todas sus cotizaciones">auto</span>' : '';
       return '<div class="proy-card' + (p.estado === 'CERRADO' ? ' cerrado' : '') +
         '" data-id="' + esc(p.carpetaId) + '" tabindex="0" role="button" aria-label="Ver proyecto ' + esc(p.nombre) + '">' +
         '<div class="proy-card-top">' +
           '<div class="proy-nombre">' + esc(p.nombre) + '</div>' +
-          '<span class="estado-badge ' + esc(p.estado) + '">' + esc(p.estado) + '</span>' +
+          '<span class="estado-badge ' + esc(p.estado) + '">' + esc(p.estado) + '</span>' + autoTag +
         '</div>' +
         '<div class="proy-fecha">' + fecha + '</div>' +
         badgeCola(p) +
@@ -269,6 +273,11 @@
     if (esAdmin) {
       btnEstado.classList.remove('hidden');
       btnEstado.textContent        = p.estado === 'ACTIVO' ? 'Cerrar proyecto' : 'Reactivar proyecto';
+      // Si la cerró el sistema, conviene decirlo: reactivarla a mano la saca del
+      // automático y ya no se vuelve a cerrar sola.
+      btnEstado.title = (p.estado === 'CERRADO' && p.cerradoAuto)
+        ? 'La cerró el sistema al terminar la producción. Si la reactivas, queda en manual.'
+        : '';
       btnEstado.dataset.estado     = p.estado;
       btnEstado.dataset.carpetaId  = p.carpetaId;
     }

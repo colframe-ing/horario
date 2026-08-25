@@ -826,8 +826,24 @@
     recomputarYRenderizar();
 
     beginSave();
-    apiProdColaFinalizar(token, uid, fechaReal, fechaRealInicio || '').then(function(){
-      toast('Finalizado','ok');
+    apiProdColaFinalizar(token, uid, fechaReal, fechaRealInicio || '').then(function(res){
+      // La carpeta de producción en Drive se cierra sola cuando termina TODO lo
+      // que la usa. Si no se cerró, se dice por qué: sin esto uno va a la página
+      // de producción, la ve abierta, y no sabe si el sistema falló o si de
+      // verdad falta trabajo de otra cotización (PLAN_ESTADOS §5).
+      var cerradas = (res && res.carpetasCerradas) || [];
+      var bloq     = (res && res.carpetasBloqueadas) || [];
+      if(cerradas.length){
+        toast('Finalizado · carpeta de producción cerrada','ok');
+      } else if(bloq.length){
+        var falta = [];
+        bloq.forEach(function(b){
+          (b.porque||[]).forEach(function(a){ if(falta.indexOf(a)<0) falta.push(a); });
+        });
+        toast('Finalizado. La carpeta sigue abierta: falta '+falta.join(', '),'ok');
+      } else {
+        toast('Finalizado','ok');
+      }
     }).catch(function(e){
       var fi = _data.finalizados.map(function(x){return x.uid;}).indexOf(uid);
       if(fi>=0) _data.finalizados.splice(fi,1);
@@ -1069,37 +1085,90 @@
   // arranque: el caso normal es confirmar (PLAN_PROGRAMACION.md §7).
   var _pauUid = null, _pauItem = null;
 
+  /**
+   * Atajos para responder cuánto se produjo, en la unidad que la planta SÍ sabe
+   * contar. Devuelve [{ etiqueta, ml }], siempre por debajo del total (llegar al
+   * total es "Finalizar", no pausar).
+   *
+   * Para una unidad de varias casas se ofrecen casas enteras, porque "terminé 2
+   * de 3" es una pregunta contestable; "produje 2500 metros lineales" no lo es.
+   * Para una unidad de una sola casa, o medida en metros, no hay nada que contar
+   * en enteros y se ofrecen fracciones.
+   *
+   * PURA: sin DOM, para poder probar la regla caso por caso.
+   */
+  function opcionesAvance(item){
+    var total = Number(item && item.mlTotal) || 0;
+    if(total <= 0) return [];
+    var out = [];
+    var casas = (item.esEnvio && item.tipoEnvio !== 'metros') ? Number(item.valorEnvio)
+              : (item.esEnvio ? 0 : Number(item.cantidad));
+    var mlCasa = Number(item.mlCasa) || 0;
+    if(casas > 1 && mlCasa > 0){
+      for(var k = 1; k < casas; k++){
+        out.push({ etiqueta: k + (k === 1 ? ' casa' : ' casas'), ml: Math.round(k * mlCasa * 100)/100 });
+      }
+      return out;
+    }
+    [0.25, 0.5, 0.75].forEach(function(f){
+      out.push({ etiqueta: Math.round(f*100) + '%', ml: Math.round(total * f * 100)/100 });
+    });
+    return out;
+  }
+
   function abrirPausar(uid, nombre){
     cerrarMenus();
     var c = (_data.cola||[]).filter(function(x){ return x.uid===uid; })[0];
     if(!c){ toast('No se encontró la unidad','error'); return; }
     if(!c.fechaRealInicio){ toast('Esta unidad no ha arrancado producción','error'); return; }
     _pauUid = uid; _pauItem = c;
-    // Prellenado: días hábiles trabajados (descontando pausas anteriores) × ritmo.
-    var trabajados = 0, cur = c.fechaRealInicio, hoy = todayISO(), guard = 0;
-    while(cur <= hoy && guard++ < 1200){ if(esLaborable(cur)) trabajados++; cur = isoAddDays(cur,1); }
-    (c.pausas||[]).forEach(function(p){
-      if(!p.desde || !p.hasta) return;
-      var d = p.desde, g2 = 0;
-      while(d <= p.hasta && g2++ < 800){ if(esLaborable(d)) trabajados--; d = isoAddDays(d,1); }
-    });
-    if(trabajados < 0) trabajados = 0;
-    var sugerido = Math.min(Math.round(trabajados * (c.ritmo||0)), Math.max(0, c.mlTotal - 1));
+
+    // NO se prellena. Antes se proponía "días transcurridos × ritmo", y eso está
+    // mal de dos maneras: `ritmo` es el rendimiento de la planta ENTERA, no el de
+    // esta unidad —el cronograma empaca en secuencia justamente porque la planta
+    // trabaja una a la vez—, y el tope a mlTotal-1 disimulaba el desborde: toda
+    // unidad que llevara su duración estimada o más salía prellenada en el 100 %,
+    // que es exactamente cuando uno querría pausarla. Un dato inventado con cara
+    // de medido acaba en nómina de producción: quien pausa es el único que sabe
+    // cuánto salió, igual que el operario con su propia anomalía.
     document.getElementById('pauNombre').textContent = nombre || etiquetaUnidad(c);
     document.getElementById('pauInfo').textContent =
-      'Unidad de '+fmtNum(c.mlTotal,0)+' ML · arrancó el '+fechaCorta(c.fechaRealInicio)+
-      ' · '+trabajados+(trabajados===1?' día hábil':' días hábiles')+' de producción';
+      'Unidad de '+fmtNum(c.mlTotal,0)+' ML'+
+      (c.mlCasa > 0 && !c.esEnvio && c.cantidad > 1 ? ' ('+c.cantidad+' casas de '+fmtNum(c.mlCasa,0)+' ML)' : '')+
+      ' · arrancó el '+fechaCorta(c.fechaRealInicio);
     var inp = document.getElementById('pauAvance');
-    inp.max = Math.max(0, c.mlTotal - 1);
-    inp.value = sugerido;
+    inp.max = c.mlTotal;
+    inp.value = '';
+    // Atajos: rellenan el campo, no lo deciden.
+    var cont = document.getElementById('pauAtajos');
+    var ops = opcionesAvance(c);
+    cont.innerHTML = ops.length
+      ? '<span style="font-size:0.7rem;color:var(--cf-gray-text);">Atajos:</span> ' +
+        ops.map(function(o,i){
+          return '<button type="button" class="btn btn-ghost btn-sm" data-avance="'+i+'">'+esc(o.etiqueta)+'</button>';
+        }).join(' ')
+      : '';
+    cont.querySelectorAll('[data-avance]').forEach(function(b){
+      b.addEventListener('click', function(){
+        inp.value = ops[parseInt(b.getAttribute('data-avance'),10)].ml;
+        actualizarResumenPausa();
+      });
+    });
     actualizarResumenPausa();
     document.getElementById('modalPausar').classList.remove('hidden');
+    inp.focus();
   }
 
   function actualizarResumenPausa(){
     if(!_pauItem) return;
-    var v = parseFloat(document.getElementById('pauAvance').value);
+    var crudo = document.getElementById('pauAvance').value;
+    var v = parseFloat(crudo);
     var el = document.getElementById('pauResumen');
+    if(String(crudo).trim() === ''){
+      el.textContent = 'Escribe cuántos ML se produjeron: es el dato que decide lo que se agenda al reanudar.';
+      el.style.color = 'var(--cf-gray-text)';
+      return;
+    }
     if(isNaN(v) || v < 0){ el.textContent = 'Escribe cuántos ML se produjeron.'; el.style.color = '#DC2626'; return; }
     if(v >= _pauItem.mlTotal){
       el.textContent = 'Eso es toda la unidad: si ya terminó, usa "Finalizar" en vez de pausar.';

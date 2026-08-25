@@ -42,7 +42,10 @@
     }
     .btn-aprobar.on { background: var(--cf-success); border-color: var(--cf-success); color: #fff; }
     .btn-aprobar:disabled { opacity: 0.5; cursor: default; }
+    .summary-card .sub { font-size: 0.7rem; font-weight: 700; color: var(--cf-gray-text); margin-top: 2px; }
     .estado-aprob { font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #D1FAE5; color: #065F46; white-space: nowrap; }
+    /* Estado derivado de las unidades de la cola (PLAN_ESTADOS §3). */
+    .cot-estado { font-size: 0.62rem; font-weight: 800; padding: 1px 7px; border-radius: 999px; white-space: nowrap; vertical-align: middle; margin-left: 6px; }
 
     .cot-link-badge { font-size: 0.66rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #EFF6FF; color: var(--cf-blue); white-space: nowrap; }
 
@@ -155,6 +158,23 @@
       <div class="summary-card" style="border-left-color:var(--cf-blue);">
         <div class="label">ML aprobado</div>
         <div class="value" id="sumMl">—</div>
+      </div>
+      <!-- Cortes por estado (PLAN_ESTADOS §4). Las tres suman el aprobado:
+           si alguna vez no cuadran, el error esta en el backend, no aqui. -->
+      <div class="summary-card" style="border-left-color:#065F46;">
+        <div class="label">Producido</div>
+        <div class="value" id="sumMlProducido">—</div>
+        <div class="sub" id="sumValorProducido">—</div>
+      </div>
+      <div class="summary-card" style="border-left-color:#B45309;">
+        <div class="label">En avance</div>
+        <div class="value" id="sumMlAvance">—</div>
+        <div class="sub" id="sumValorAvance">—</div>
+      </div>
+      <div class="summary-card" style="border-left-color:#DC2626;">
+        <div class="label">Pendiente</div>
+        <div class="value" id="sumMlPendiente">—</div>
+        <div class="sub" id="sumValorPendiente">—</div>
       </div>
       <div class="summary-card" style="border-left-color:#071D49;">
         <div class="label">Valor aprobado</div>

@@ -1609,6 +1609,8 @@
     PROD_ENVIO_PARTIR:          { txt: 'Envío partido',              color: '#D97706', g: 'Producción y cola' },
     PROD_COLA_PAUSAR:           { txt: 'Producción pausada',        color: '#B45309', g: 'Producción y cola' },
     PROD_COLA_REANUDAR:         { txt: 'Producción reanudada',      color: '#16A34A', g: 'Producción y cola' },
+    PROYECTO_CIERRE_AUTO:       { txt: 'Carpeta cerrada/reabierta sola', color: '#0891B2', g: 'Producción y cola' },
+    ERROR_CIERRE_CARPETAS:      { txt: 'Falló el cierre de carpetas',  color: '#DC2626', g: 'Producción y cola' },
     PROD_ENTREGA:               { txt: 'Fecha de entrega',           color: '#2563EB', g: 'Producción y cola' },
     PROD_CAL_EXCEPCION:         { txt: 'Excepción de calendario',    color: '#D97706', g: 'Producción y cola' },
     // — Remisiones (hoja AuditoriaRemisiones) —

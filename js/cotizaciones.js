@@ -55,11 +55,47 @@
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
+  // Etiqueta del estado derivado. Los nombres se leen desde la operación, no
+  // desde el modelo: 'Producida' y no 'FINALIZADA'.
+  var ESTADO_COTIZ = {
+    SIN_APROBAR:   null,                                    // no se rotula: la card ya dice si está aprobada
+    SIN_COLA:      { txt: 'Sin programar', bg: '#F1F5F9', fg: '#475569' },
+    EN_COLA:       { txt: 'En cola',       bg: '#DBEAFE', fg: '#1D4ED8' },
+    EN_PRODUCCION: { txt: 'En producción', bg: '#CFFAFE', fg: '#0E7490' },
+    PAUSADA:       { txt: 'Pausada',       bg: '#FEF3C7', fg: '#92400E' },
+    PARCIAL:       { txt: 'Parcial',       bg: '#EDE9FE', fg: '#6D28D9' },
+    PRODUCIDA:     { txt: 'Producida',     bg: '#D1FAE5', fg: '#065F46' },
+  };
+  function estadoCotizHtml(c) {
+    var d = ESTADO_COTIZ[c.estadoCotiz];
+    if (!d) return '';
+    var det = '';
+    // En PARCIAL el dato útil es cuántas unidades faltan, no el rótulo solo.
+    if (c.estadoCotiz === 'PARCIAL' && c.conteos) {
+      det = ' ' + c.conteos.finalizadas + '/' + c.conteos.total;
+    }
+    return ' <span class="cot-estado" style="background:' + d.bg + ';color:' + d.fg + ';">' +
+           esc(d.txt + det) + '</span>';
+  }
+
   function renderStats(stats) {
     document.getElementById('sumTotal').textContent     = stats ? fmtNum(stats.total) : '—';
     document.getElementById('sumAprobadas').textContent = stats ? fmtNum(stats.aprobadas) : '—';
     document.getElementById('sumMl').textContent        = stats ? (fmtNum(stats.mlAprobado, 1) + ' m') : '—';
     document.getElementById('sumValor').textContent     = stats ? fmtMoney(stats.valorAprobado) : '—';
+    // Cortes por estado. "En avance" es lo declarado al pausar, no un hecho
+    // medido: va aparte de lo producido a propósito (PLAN_ESTADOS §4).
+    var cortes = [
+      ['Producido', 'sumMlProducido', 'sumValorProducido', 'mlProducido', 'valorProducido'],
+      ['Avance',    'sumMlAvance',    'sumValorAvance',    'mlAvance',    'valorAvance'],
+      ['Pendiente', 'sumMlPendiente', 'sumValorPendiente', 'mlPendiente', 'valorPendiente'],
+    ];
+    cortes.forEach(function (c) {
+      var elMl = document.getElementById(c[1]), elVal = document.getElementById(c[2]);
+      if (!elMl || !elVal) return;
+      elMl.textContent  = stats ? (fmtNum(stats[c[3]], 1) + ' m') : '—';
+      elVal.textContent = stats ? fmtMoney(stats[c[4]]) : '—';
+    });
   }
 
   function chip(clase, label, val) {
@@ -111,8 +147,13 @@
       }
 
       var linkBadge = c.vinculadas ? ' <span class="cot-link-badge">🔗 ' + c.vinculadas + '</span>' : '';
+      // Estado DERIVADO de las unidades de la cola. Antes esta página recibía
+      // `estado` y no lo mostraba, y de todos modos ese venía vacío para los
+      // proyectos partidos en envíos: el estado real vive en cada envío.
+      // PARCIAL es el que no se podía ver en ninguna pantalla.
+      var estadoBadge = estadoCotizHtml(c);
       return '<div class="cot-card ' + clase + '" data-detalle="' + esc(c.archivo) + '" style="cursor:pointer;">' +
-        '<div class="cot-top"><div class="cot-proyecto">' + esc(c.proyecto || '(sin nombre)') + '</div>' +
+        '<div class="cot-top"><div class="cot-proyecto">' + esc(c.proyecto || '(sin nombre)') + estadoBadge + '</div>' +
           '<div class="cot-cons">CB' + cons + linkBadge + '</div></div>' +
         '<div class="cot-meta">Cliente ' + esc(c.codCliente || '—') +
           (c.fecha ? ' · ' + esc(fechaES(c.fecha)) : '') + '</div>' +
@@ -321,6 +362,42 @@
     var vincSec = '<div class="card-sec"><h3>Carpetas vinculadas (' + (resp.vinculadas || []).length + ')</h3>' +
       (vinc || '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Aún no hay carpetas de producción vinculadas.</div>') + '</div>';
 
+    // Producción y despacho por unidad. El despacho va en kg y por número de
+    // factura porque es lo que existe: producción se mide en ML y la remisión
+    // en peso, y convertir uno en otro seria inventarlo (PLAN_ESTADOS §6).
+    var ESTADO_UNIDAD = {
+      FINALIZADA: 'Producida', PAUSADA: 'Pausada', SIN_COLA: 'Sin programar', '': 'En cola',
+    };
+    var unSec = '';
+    if ((resp.unidades || []).length) {
+      var filas = resp.unidades.map(function (u) {
+        var nombre = u.esEnvio ? ('Envío ' + u.envioIdx + ' de ' + u.enviosTotal) : 'Proyecto completo';
+        var tam = (u.tipoEnvio === 'metros' || !u.esEnvio)
+          ? fmtNum(u.mlUnidad, 0) + ' ML'
+          : u.valorEnvio + (u.valorEnvio > 1 ? ' casas' : ' casa') + ' · ' + fmtNum(u.mlUnidad, 0) + ' ML';
+        var est = ESTADO_UNIDAD[String(u.estado || '').toUpperCase()] || esc(u.estado);
+        if (u.mlAvance > 0 && String(u.estado).toUpperCase() !== 'FINALIZADA') {
+          est += ' · ' + fmtNum(u.mlAvance, 0) + ' ML de avance';
+        }
+        var desp;
+        if (u.despachado) {
+          desp = '<strong>' + fmtNum(u.kgDespachado, 0) + ' kg</strong> · ' + esc(u.remisiones.join(', '));
+          if (u.facturas.length) desp += ' · ' + esc(u.facturas.join(', '));
+          if (u.sinFacturar)    desp += ' · <span style="color:#92400E;">' + u.sinFacturar + ' sin facturar</span>';
+        } else if (u.borradores) {
+          desp = '<span style="color:var(--cf-gray-text);">remisión en borrador</span>';
+        } else {
+          desp = '<span style="color:var(--cf-gray-text);">sin despachar</span>';
+        }
+        return '<tr><td>' + esc(nombre) + '</td><td>' + esc(tam) + '</td><td>' + est + '</td><td>' + desp + '</td></tr>';
+      }).join('');
+      unSec = '<div class="card-sec"><h3>Producción y despacho</h3>' +
+        '<div style="overflow-x:auto;"><table class="cmp-tabla"><thead><tr>' +
+        '<th>Unidad</th><th>Tamaño</th><th>Producción</th><th>Despachado (kg)</th>' +
+        '</tr></thead><tbody>' + filas + '</tbody></table></div>' +
+        '<p style="font-size:0.7rem;color:var(--cf-gray-text);margin:10px 0 0;">El despacho se mide en <strong>kg de acero</strong>, no en ML: la remisión registra peso. La conciliación con facturación usará el número de factura de cada remisión.</p></div>';
+    }
+
     // Sugerencias por CB
     var sugSec = '';
     if ((resp.sugerencias || []).length) {
@@ -337,7 +414,9 @@
       '<input id="detBuscarCarpeta" type="text" placeholder="Buscar carpeta por nombre…" style="width:100%;margin-bottom:8px;">' +
       '<div id="detResultados"></div></div>';
 
-    document.getElementById('detBody').innerHTML = comparativo + vincSec + sugSec + manualSec;
+    // Producción y despacho va justo después del comparativo: responde "¿y esto
+    // en qué va?", que es la pregunta que sigue a "¿cuánto se cotizó?".
+    document.getElementById('detBody').innerHTML = comparativo + unSec + vincSec + sugSec + manualSec;
     bindDetalle();
   }
 
