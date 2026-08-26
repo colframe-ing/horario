@@ -352,6 +352,27 @@
     </div>
   </div>
 
+  <!-- Conciliar la carpeta de producción antes de arrancar. Se abre cuando
+       "Iniciar producción" se rechaza por falta de carpeta: en vez de dejar el
+       error, se ofrece vincular una de las que coinciden por código. -->
+  <div id="modalConciliar" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="concTitle">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <h2 id="concTitle" style="font-size:1rem;">Falta la carpeta de producción</h2>
+      </div>
+      <div id="concNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:4px;"></div>
+      <div id="concInfo" style="font-size:0.75rem;color:var(--cf-gray-text);margin-bottom:12px;"></div>
+      <div id="concLista"></div>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <button class="btn btn-ghost btn-sm" id="concEscanear" title="Busca carpetas nuevas en Drive y vuelve a mirar">↻ Escanear Drive</button>
+        <div style="display:flex;gap:8px;">
+          <a class="btn btn-ghost btn-sm" id="concIrCotiz" href="cotizaciones.html" target="_blank" rel="noopener">Vincular a mano</a>
+          <button class="btn btn-ghost btn-sm" id="concCancelar">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Pausar producción registrando el avance. El avance se pide porque sin él,
        al reanudar, el cronograma volvería a agendar la unidad completa. Ver
        PLAN_PROGRAMACION §7. -->

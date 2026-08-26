@@ -46,10 +46,14 @@
     var pct = configurado>0 ? Math.round(rr.valor/configurado*100) : null;
     var cls = 'ritmo-real-info' + (pct==null ? '' : pct<85 ? ' bajo' : pct>115 ? ' alto' : ' ok');
     el.className = cls;
+    // "días de producción" = días hábiles DISTINTOS con alguna unidad abierta. No
+    // es la suma de los tramos: varios proyectos comparten días, y sumarlos
+    // inflaba el divisor y hundía el ritmo (medido: 894 contra 1.191 ML/día).
     var base = 'Últimas '+rr.n+' unidades finalizadas ('+fechaCorta(rr.desde)+' → '+fechaCorta(rr.hasta)+'): '+
-               fmtNum(rr.ml,0)+' ML en '+rr.dias+' días hábiles.';
+               fmtNum(rr.ml,0)+' ML en '+rr.dias+' días de producción.';
     el.title = (rr.metodo === 'duracion')
-      ? base+'\nMedido por duración real de producción (inicio → fin de cada unidad), sin contar tiempos muertos entre proyectos.'+
+      ? base+'\nDías de producción = días hábiles distintos con alguna unidad abierta; un día con varios proyectos a la vez cuenta una sola vez.'+
+        (rr.diasPausados ? '\n('+rr.diasPausados+' día(s) pausado(s) descontado(s).)' : '')+
         (rr.sinFechaInicio ? '\n('+rr.sinFechaInicio+' unidad(es) sin fecha de inicio quedaron fuera del cálculo.)' : '')
       : base+'\n⚠ Medido por salida de planta entre la primera y la última finalización: incluye tiempos muertos, así que SUBESTIMA el ritmo. Marca "Iniciar producción" en los proyectos para medirlo por duración real.';
     el.textContent = 'Ritmo real: '+fmtNum(rr.valor,0)+' ML/día'+(pct!=null?' ('+pct+'% del configurado)':'')+
@@ -626,21 +630,28 @@
   }
   function renderHigiene(resp){
     var card = document.getElementById('higieneCard');
-    var sc = resp.sinCarpeta || [], sq = resp.sinCotizacion || [];
+    var sc = resp.iniciadasSinCarpeta || [], sq = resp.sinCotizacion || [];
     if(!sc.length && !sq.length){ card.style.display='none'; return; }
     card.style.display='';
     // El panel viene minimizado: el contador en el título avisa que hay algo dentro.
     var n = sc.length + sq.length;
     document.getElementById('higieneResumen').textContent = '('+n+(n===1?' pendiente)':' pendientes)');
 
+    // Antes esto listaba TODA cotización aprobada sin carpeta, incluidas las
+    // programadas para dentro de dos meses — que es lo normal, porque la carpeta
+    // se arma cuando se va a producir. Ahora lista solo lo que de verdad es un
+    // hueco: producción ya arrancada sin carpeta a la cual atribuirla.
     document.getElementById('higieneSinCarpeta').innerHTML = !sc.length ? '' :
-      '<div class="higiene-titulo">Cotizaciones aprobadas sin carpeta vinculada ('+sc.length+')</div>' +
+      '<div class="higiene-titulo">Producción iniciada sin carpeta vinculada ('+sc.length+')</div>' +
       sc.map(function(x){
+        var sug = (x.sugerencias||[]).length
+          ? ' · <span style="color:#0E7490;">'+(x.sugerencias.length===1?'hay 1 carpeta que coincide':'hay '+x.sugerencias.length+' carpetas que coinciden')+'</span>'
+          : '';
         return '<div class="cola-row"><div class="cola-main">'+
           '<div class="cola-nombre">'+esc(x.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(x.consecutivo)+'</span></div>'+
-          '<div class="cola-meta">'+nUnidades(x.cantidad)+' · '+fmtNum(x.mlTotal,0)+' ML'+
-            (x.totalUnidades>1 ? ' pendientes ('+x.pendientes+' de '+x.totalUnidades+' envíos)' : '')+
-            ' · '+(x.estado==='backlog'?'sin cola':'en cola')+'</div>'+
+          '<div class="cola-meta">produciendo desde '+fechaCorta(x.fechaRealInicio)+' · '+fmtNum(x.mlTotal,0)+' ML'+
+            (x.totalUnidades>1 ? ' ('+x.unidades+' de '+x.totalUnidades+' envíos)' : '')+
+            (x.finalizadas ? ' · '+x.finalizadas+' ya finalizado(s)' : '')+ sug +'</div>'+
         '</div>'+
         '<a class="cola-toggle-btn" href="cotizaciones.html?archivo='+encodeURIComponent(x.archivo)+'" target="_blank" rel="noopener" title="Abrir esta cotización para vincular su carpeta de producción">Vincular →</a>'+
         '</div>';
@@ -763,6 +774,13 @@
       var it = buscarItem(uid);
       if(it) it.fechaRealInicio = before;
       recomputarYRenderizar();
+      // Falta la carpeta de producción: en vez de dejar el error y que la
+      // persona salga a buscarla, se abre la conciliación aquí mismo con las
+      // carpetas cuyo nombre coincide con el código de la cotización.
+      if(e && e.datos && e.datos.faltaCarpeta){
+        abrirConciliarCarpeta(uid, fecha, e.datos);
+        return;
+      }
       manejarError(e);
     }).finally(endSave);
   }
@@ -1077,6 +1095,82 @@
     renderEnviosRows();
   }
   function cerrarEnvios(){ document.getElementById('modalEnvios').classList.add('hidden'); _enviosArchivo=null; }
+
+  // ── Conciliar la carpeta de producción antes de arrancar ─────────────────
+  // Se abre cuando "Iniciar producción" se rechaza por falta de carpeta. La
+  // idea es no dejar a nadie con un error y la tarea de ir a buscar dónde se
+  // arregla: aquí mismo están las carpetas cuyo nombre coincide con el código de
+  // la cotización, se vincula una y la producción arranca sin salir de la
+  // pantalla.
+  //
+  // La convención de nombre que hace posible el match es `fecha_CÓDIGO_NOMBRE`,
+  // p. ej. `25082026_581.1_MALAMBO`. Las carpetas viejas con prefijo `CB` también
+  // se reconocen.
+  var _concUid = null, _concFecha = '', _concSug = [];
+
+  function abrirConciliarCarpeta(uid, fecha, datos){
+    cerrarIniciar();
+    _concUid = uid; _concFecha = fecha; _concSug = (datos && datos.sugerencias) || [];
+    var item = buscarItem(uid);
+    document.getElementById('concNombre').textContent = item ? etiquetaUnidad(item) : uid;
+    document.getElementById('concInfo').textContent =
+      'CB ' + ((datos && datos.consecutivo) || '—') + ' · no tiene carpeta de producción vinculada. ' +
+      'Sin ella, lo que se fabrique no queda ligado a ningún plano.';
+    var cont = document.getElementById('concLista');
+    if(_concSug.length){
+      cont.innerHTML = '<div class="higiene-titulo">Carpetas cuyo nombre coincide con el código ('+_concSug.length+')</div>' +
+        _concSug.map(function(s,i){
+          return '<div class="cola-row"><div class="cola-main">'+
+            '<div class="cola-nombre">'+esc(s.nombre)+'</div>'+
+            '<div class="cola-meta">'+fechaCorta(s.fecha)+' · '+fmtNum(s.metrosTotal,0)+' ML · '+esc(s.estado)+'</div>'+
+          '</div>'+
+          '<button class="btn btn-primary btn-sm" data-conc="'+i+'">Vincular y arrancar</button>'+
+          '</div>';
+        }).join('');
+      cont.querySelectorAll('[data-conc]').forEach(function(b){
+        b.addEventListener('click', function(){ vincularYArrancar(parseInt(b.getAttribute('data-conc'),10)); });
+      });
+    } else {
+      // Sin candidatas hay dos causas y conviene decir las dos: la carpeta no
+      // existe todavía en Drive, o existe pero su nombre no lleva el código.
+      cont.innerHTML = '<div style="font-size:0.82rem;color:var(--cf-gray-text);line-height:1.5;">'+
+        'Ninguna carpeta de Drive tiene este código en el nombre. Puede ser que todavía no exista, '+
+        'o que su nombre no siga la convención <strong>fecha_código_nombre</strong> (ej. '+
+        '<code>25082026_581.1_MALAMBO</code>).<br>Si acabas de crearla, escanea Drive y vuelve a intentar.'+
+        '</div>';
+    }
+    // El enlace manual apunta a ESTA cotizacion, no al listado: si alguien
+    // sale a vincular a mano, que no tenga que buscarla otra vez.
+    var p2 = _parseUidLocal(uid);
+    document.getElementById('concIrCotiz').href =
+      'cotizaciones.html?archivo=' + encodeURIComponent(p2.archivo);
+    document.getElementById('modalConciliar').classList.remove('hidden');
+  }
+
+  function cerrarConciliar(){
+    document.getElementById('modalConciliar').classList.add('hidden');
+    _concUid = null; _concSug = [];
+  }
+
+  function vincularYArrancar(i){
+    var s = _concSug[i]; if(!s || !_concUid) return;
+    var uid = _concUid, fecha = _concFecha;
+    var p = _parseUidLocal(uid);
+    cerrarConciliar();
+    beginSave();
+    // Vincular primero y arrancar después: si el vínculo falla, no queremos una
+    // producción iniciada a medias sin carpeta, que es justo lo que se evita.
+    apiCotizVincular(token, p.archivo, s.carpetaId, 'link')
+      .then(function(){ return apiProdColaIniciar(token, uid, fecha); })
+      .then(function(){ toast('Carpeta vinculada · producción iniciada','ok'); return cargar(); })
+      .catch(manejarError).finally(endSave);
+  }
+
+  /** Espejo de _parseUid del backend: 'archivo#envioId' → { archivo, envioId }. */
+  function _parseUidLocal(uid){
+    var s = String(uid||''), i = s.indexOf('#');
+    return (i < 0) ? { archivo: s, envioId: '' } : { archivo: s.substring(0,i), envioId: s.substring(i+1) };
+  }
 
   // ── Pausar / reanudar producción ─────────────────────────────────────────
   // Pausar pide el avance porque sin él, al reanudar, el cronograma volvería a
@@ -1622,6 +1716,16 @@
     document.getElementById('parPartesAplicar').addEventListener('click', aplicarPartirIguales);
     document.getElementById('parCancelar').addEventListener('click', cerrarPartir);
     document.getElementById('parGuardar').addEventListener('click', guardarPartir);
+    document.getElementById('concCancelar').addEventListener('click', cerrarConciliar);
+    document.getElementById('concEscanear').addEventListener('click', function(){
+      var b = this; b.disabled = true; b.textContent = 'Escaneando…';
+      // Reintenta el arranque después del escaneo: si la carpeta ya estaba en
+      // Drive pero sin escanear, esto la encuentra y el modal se repuebla solo.
+      apiProdScanNow(token)
+        .then(function(){ var u = _concUid, f = _concFecha; cerrarConciliar(); if(u) marcarInicio(u, f); })
+        .catch(manejarError)
+        .finally(function(){ b.disabled = false; b.textContent = '↻ Escanear Drive'; });
+    });
     document.getElementById('pauCancelar').addEventListener('click', cerrarPausar);
     document.getElementById('pauGuardar').addEventListener('click', guardarPausar);
     document.getElementById('pauAvance').addEventListener('input', actualizarResumenPausa);

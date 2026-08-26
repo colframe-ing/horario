@@ -4,10 +4,14 @@
 
 // Error tipado para distinguir red / servidor / auth / validación
 class ApiError extends Error {
-  constructor(msg, tipo = 'desconocido') {
+  constructor(msg, tipo = 'desconocido', datos = null) {
     super(msg);
     this.name = 'ApiError';
     this.tipo = tipo; // 'red' | 'servidor' | 'auth' | 'validacion' | 'desconocido'
+    // Respuesta completa del backend. Un error de negocio puede traer datos
+    // utiles junto al mensaje -por ejemplo las carpetas candidatas cuando falta
+    // vincular una-, y sin esto se perdian: solo sobrevivia el texto.
+    this.datos = datos;
   }
 }
 
@@ -40,7 +44,7 @@ async function apiCall(action, data = {}) {
     if (/sesi[oó]n|token/i.test(json.error)) {
       throw new ApiError(json.error, 'auth');
     }
-    throw new ApiError(json.error, 'validacion');
+    throw new ApiError(json.error, 'validacion', json);
   }
   return json;
 }
