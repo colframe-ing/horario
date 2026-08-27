@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#071D49">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- Ver el comentario en index.html: el rótulo del ícono en iOS sale de aquí,
+       no del manifest. Las dos páginas instalables tienen que decir lo mismo, o
+       el ícono queda con un nombre distinto según desde cuál se instaló. -->
+  <meta name="apple-mobile-web-app-title" content="COLFRAME">
+  <!-- El <title> sí se queda: esta pantalla es literalmente la de horas extra
+       (marcar entrada y salida), a diferencia de index.html, que es la puerta
+       de todo el sistema. -->
   <title>COLFRAME — Horas Extra</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">

@@ -1,5 +1,6 @@
-// Service Worker — COLFRAME Horas Extra
-const CACHE = 'colframe-v54';
+// Service Worker — COLFRAME Operaciones
+// (cachea las nueve páginas, no solo la de horas extra)
+const CACHE = 'colframe-v55';
 const STATIC = [
   './', './index.html', './app.html', './admin.html', './produccion.html', './cotizaciones.html', './programacion.html', './proyecto.html', './remisiones.html', './facturacion.html',
   './css/styles.css',

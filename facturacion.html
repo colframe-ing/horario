@@ -53,6 +53,11 @@
     .chip.dias.viejo { background:#FEE2E2; color:#991B1B; }
 
     .vacio { text-align:center; color:var(--cf-gray-text); font-size:0.8rem; padding:22px 0; }
+    /* Cargando. `grid-column` porque el contenedor de los cortes es una grilla:
+       sin eso el spinner sale encajonado en la primera columna en vez de
+       centrado. En los contenedores que no son grilla la propiedad se ignora. */
+    .fact-cargando { text-align:center; padding:40px 24px; grid-column:1/-1; }
+    .fact-cargando .spinner { border-color:rgba(0,0,0,0.1); border-top-color:var(--cf-blue); }
     .btn-mini { font-size:0.7rem; font-weight:700; padding:4px 9px; border-radius:7px; border:1.5px solid var(--cf-gray-mid); background:#fff; color:var(--cf-dark); cursor:pointer; white-space:nowrap; }
     .btn-mini:hover { border-color:var(--cf-blue); color:var(--cf-blue); }
     .btn-mini:disabled { opacity:0.5; cursor:default; }
@@ -106,17 +111,20 @@
 
   <div class="admin-main admin-panel">
 
-    <div id="cortes" class="fact-cortes"></div>
+    <div id="cortes" class="fact-cortes">
+      <div class="fact-cargando"><span class="spinner"></span></div>
+    </div>
 
     <!-- 4.1 — la alerta que cuesta plata -->
     <div class="card-sec">
       <h3>Salió y nadie lo facturó</h3>
       <p class="sec-sub">
-        Remisiones despachadas o entregadas a las que todavía no se les ha anotado una factura.
-        De la más vieja a la más nueva. Registrar la factura aquí <strong>no emite nada en Dataico</strong>:
+        Remisiones despachadas o entregadas a las que todavía no se les ha anotado una factura,
+        <strong>en orden de consecutivo</strong>. La antigüedad va en su columna, marcada en rojo
+        a los 30 días. Registrar la factura aquí <strong>no emite nada en Dataico</strong>:
         deja constancia de que esa remisión ya se cobró.
       </p>
-      <div id="sinFacturar"></div>
+      <div id="sinFacturar"><div class="fact-cargando"><span class="spinner"></span></div></div>
     </div>
 
     <!-- 4.2 y 4.3 — el dinero por cotización -->
@@ -126,27 +134,29 @@
         Por cotización. El <strong>expuesto</strong> es lo que ya se cobró y todavía no ha salido de la planta:
         anticipos y actas de obra. No es un error — es lo que la empresa debe entregar.
       </p>
-      <div id="porCotizacion"></div>
+      <div id="porCotizacion"><div class="fact-cargando"><span class="spinner"></span></div></div>
     </div>
 
     <!-- La salida: deshacer una factura mal registrada -->
     <div class="card-sec">
       <h3>Facturadas recientemente</h3>
       <p class="sec-sub">
-        Las últimas que se registraron. Registrar una factura <strong>congela</strong> la remisión, así que
-        si el número quedó mal, aquí se le quita y se vuelve a hacer — sin tener que anular el despacho.
+        Las últimas que se registraron, <strong>del consecutivo más alto al más bajo</strong> — es la
+        única tabla que va al revés, para que lo recién hecho quede arriba. Registrar una factura
+        <strong>congela</strong> la remisión, así que si el número quedó mal, aquí se le quita y se
+        vuelve a hacer — sin tener que anular el despacho.
       </p>
-      <div id="facturadas"></div>
+      <div id="facturadas"><div class="fact-cargando"><span class="spinner"></span></div></div>
     </div>
 
     <!-- Facturas con saldo por repartir -->
     <div class="card-sec">
       <h3>Facturas por repartir</h3>
       <p class="sec-sub">
-        Del maestro de facturas. La factura no dice a qué cotización pertenece, así que asignarla es una decisión
-        de una persona; esto es solo lo que falta por decidir.
+        Del maestro de facturas, <strong>en orden de número</strong>. La factura no dice a qué cotización
+        pertenece, así que asignarla es una decisión de una persona; esto es solo lo que falta por decidir.
       </p>
-      <div id="facturas"></div>
+      <div id="facturas"><div class="fact-cargando"><span class="spinner"></span></div></div>
     </div>
 
   </div>

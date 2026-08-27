@@ -54,6 +54,91 @@
     return Number(n).toLocaleString('es-CO', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
   }
 
+  // ── Orden de los identificadores ─────────────────────────────────────────
+  //
+  // RM-0250, FE322, CB581.1: todos mezclan letras con números, y una
+  // comparación de cadenas los ordena mal en cuanto los dígitos no están
+  // rellenados con ceros. `FE1000` va ANTES que `FE322` alfabéticamente, porque
+  // compara el '1' contra el '3' y ahí se acabó.
+  //
+  // Los consecutivos de remisión sí vienen con ceros (`remFormatearConsecutivo`
+  // los rellena a cuatro), así que para ellos la cadena bastaría — pero eso es
+  // una propiedad del formato que nadie prometió mantener, y depender de ella
+  // obliga a recordar cuál de los tres identificadores está rellenado. Un solo
+  // comparador para los tres: los tramos de dígitos se comparan como NÚMEROS y
+  // el resto como texto.
+  function _trozos(s) {
+    return String(s == null ? '' : s).toUpperCase().match(/\d+|\D+/g) || [];
+  }
+  function cmpRef(a, b) {
+    var ta = _trozos(a), tb = _trozos(b);
+    var n = Math.max(ta.length, tb.length);
+    for (var i = 0; i < n; i++) {
+      var x = ta[i], y = tb[i];
+      if (x === undefined) return -1;          // el más corto va primero: FE32 < FE322
+      if (y === undefined) return 1;
+      var numX = /^\d/.test(x), numY = /^\d/.test(y);
+      if (numX && numY) {
+        var d = parseInt(x, 10) - parseInt(y, 10);
+        if (d) return d < 0 ? -1 : 1;
+      } else if (x !== y) {
+        return x < y ? -1 : 1;
+      }
+    }
+    return 0;
+  }
+  /** Comparador por un campo de identificación.
+   *
+   *  Las filas SIN identificador van PRIMERO, no al final. Una remisión firme
+   *  sin consecutivo existe —`BORRADOR → DESPACHADA` es una transición válida y
+   *  solo `remConciliar` asigna número— y es en sí misma algo que hay que
+   *  mirar: mandarla al fondo de una lista larga es esconderla. */
+  function porRef(campo, desc) {
+    return function (a, b) {
+      var va = String(a[campo] == null ? '' : a[campo]).trim();
+      var vb = String(b[campo] == null ? '' : b[campo]).trim();
+      if (!va && !vb) return 0;
+      if (!va) return -1;
+      if (!vb) return 1;
+      return desc ? cmpRef(vb, va) : cmpRef(va, vb);
+    };
+  }
+  /** La referencia de una cotización, como texto ordenable: 581.1, 1024.2. */
+  function refCotiz(c) {
+    var cb = String(c.cb == null ? '' : c.cb).trim();
+    if (!cb || cb === '0') return '';
+    var v = String(c.version == null ? '' : c.version).trim();
+    return v ? cb + '.' + v : cb;
+  }
+
+  // ── Estado de carga ──────────────────────────────────────────────────────
+  //
+  // `factura_tablero` recorre las hojas de remisiones, detalle, asignaciones,
+  // facturas, la cola de producción y el maestro de cotizaciones. En un Sheet
+  // con datos reales eso son varios segundos, y hasta ahora la pantalla se
+  // quedaba en blanco todo ese rato: no se distinguía "está trabajando" de
+  // "cargó y no hay nada", que son cosas muy distintas cuando lo que buscas es
+  // plata sin cobrar.
+  // Los cinco contenedores que llena `factura_tablero`, y por eso los cinco que
+  // tienen que decir que están esperando. Van juntos en una lista y no repetidos
+  // en cada función: la respuesta es UNA sola llamada, así que o cargan todos o
+  // no carga ninguno, y separarlos invitaría a olvidar uno al agregar el sexto.
+  var CAJAS = ['cortes', 'sinFacturar', 'porCotizacion', 'facturadas', 'facturas'];
+
+  /** Pinta `html` en las cinco cajas. El spinner usa la clase `.fact-cargando`
+   *  de la hoja de estilos, la misma que trae el HTML de arranque, para que no
+   *  haya dos definiciones del mismo estado. */
+  function enTodasLasCajas(html) {
+    CAJAS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+  }
+
+  function pintarCargando() {
+    enTodasLasCajas('<div class="fact-cargando"><span class="spinner"></span></div>');
+  }
+
   // ── Cortes de arriba ─────────────────────────────────────────────────────
   function pintarCortes(t, nSinFacturar) {
     var html = '';
@@ -81,7 +166,13 @@
       cont.innerHTML = '<div class="vacio">Nada pendiente: todo lo que salió está facturado.</div>';
       return;
     }
-    var filas = lista.map(function (r) {
+    // Por consecutivo, no por fecha. El backend las entrega de la más vieja a la
+    // más nueva y ese orden no se pierde: el consecutivo se asigna al conciliar,
+    // así que crece con el tiempo. Lo que se gana es poder buscar una remisión
+    // concreta en la lista, que es lo que uno hace teniendo el papel en la mano.
+    // La antigüedad sigue a la vista en la columna de días, con su marca en rojo
+    // a los 30 — el dato no dependía del orden.
+    var filas = lista.slice().sort(porRef('consecutivo')).map(function (r) {
       // Sin fecha no se puede envejecer, pero la fila sigue siendo plata sin
       // cobrar: se muestra igual, marcada, en vez de esconderla por estar mal.
       var dias = r.dias == null
@@ -110,7 +201,15 @@
       cont.innerHTML = '<div class="vacio">No hay cotizaciones aprobadas con movimiento.</div>';
       return;
     }
-    var filas = lista.map(function (c) {
+    // Por consecutivo de cotización. El backend las recorre en el orden en que
+    // están en la hoja de la cola, que no es ningún orden: es el de inserción.
+    var filas = lista.slice().sort(function (a, b) {
+      var ra = refCotiz(a), rb = refCotiz(b);
+      if (!ra && !rb) return String(a.proyecto || '').localeCompare(String(b.proyecto || ''));
+      if (!ra) return -1;
+      if (!rb) return 1;
+      return cmpRef(ra, rb);
+    }).map(function (c) {
       var r = c.resumen;
       // El AIU mixto se marca, no se corrige: si en la misma cotización unas
       // facturas lo cobran y otras no, la comparación deja de ser limpia y eso
@@ -157,7 +256,13 @@
       cont.innerHTML = '<div class="vacio">Todavía no se ha registrado ninguna factura.</div>';
       return;
     }
-    var filas = lista.map(function (r) {
+    // Esta va al REVÉS que las demás, y es la única: de mayor a menor
+    // consecutivo. La tabla existe para deshacer una factura recién registrada
+    // —registrarla congela la remisión, así que es la única salida de un dígito
+    // mal tecleado— y ponerla en orden ascendente entierra en la mitad de la
+    // lista justo lo que se acaba de hacer. Sigue estando ordenada; lo que
+    // cambia es por cuál punta se empieza.
+    var filas = lista.slice().sort(porRef('consecutivo', true)).map(function (r) {
       return '<tr>' +
         '<td><span class="proy">' + esc(r.consecutivo || '(sin consecutivo)') + '</span>' +
           (r.proyecto ? '<div class="cbv">' + esc(r.proyecto) + '</div>' : '') + '</td>' +
@@ -184,7 +289,12 @@
         '</div>';
       return;
     }
-    var filas = lista.map(function (f) {
+    // Por número de factura. El backend las ordena por saldo descendente, que
+    // responde "¿cuál es la más grande sin repartir?" — pero la pregunta real
+    // al llegar aquí es "¿dónde está la FE322?", con la factura delante. El
+    // saldo sigue en su columna y el signo lo marca en rojo, así que lo urgente
+    // no se pierde por no estar arriba.
+    var filas = lista.slice().sort(porRef('numero')).map(function (f) {
       // Un saldo negativo es que se repartió MÁS de lo que la factura vale. Se
       // muestra en rojo y con signo: redondearlo a cero lo escondería.
       var neg = f.sinAsignar < 0;
@@ -271,7 +381,13 @@
   function historialHtml(r) {
     var asigs = (r && r.asignaciones) || [];
     if (!asigs.length) return '';
-    var filas = asigs.map(function (a) {
+    // Por número de factura, con la fecha de asignación como desempate: una
+    // misma factura puede aparecer dos veces —anulada y vuelta a asignar— y esas
+    // dos tienen que quedar juntas y en el orden en que pasaron.
+    var filas = asigs.slice().sort(function (a, b) {
+      var d = cmpRef(a.facturaNumero, b.facturaNumero);
+      return d || String(a.asignadoTs || '').localeCompare(String(b.asignadoTs || ''));
+    }).map(function (a) {
       var anulada = !!String(a.anuladoTs || '').trim();
       var monto = money((Number(a.monto) || 0) + (Number(a.montoAiu) || 0));
       var etiqueta = a.facturaNumero + ' por ' + monto;
@@ -382,8 +498,13 @@
              esc(f.numero) + ' — sin repartir ' + money(f.sinAsignar) + '</option>';
     }).join('');
     // Se pinta primero sin historial y se rellena al llegar: abrir el modal no
-    // puede quedarse esperando una llamada.
-    pintarAsignar(archivo, proyecto, opciones, '');
+    // puede quedarse esperando una llamada. Pero se dice que viene en camino —
+    // sin eso, el hueco donde va "Ya asignado" es idéntico al de una cotización
+    // que no tiene nada asignado, y ahí es donde alguien asigna dos veces la
+    // misma factura por no haber esperado medio segundo.
+    pintarAsignar(archivo, proyecto, opciones,
+      '<div class="campo"><label>Ya asignado</label>' +
+      '<div class="ayuda">Consultando lo que ya se le asignó a esta cotización…</div></div>');
     // Prellenado desde una sugerencia. Se rellena y no se envía: quien cobra
     // tiene que ver el monto y decidir el AIU antes de confirmar.
     if (previo) {
@@ -435,7 +556,19 @@
       var nota   = document.getElementById('aNota').value.trim();
       if (!numero) { toast('Escribe el número de factura', 'error'); return; }
       if (monto + aiu <= 0) { toast('El monto tiene que ser mayor a cero (el AIU cuenta)', 'error'); return; }
-      this.disabled = true;
+      // El botón se deshabilita para que un doble clic no mande dos veces la
+      // misma asignación, y se vuelve a habilitar SIEMPRE en el `finally`.
+      //
+      // Sin eso, un rechazo del backend dejaba el formulario lleno y el botón
+      // muerto: había que cancelar y volver a teclear número, monto, AIU y kg.
+      // Y es justo donde más pasa —"esta factura ya está asignada a esta
+      // cotización, anúlala si el monto cambió"— o sea que se explicaba cómo
+      // corregir y al mismo tiempo se quitaba la forma de hacerlo.
+      //
+      // En el camino feliz `cerrarModal()` ya sacó el botón del DOM; ponerle
+      // `disabled` a un nodo suelto no hace nada y no hay que distinguir casos.
+      var btn = this;
+      btn.disabled = true;
       apiFacturaAsignar(token, numero, archivo, monto, aiu, kg, 'MANUAL', nota)
         .then(function (r) {
           cerrarModal();
@@ -448,7 +581,8 @@
           }
           return cargar();
         })
-        .catch(manejarError);
+        .catch(manejarError)
+        .finally(function () { btn.disabled = false; });
     };
   }
 
@@ -487,7 +621,13 @@
     document.getElementById('fOk').onclick = function () {
       var numero = document.getElementById('fNumero').value.trim();
       if (!numero) { toast('Escribe el número de factura', 'error'); return; }
-      this.disabled = true;
+      // Mismo criterio que en `pintarAsignar`: se bloquea contra el doble clic y
+      // se libera en el `finally`. Acá pesa aún más, porque el rechazo típico
+      // —"esta remisión ya está facturada con FE322: si el número está mal,
+      // quítale la factura primero"— es una instrucción que hay que poder
+      // seguir sin volver a abrir el modal.
+      var btn = this;
+      btn.disabled = true;
       apiRemisionFacturar(token, docId,
                           numero,
                           document.getElementById('fFecha').value || '',
@@ -497,12 +637,14 @@
           toast(r.sinCambio ? 'Ya tenía registrada esa factura' : 'Factura registrada', 'ok');
           return cargar();
         })
-        .catch(manejarError);
+        .catch(manejarError)
+        .finally(function () { btn.disabled = false; });
     };
   }
 
   // ── Carga ────────────────────────────────────────────────────────────────
   function cargar() {
+    pintarCargando();
     return apiFacturaTablero(token).then(function (r) {
       _datos = r;
       pintarCortes(r.totales || {}, (r.sinFacturar || []).length);
@@ -510,7 +652,15 @@
       pintarFacturadas(r.facturadas || []);
       pintarCotizaciones(r.cotizaciones || [], r.totales || {});
       pintarFacturas(r.facturasConSaldo || [], r.facturasTotal || 0);
-    }).catch(manejarError);
+    }).catch(function (e) {
+      // Sin esto los cuatro spinners se quedan girando para siempre y la
+      // pantalla dice "estoy trabajando" cuando ya se rindió. El toast solo se
+      // ve tres segundos; quien vuelva a mirar el monitor un minuto después
+      // tiene que poder saber que esto falló.
+      var msg = (e && e.message) ? e.message : 'No se pudo cargar';
+      enTodasLasCajas('<div class="vacio" style="grid-column:1/-1;">' + esc(msg) + '</div>');
+      manejarError(e);
+    });
   }
 
   // Delegación: las tablas se repintan enteras en cada carga, así que enganchar

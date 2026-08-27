@@ -6,7 +6,18 @@
   <meta name="theme-color" content="#071D49">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>COLFRAME — Horas Extra</title>
+  <!-- El rótulo del ícono en iOS. Sin esto, "Agregar a inicio" usa el <title> de
+       la página, que desde que dice "Iniciar sesión" habría dejado el ícono
+       rotulado "COLFRAME — Iniciar sesión" en el celular. iOS no lee
+       `short_name` del manifest de forma confiable, así que se pone explícito
+       aquí y en `app.html`, las dos páginas instalables. -->
+  <meta name="apple-mobile-web-app-title" content="COLFRAME">
+  <!-- "Iniciar sesión" y no "Horas Extra": esta pantalla es la puerta de TODO
+       el sistema —asistencia, producción, cotizaciones, programación,
+       remisiones y facturación— y nombrarla por uno solo de sus módulos dejó de
+       ser cierto hace rato. Las demás páginas sí se llaman por lo suyo
+       (`app.html` sigue siendo "Horas Extra", porque eso es literalmente). -->
+  <title>COLFRAME — Iniciar sesión</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,7 +44,7 @@
     </div>
 
     <div class="login-card">
-      <h1 class="login-title">Control de Horas Extra</h1>
+      <h1 class="login-title">Iniciar sesión</h1>
 
       <form id="loginForm" class="login-form" novalidate>
         <div class="form-group">

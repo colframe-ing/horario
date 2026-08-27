@@ -1,7 +1,7 @@
 {
-  "name": "COLFRAME — Horas Extra",
-  "short_name": "HorasExtra",
-  "description": "Control de horas extra COLFRAME Framing Colombia",
+  "name": "COLFRAME — Operaciones",
+  "short_name": "COLFRAME",
+  "description": "Asistencia, producción, cotizaciones, remisiones y facturación — Framing Colombia S.A.S. BIC",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#071D49",
