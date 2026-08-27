@@ -73,6 +73,7 @@
     .modal-acciones { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
     .aviso { font-size:0.72rem; padding:8px 10px; border-radius:8px; margin-bottom:11px; }
     .aviso.warn { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+    .aviso.info { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; }
   </style>
 </head>
 <body>
@@ -110,7 +111,11 @@
     <!-- 4.1 — la alerta que cuesta plata -->
     <div class="card-sec">
       <h3>Salió y nadie lo facturó</h3>
-      <p class="sec-sub">Remisiones despachadas o entregadas que todavía no tienen factura. De la más vieja a la más nueva.</p>
+      <p class="sec-sub">
+        Remisiones despachadas o entregadas a las que todavía no se les ha anotado una factura.
+        De la más vieja a la más nueva. Registrar la factura aquí <strong>no emite nada en Dataico</strong>:
+        deja constancia de que esa remisión ya se cobró.
+      </p>
       <div id="sinFacturar"></div>
     </div>
 
@@ -122,6 +127,16 @@
         anticipos y actas de obra. No es un error — es lo que la empresa debe entregar.
       </p>
       <div id="porCotizacion"></div>
+    </div>
+
+    <!-- La salida: deshacer una factura mal registrada -->
+    <div class="card-sec">
+      <h3>Facturadas recientemente</h3>
+      <p class="sec-sub">
+        Las últimas que se registraron. Registrar una factura <strong>congela</strong> la remisión, así que
+        si el número quedó mal, aquí se le quita y se vuelve a hacer — sin tener que anular el despacho.
+      </p>
+      <div id="facturadas"></div>
     </div>
 
     <!-- Facturas con saldo por repartir -->

@@ -403,3 +403,8 @@ async function apiRemisionFacturar(token, docId, facturaNumero, facturaFecha, fa
 async function apiRemisionDesfacturar(token, docId, motivo) {
   return apiCall('remision_desfacturar', { token, docId, motivo });
 }
+// Lee las notas de una factura y propone contra qué cotizaciones va. SOLO LEE:
+// nada se asigna hasta que una persona lo confirme.
+async function apiFacturaSugerencias(token, facturaNumero) {
+  return apiCall('factura_sugerencias', { token, facturaNumero });
+}
