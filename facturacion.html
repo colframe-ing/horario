@@ -58,6 +58,32 @@
        centrado. En los contenedores que no son grilla la propiedad se ignora. */
     .fact-cargando { text-align:center; padding:40px 24px; grid-column:1/-1; }
     .fact-cargando .spinner { border-color:rgba(0,0,0,0.1); border-top-color:var(--cf-blue); }
+
+    /* Recarga silenciosa: la barra de estado que reemplaza a los cinco spinners
+       cuando el refresco viene DESPUÉS de escribir. Los datos viejos se quedan
+       en pantalla mientras llega el reemplazo. */
+    .fact-estado { display:flex; align-items:center; gap:8px; font-size:0.74rem; font-weight:700;
+                   padding:7px 12px; border-radius:var(--radius); margin-bottom:10px; }
+    .fact-estado .spinner { width:13px; height:13px; border-width:2px;
+                            border-color:rgba(0,0,0,0.12); border-top-color:var(--cf-blue); }
+    .fact-estado.trabajando { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; }
+    /* Si el refresco falla, lo que quedó en pantalla es viejo. Decirlo importa
+       más que el toast: el toast se va a los tres segundos y estos números
+       siguen ahí, con cara de estar al día. */
+    .fact-estado.viejo     { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+
+    /* Selección múltiple en "salió y nadie lo facturó" */
+    .fact-table td.sel, .fact-table th.sel { width:34px; text-align:center; padding-right:0; }
+    .fact-barra { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+                  padding:9px 12px; margin-bottom:10px; border-radius:var(--radius);
+                  background:#F1F5F9; border:1px solid var(--cf-gray-mid); }
+    .fact-barra .cuenta { font-size:0.76rem; font-weight:800; color:var(--cf-dark); }
+    .fact-barra.hidden { display:none; }
+    .lote-fila { display:flex; justify-content:space-between; gap:10px; font-size:0.76rem;
+                 padding:3px 0; border-bottom:1px solid var(--cf-gray-mid); }
+    .lote-fila:last-child { border-bottom:none; }
+    .lote-fila .bien { color:#065F46; font-weight:700; }
+    .lote-fila .falla { color:#B91C1C; font-weight:700; }
     .btn-mini { font-size:0.7rem; font-weight:700; padding:4px 9px; border-radius:7px; border:1.5px solid var(--cf-gray-mid); background:#fff; color:var(--cf-dark); cursor:pointer; white-space:nowrap; }
     .btn-mini:hover { border-color:var(--cf-blue); color:var(--cf-blue); }
     .btn-mini:disabled { opacity:0.5; cursor:default; }
@@ -111,6 +137,8 @@
 
   <div class="admin-main admin-panel">
 
+    <div id="estadoCarga" class="fact-estado hidden"></div>
+
     <div id="cortes" class="fact-cortes">
       <div class="fact-cargando"><span class="spinner"></span></div>
     </div>
@@ -122,8 +150,10 @@
         Remisiones despachadas o entregadas a las que todavía no se les ha anotado una factura,
         <strong>en orden de consecutivo</strong>. La antigüedad va en su columna, marcada en rojo
         a los 30 días. Registrar la factura aquí <strong>no emite nada en Dataico</strong>:
-        deja constancia de que esa remisión ya se cobró.
+        deja constancia de que esa remisión ya se cobró. <strong>Una factura puede cubrir varias
+        remisiones</strong>: márcalas y regístralas todas de una vez.
       </p>
+      <div id="barraSel" class="fact-barra hidden"></div>
       <div id="sinFacturar"><div class="fact-cargando"><span class="spinner"></span></div></div>
     </div>
 

@@ -178,20 +178,61 @@
       var dias = r.dias == null
         ? '<span class="chip dias">sin fecha</span>'
         : '<span class="chip dias' + (r.dias >= 30 ? ' viejo' : '') + '">' + r.dias + ' d</span>';
+      var rot = r.consecutivo || '(sin consecutivo)';
       return '<tr>' +
-        '<td><span class="proy">' + esc(r.consecutivo || '(sin consecutivo)') + '</span>' +
+        '<td class="sel"><input type="checkbox" data-sel="' + esc(r.docId) + '" ' +
+          'data-rot="' + esc(rot) + '"' + (r.docId ? '' : ' disabled') + '></td>' +
+        '<td><span class="proy">' + esc(rot) + '</span>' +
           (r.proyecto ? '<div class="cbv">' + esc(r.proyecto) + '</div>' : '') + '</td>' +
         '<td>' + esc(r.fecha || '—') + '</td>' +
         '<td>' + dias + '</td>' +
         '<td>' + esc(r.estado || '') + '</td>' +
         '<td><button class="btn-mini" data-facturar="' + esc(r.docId) + '" ' +
-          'data-rot="' + esc(r.consecutivo) + '"' + (r.docId ? '' : ' disabled') + '>Registrar factura</button></td>' +
+          'data-rot="' + esc(rot) + '"' + (r.docId ? '' : ' disabled') + '>Registrar factura</button></td>' +
       '</tr>';
     }).join('');
     cont.innerHTML =
       '<div style="overflow-x:auto;"><table class="fact-table">' +
-      '<thead><tr><th>Remisión</th><th>Fecha</th><th>Antigüedad</th><th>Estado</th><th></th></tr></thead>' +
+      '<thead><tr><th class="sel"><input type="checkbox" id="selTodas" ' +
+        'title="Marcar todas"></th>' +
+      '<th>Remisión</th><th>Fecha</th><th>Antigüedad</th><th>Estado</th><th></th></tr></thead>' +
       '<tbody>' + filas + '</tbody></table></div>';
+    // La selección no sobrevive al repintado, y no hace falta que sobreviva: las
+    // que se acaban de registrar ya no están en esta lista.
+    actualizarBarraSel();
+  }
+
+  /** Los docId marcados, con su rótulo. */
+  function seleccionadas() {
+    return Array.prototype.filter.call(
+      document.querySelectorAll('#sinFacturar [data-sel]'), function (c) { return c.checked; }
+    ).map(function (c) {
+      return { docId: c.getAttribute('data-sel'), rotulo: c.getAttribute('data-rot') };
+    });
+  }
+
+  /** La barra de "registrar en las N marcadas". Aparece solo cuando hay algo
+   *  marcado: una barra permanente en cero es ruido en una pantalla que ya
+   *  tiene cuatro tablas. */
+  function actualizarBarraSel() {
+    var barra = document.getElementById('barraSel');
+    if (!barra) return;
+    var sel = seleccionadas();
+    if (!sel.length) { barra.className = 'fact-barra hidden'; barra.innerHTML = ''; return; }
+    barra.className = 'fact-barra';
+    barra.innerHTML =
+      '<span class="cuenta">' + sel.length + ' remisi' + (sel.length === 1 ? 'ón marcada' : 'ones marcadas') + '</span>' +
+      '<button class="btn-mini" id="btnFactLote">Registrar una factura en ' +
+        (sel.length === 1 ? 'ella' : 'las ' + sel.length) + '</button>' +
+      '<button class="btn-mini" id="btnLimpiarSel">Quitar la marca</button>';
+    document.getElementById('btnFactLote').onclick = function () { abrirFacturarRemision(sel); };
+    document.getElementById('btnLimpiarSel').onclick = function () {
+      Array.prototype.forEach.call(document.querySelectorAll('#sinFacturar [data-sel]'),
+        function (c) { c.checked = false; });
+      var todas = document.getElementById('selTodas');
+      if (todas) todas.checked = false;
+      actualizarBarraSel();
+    };
   }
 
   // ── 4.2 + 4.3 ────────────────────────────────────────────────────────────
@@ -359,7 +400,7 @@
       if (!motivo) return;
       return apiRemisionDesfacturar(token, docId, motivo).then(function () {
         toast('Factura quitada. La remisión volvió a la lista de pendientes.', 'ok');
-        return cargar();
+        return cargar(true);
       });
     }).catch(manejarError);
   }
@@ -370,7 +411,13 @@
       return apiFacturaAsignacionAnular(token, asigId, motivo).then(function () {
         toast('Asignación anulada', 'ok');
         cerrarModal();
-        return cargar().then(function () { abrirAsignar(archivo, proyecto); });
+        // El modal se reabre YA, sin esperar al tablero. Antes se recargaba todo
+        // primero y solo después volvías a donde estabas: pagabas los siete
+        // barridos de hoja para regresar al mismo sitio. El historial del modal
+        // es una llamada aparte y mucho más barata, y es justo el dato que
+        // acaba de cambiar; el tablero se pone al día por detrás.
+        abrirAsignar(archivo, proyecto);
+        return cargar(true);
       });
     }).catch(manejarError);
   }
@@ -414,11 +461,39 @@
   // PROPONE, NO ASIGNA. Cada propuesta se confirma una por una: el matcher lee
   // lo que alguien escribió en las notas de la factura, y eso alcanza para
   // servir el trabajo, no para reemplazar el criterio de quien cobra.
-  function abrirSugerencias(numero) {
+  //
+  // UNA FACTURA SE REPARTE ENTRE VARIOS CB, y ese es el caso normal: FE322
+  // cubre tres proyectos. Antes, aplicar una propuesta cerraba el modal,
+  // recargaba el tablero entero y te devolvía al principio — para la segunda
+  // había que volver a buscar la factura y volver a pedir sus sugerencias. Tres
+  // recargas completas para repartir una factura.
+  //
+  // Ahora el modal VUELVE: al terminar una asignación se reabre con las
+  // sugerencias recién consultadas, o sea que la que acabas de aplicar aparece
+  // ya como "asignada" y las que faltan siguen ahí. El tablero se recarga UNA
+  // vez, al cerrar, y solo si hubo algún cambio.
+  //
+  // Se vuelve a preguntar al backend en vez de tachar la propuesta en memoria:
+  // `factSugerencias` recalcula `yaAsignadas` contra la hoja, así que el estado
+  // que se ve es el real y no una copia que hay que mantener en sincronía.
+  function abrirSugerencias(numero, sesion) {
+    var s = sesion || { aplicadas: 0 };
+
+    // Al cerrar: una sola recarga, y solo si de verdad se escribió algo.
+    var cerrar = function () {
+      cerrarModal();
+      if (s.aplicadas > 0) cargar(true);
+    };
+
     modal('<h4>Sugerencias para ' + esc(numero) + '</h4>' +
           '<p class="hint">Leyendo las notas de la factura…</p>');
     apiFacturaSugerencias(token, numero).then(function (r) {
       var html = '<h4>Sugerencias para ' + esc(numero) + '</h4>';
+      if (s.aplicadas > 0) {
+        html += '<div class="aviso info">Llevas <strong>' + s.aplicadas + '</strong> asignación(es) ' +
+                'en esta factura. Las que ya quedaron aparecen abajo como asignadas; ' +
+                'el tablero se actualiza al cerrar.</div>';
+      }
       html += '<p class="hint">' + (r.nota
         ? 'Notas de la factura: “' + esc(r.nota) + '”'
         : 'Esta factura no trae notas.') + '</p>';
@@ -474,25 +549,30 @@
           }).join('') + '</tbody></table></div>';
       }
 
-      html += '<div class="modal-acciones"><button class="btn btn-sm" id="sCerrar">Cerrar</button></div>';
+      html += '<div class="modal-acciones"><button class="btn btn-sm" id="sCerrar">' +
+              (s.aplicadas > 0 ? 'Listo' : 'Cerrar') + '</button></div>';
       document.getElementById('modalCont').querySelector('.modal-box').innerHTML = html;
-      document.getElementById('sCerrar').onclick = cerrarModal;
+      document.getElementById('sCerrar').onclick = cerrar;
 
       // Aplicar una propuesta: abre el modal de asignar con todo prellenado.
       // No se escribe desde aquí — se pasa por el mismo formulario de siempre,
       // que es donde se ve el monto y el AIU antes de confirmar.
+      //
+      // El cuarto argumento es lo que hace posible repartir sin salir: en vez de
+      // recargar el tablero al terminar, vuelve a estas sugerencias.
       Array.prototype.forEach.call(document.querySelectorAll('[data-aplicar]'), function (b) {
         b.onclick = function () {
           var p = r.propuestas[parseInt(b.getAttribute('data-aplicar'), 10)];
           cerrarModal();
           abrirAsignar(p.cotizacionArchivo, p.proyecto || p.cotizacionArchivo,
-                       { factura: numero, monto: p.monto, kg: p.kgFacturado });
+                       { factura: numero, monto: p.monto, kg: p.kgFacturado },
+                       function () { s.aplicadas++; abrirSugerencias(numero, s); });
         };
       });
-    }).catch(function (e) { cerrarModal(); manejarError(e); });
+    }).catch(function (e) { cerrar(); manejarError(e); });
   }
 
-  function abrirAsignar(archivo, proyecto, previo) {
+  function abrirAsignar(archivo, proyecto, previo, alTerminar) {
     var opciones = (_datos.facturasConSaldo || []).map(function (f) {
       return '<option value="' + esc(f.numero) + '" data-saldo="' + f.sinAsignar + '">' +
              esc(f.numero) + ' — sin repartir ' + money(f.sinAsignar) + '</option>';
@@ -504,7 +584,8 @@
     // misma factura por no haber esperado medio segundo.
     pintarAsignar(archivo, proyecto, opciones,
       '<div class="campo"><label>Ya asignado</label>' +
-      '<div class="ayuda">Consultando lo que ya se le asignó a esta cotización…</div></div>');
+      '<div class="ayuda">Consultando lo que ya se le asignó a esta cotización…</div></div>',
+      alTerminar);
     // Prellenado desde una sugerencia. Se rellena y no se envía: quien cobra
     // tiene que ver el monto y decidir el AIU antes de confirmar.
     if (previo) {
@@ -519,7 +600,7 @@
     }).catch(function () { /* sin historial se puede asignar igual */ });
   }
 
-  function pintarAsignar(archivo, proyecto, opciones, historial) {
+  function pintarAsignar(archivo, proyecto, opciones, historial, alTerminar) {
     modal(
       '<h4>Asignar factura</h4>' +
       '<p class="hint">' + esc(proyecto) + '</p>' +
@@ -579,7 +660,11 @@
           } else {
             toast('Factura asignada', 'ok');
           }
-          return cargar();
+          // Si vengo del flujo de sugerencias, vuelvo allá en vez de recargar:
+          // la factura casi siempre tiene otro CB esperando, y recargar aquí
+          // sería pagar el tablero entero para volver a abrir lo mismo.
+          if (alTerminar) return alTerminar(r);
+          return cargar(true);
         })
         .catch(manejarError)
         .finally(function () { btn.disabled = false; });
@@ -597,21 +682,48 @@
   // evento REMISION_CONCILIADA—, que consume el consecutivo y mueve el libro de
   // inventario. Dos botones "Conciliar" en la vida de la misma remisión, y dos
   // eventos de auditoría que se leen igual, sería peor que el nombre impreciso.
-  function abrirFacturarRemision(docId, rotulo) {
+  //
+  // RECIBE UNA LISTA, no un documento. Una factura cubre VARIAS remisiones —lo
+  // dice el propio modelo: `Remisiones.facturaNumero` es una columna, y por eso
+  // no hizo falta tabla puente de este lado— pero la pantalla obligaba a
+  // registrarla de a una, con su modal y su recarga completa cada vez. Cinco
+  // remisiones de la misma factura eran cinco vueltas.
+  //
+  // El botón de cada fila manda una sola; la barra de selección manda las
+  // marcadas. Es el mismo camino, así que no hay dos formas de registrar una
+  // factura que puedan divergir.
+  function abrirFacturarRemision(docs) {
+    var lista = [].concat(docs);
+    if (!lista.length) return;
+    var varias = lista.length > 1;
+
     modal(
       '<h4>Registrar factura</h4>' +
-      '<p class="hint">' + esc(rotulo) + '</p>' +
+      '<p class="hint">' + (varias
+        ? lista.length + ' remisiones — todas quedan con el mismo número'
+        : esc(lista[0].rotulo)) + '</p>' +
+      (varias
+        ? '<div class="campo"><label>Se le pondrá a</label>' +
+          '<div style="max-height:120px;overflow:auto;">' +
+          lista.map(function (d) {
+            return '<div class="lote-fila"><span>' + esc(d.rotulo) + '</span></div>';
+          }).join('') + '</div></div>'
+        : '') +
       '<div class="aviso info">Esto <strong>no emite nada en Dataico</strong>: anota el número de una ' +
-        'factura que ya existe, para dejar constancia de que esta remisión quedó cobrada.</div>' +
-      '<div class="aviso warn">Al registrarla, la remisión queda <strong>congelada</strong>: no se le podrán ' +
-        'cambiar ítems ni cantidades, ni siquiera siendo admin. Si el número queda mal, se le quita la ' +
-        'factura y se vuelve a hacer.</div>' +
+        'factura que ya existe, para dejar constancia de que ' +
+        (varias ? 'esas remisiones quedaron cobradas' : 'esta remisión quedó cobrada') + '.</div>' +
+      '<div class="aviso warn">Al registrarla, ' +
+        (varias ? 'las ' + lista.length + ' remisiones quedan <strong>congeladas</strong>'
+                : 'la remisión queda <strong>congelada</strong>') +
+        ': no se les podrán cambiar ítems ni cantidades, ni siquiera siendo admin. Si el número ' +
+        'queda mal, se les quita la factura y se vuelve a hacer.</div>' +
       '<div class="campo"><label>Número de factura</label>' +
         '<input id="fNumero" placeholder="FE322" autocomplete="off"></div>' +
       '<div class="campo"><label>Fecha (opcional)</label>' +
         '<input id="fFecha" type="date"></div>' +
       '<div class="campo"><label>CUFE (opcional)</label>' +
         '<input id="fCufe" maxlength="120" placeholder="…"></div>' +
+      '<div id="fProgreso" class="ayuda" style="min-height:14px;"></div>' +
       '<div class="modal-acciones">' +
         '<button class="btn btn-sm" id="fCancel">Cancelar</button>' +
         '<button class="btn btn-sm btn-primary" id="fOk">Registrar</button>' +
@@ -621,6 +733,8 @@
     document.getElementById('fOk').onclick = function () {
       var numero = document.getElementById('fNumero').value.trim();
       if (!numero) { toast('Escribe el número de factura', 'error'); return; }
+      var fecha = document.getElementById('fFecha').value || '';
+      var cufe  = document.getElementById('fCufe').value.trim();
       // Mismo criterio que en `pintarAsignar`: se bloquea contra el doble clic y
       // se libera en el `finally`. Acá pesa aún más, porque el rechazo típico
       // —"esta remisión ya está facturada con FE322: si el número está mal,
@@ -628,23 +742,89 @@
       // seguir sin volver a abrir el modal.
       var btn = this;
       btn.disabled = true;
-      apiRemisionFacturar(token, docId,
-                          numero,
-                          document.getElementById('fFecha').value || '',
-                          document.getElementById('fCufe').value.trim())
-        .then(function (r) {
+      var prog = document.getElementById('fProgreso');
+      var hechas = [];
+
+      // UNA POR UNA, no en paralelo. `remFacturar` toma el script lock de Apps
+      // Script, así que lanzarlas juntas no las hace concurrentes: las pone a
+      // esperarse entre ellas, con el riesgo de que alguna agote los 15 s del
+      // `waitLock` y falle por congestión y no por su propio motivo.
+      var cadena = Promise.resolve();
+      lista.forEach(function (d, i) {
+        cadena = cadena.then(function () {
+          if (prog) prog.textContent = 'Registrando ' + (i + 1) + ' de ' + lista.length +
+                                       ': ' + d.rotulo + '…';
+          return apiRemisionFacturar(token, d.docId, numero, fecha, cufe)
+            .then(function (r) { hechas.push({ d: d, ok: true, sinCambio: !!r.sinCambio }); })
+            .catch(function (e) {
+              // Una que falle NO aborta las demás: si la tercera ya estaba
+              // facturada con otro número, la cuarta y la quinta siguen siendo
+              // trabajo legítimo. Lo que pasó con cada una se reporta abajo.
+              //
+              // La excepción es la sesión: si se venció, las que quedan van a
+              // fallar todas igual, así que se corta y se deja que el manejador
+              // haga lo suyo.
+              if (e && e.tipo === 'auth') throw e;
+              hechas.push({ d: d, ok: false, msg: (e && e.message) || 'falló' });
+            });
+        });
+      });
+
+      cadena.then(function () {
+        var bien = hechas.filter(function (h) { return h.ok; });
+        var mal  = hechas.filter(function (h) { return !h.ok; });
+        if (!mal.length) {
           cerrarModal();
-          toast(r.sinCambio ? 'Ya tenía registrada esa factura' : 'Factura registrada', 'ok');
-          return cargar();
-        })
-        .catch(manejarError)
-        .finally(function () { btn.disabled = false; });
+          toast(bien.length === 1
+            ? (bien[0].sinCambio ? 'Ya tenía registrada esa factura' : 'Factura registrada')
+            : 'Factura registrada en ' + bien.length + ' remisiones', 'ok');
+          return cargar(true);
+        }
+        // Con fallos el modal NO se cierra: el resumen de qué entró y qué no es
+        // justo lo que hay que leer, y un toast de tres segundos no alcanza
+        // para cinco líneas.
+        if (prog) {
+          prog.innerHTML = hechas.map(function (h) {
+            return '<div class="lote-fila"><span>' + esc(h.d.rotulo) + '</span>' +
+                   (h.ok ? '<span class="bien">registrada</span>'
+                         : '<span class="falla">' + esc(h.msg) + '</span>') + '</div>';
+          }).join('');
+        }
+        toast(bien.length + ' registrada(s), ' + mal.length + ' sin registrar', 'error');
+        // Se recarga igual: las que sí entraron ya cambiaron el tablero.
+        if (bien.length) cargar(true);
+      })
+      .catch(manejarError)
+      .finally(function () { btn.disabled = false; });
     };
   }
 
   // ── Carga ────────────────────────────────────────────────────────────────
-  function cargar() {
-    pintarCargando();
+  //
+  // DOS MODOS, y la diferencia es de dónde viene la llamada.
+  //
+  // La PRIMERA carga no tiene nada que mostrar, así que los spinners son la
+  // respuesta correcta. Un refresco DESPUÉS de escribir sí tiene: la tabla que
+  // ya estás mirando. Borrarla para poner cinco spinners durante los tres o
+  // cuatro segundos que tarda `factura_tablero` —siete barridos de hoja en tres
+  // spreadsheets— convierte cada asignación en un parpadeo de la pantalla
+  // entera. Y como una factura se reparte entre varios proyectos, ese parpadeo
+  // se paga tres o cuatro veces seguidas por factura.
+  //
+  // En modo silencioso los datos viejos se quedan en su sitio y se cambian
+  // cuando llega el reemplazo. Lo único que aparece es la barra de estado.
+  function estado(clase, html) {
+    var el = document.getElementById('estadoCarga');
+    if (!el) return;
+    if (!clase) { el.className = 'fact-estado hidden'; el.innerHTML = ''; return; }
+    el.className = 'fact-estado ' + clase;
+    el.innerHTML = html;
+  }
+
+  function cargar(silencioso) {
+    if (silencioso) estado('trabajando', '<span class="spinner"></span> Actualizando los números…');
+    else pintarCargando();
+
     return apiFacturaTablero(token).then(function (r) {
       _datos = r;
       pintarCortes(r.totales || {}, (r.sinFacturar || []).length);
@@ -652,13 +832,22 @@
       pintarFacturadas(r.facturadas || []);
       pintarCotizaciones(r.cotizaciones || [], r.totales || {});
       pintarFacturas(r.facturasConSaldo || [], r.facturasTotal || 0);
+      estado(null);
     }).catch(function (e) {
-      // Sin esto los cuatro spinners se quedan girando para siempre y la
-      // pantalla dice "estoy trabajando" cuando ya se rindió. El toast solo se
-      // ve tres segundos; quien vuelva a mirar el monitor un minuto después
-      // tiene que poder saber que esto falló.
       var msg = (e && e.message) ? e.message : 'No se pudo cargar';
-      enTodasLasCajas('<div class="vacio" style="grid-column:1/-1;">' + esc(msg) + '</div>');
+      if (silencioso) {
+        // NO se borra lo que hay: la escritura sí funcionó, lo que falló fue
+        // volver a leer. Pero lo que quedó en pantalla es de ANTES de esa
+        // escritura, o sea que está mal y tiene cara de estar bien. El toast se
+        // va a los tres segundos; este aviso se queda hasta el próximo refresco.
+        estado('viejo', '⚠ Se guardó, pero no se pudieron releer los números: ' + esc(msg) +
+                        ' — lo que ves es de antes de ese cambio.');
+      } else {
+        // Primera carga: no hay datos viejos que conservar, y dejar los cinco
+        // spinners girando diría "estoy trabajando" cuando ya se rindió.
+        enTodasLasCajas('<div class="vacio" style="grid-column:1/-1;">' + esc(msg) + '</div>');
+        estado(null);
+      }
       manejarError(e);
     });
   }
@@ -669,7 +858,13 @@
     var bA = e.target.closest ? e.target.closest('[data-asignar]') : null;
     if (bA) { abrirAsignar(bA.getAttribute('data-asignar'), bA.getAttribute('data-proy')); return; }
     var bF = e.target.closest ? e.target.closest('[data-facturar]') : null;
-    if (bF) { abrirFacturarRemision(bF.getAttribute('data-facturar'), bF.getAttribute('data-rot')); return; }
+    if (bF) {
+      // El botón de la fila es el caso de una sola: mismo camino que el lote,
+      // con una lista de un elemento.
+      abrirFacturarRemision([{ docId: bF.getAttribute('data-facturar'),
+                               rotulo: bF.getAttribute('data-rot') }]);
+      return;
+    }
     var bQ = e.target.closest ? e.target.closest('[data-quitar]') : null;
     if (bQ) { quitarFactura(bQ.getAttribute('data-quitar'), bQ.getAttribute('data-rot'),
                             bQ.getAttribute('data-fact')); return; }
@@ -678,6 +873,30 @@
     var bN = e.target.closest ? e.target.closest('[data-anular]') : null;
     if (bN) { anularAsignacion(bN.getAttribute('data-anular'), bN.getAttribute('data-etq'),
                                bN.getAttribute('data-arch'), bN.getAttribute('data-proy')); return; }
+  });
+
+  // Las casillas también van por delegación, por lo mismo que los botones: la
+  // tabla se repinta entera en cada carga.
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    if (t.id === 'selTodas') {
+      // "Marcar todas" marca solo las marcables: una remisión firme sin docId
+      // no se puede facturar y su casilla está deshabilitada.
+      Array.prototype.forEach.call(document.querySelectorAll('#sinFacturar [data-sel]'),
+        function (c) { if (!c.disabled) c.checked = t.checked; });
+      actualizarBarraSel();
+      return;
+    }
+    if (t.hasAttribute('data-sel')) {
+      var todas = document.getElementById('selTodas');
+      if (todas) {
+        var cajas = Array.prototype.slice.call(
+          document.querySelectorAll('#sinFacturar [data-sel]:not([disabled])'));
+        todas.checked = cajas.length > 0 && cajas.every(function (c) { return c.checked; });
+      }
+      actualizarBarraSel();
+    }
   });
 
   // `clearSession()` ya borra la fila de sesión en el servidor además del
