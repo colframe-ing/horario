@@ -1613,11 +1613,18 @@
     ERROR_CIERRE_CARPETAS:      { txt: 'Falló el cierre de carpetas',  color: '#DC2626', g: 'Producción y cola' },
     PROD_ENTREGA:               { txt: 'Fecha de entrega',           color: '#2563EB', g: 'Producción y cola' },
     PROD_CAL_EXCEPCION:         { txt: 'Excepción de calendario',    color: '#D97706', g: 'Producción y cola' },
+    // — Facturación (PLAN_FACTURACION.md) —
+    // Asignar es la decisión humana del módulo: la factura no dice a qué
+    // cotización pertenece, así que alguien lo dice y queda registrado quién.
+    FACTURA_ASIGNAR:            { txt: 'Factura asignada',           color: '#16A34A', g: 'Facturación' },
+    FACTURA_ASIGNACION_ANULAR:  { txt: 'Asignación anulada',         color: '#DC2626', g: 'Facturación' },
     // — Remisiones (hoja AuditoriaRemisiones) —
     REMISION_CREADA:            { txt: 'Remisión creada',            color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_EDITADA:           { txt: 'Remisión editada',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ESTADO:            { txt: 'Cambio de estado',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_CONCILIADA:        { txt: 'Remisión conciliada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_FACTURADA:         { txt: 'Remisión facturada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_DESFACTURADA:      { txt: 'Factura quitada',           color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEMS_AJUSTADOS:   { txt: 'Ítems ajustados',            color: '#D97706', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEM_DIVIDIDO:     { txt: 'Ítem dividido en cajas',     color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEM_CAJAS:        { txt: 'Caja de ítems',              color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },

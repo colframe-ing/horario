@@ -374,3 +374,32 @@ async function apiRemPdf(token, docId, tipo, caja, paquetes, porHoja) {
     paquetes: paquetes || 1, porHoja: porHoja || 1,
   });
 }
+
+// ── Facturación (PLAN_FACTURACION.md) ───────────────────────────────────────
+// `factura_tablero` devuelve los tres cortes en UNA llamada: los tres salen de
+// las mismas lecturas de hoja, así que partirlo en tres triplicaría el costo
+// para pintar una sola pantalla.
+async function apiFacturaTablero(token) {
+  return apiCall('factura_tablero', { token });
+}
+// monto va SIN AIU y montoAiu aparte: el subtotal de la cotización incluye AIU,
+// pero no todas las facturas lo cobran, y mezclarlos esconde la diferencia.
+async function apiFacturaAsignar(token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota) {
+  return apiCall('factura_asignar', {
+    token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota,
+  });
+}
+async function apiFacturaAsignacionAnular(token, asigId, motivo) {
+  return apiCall('factura_asignacion_anular', { token, asigId, motivo });
+}
+async function apiFacturaCotizacion(token, cotizacionArchivo) {
+  return apiCall('factura_cotizacion', { token, cotizacionArchivo });
+}
+// Marca una remisión como facturada. Una remisión no se reparte entre dos
+// facturas: si ya tiene otra, el backend la rechaza en vez de pisarla.
+async function apiRemisionFacturar(token, docId, facturaNumero, facturaFecha, facturaCufe) {
+  return apiCall('remision_facturar', { token, docId, facturaNumero, facturaFecha, facturaCufe });
+}
+async function apiRemisionDesfacturar(token, docId, motivo) {
+  return apiCall('remision_desfacturar', { token, docId, motivo });
+}
