@@ -23,29 +23,42 @@
     el.textContent=msg; c.appendChild(el); setTimeout(function(){el.remove();},4000);
   }
 
+  // Los estados los deriva `_estadoCotizacion` en el backend — la MISMA función
+  // que usan cotizaciones y el cierre de carpetas. Esta página tenía su propia
+  // cadena de `if` en paralelo, que es justo el hallazgo G6 (tres estados que
+  // podían contradecirse y nadie comparaba). Aquí solo se rotulan.
   var ESTADO_TXT = {
-    en_produccion:'En producción', en_cola:'En cola', sin_cola:'Aprobado sin cola',
-    finalizado:'Finalizado', sin_aprobar:'Sin aprobar',
+    EN_PRODUCCION:'En producción', EN_COLA:'En cola', SIN_COLA:'Aprobado sin cola',
+    PRODUCIDA:'Producida', PARCIAL:'Parcial', PAUSADA:'Pausada', SIN_APROBAR:'Sin aprobar',
   };
   var SECCION = {
     cola:{txt:'En cola',cls:'cola'}, backlog:{txt:'Sin cola',cls:'back'}, finalizada:{txt:'Finalizado',cls:'fin'},
   };
 
-  // Etapas del ciclo real. Remisión y facturación aún no tienen módulo: se
-  // muestran atenuadas para que la hoja refleje el proceso completo sin fingir
-  // que hay datos.
+  // Las seis etapas del ciclo, ya todas con datos: remisión y facturación decían
+  // "módulo pendiente" y ahora existen.
   function etapasHtml(d) {
     var t = d.totales;
     var hayAprob = t.aprobadas > 0;
-    var hayProd  = d.estadoGlobal === 'en_produccion' || t.finalizadas > 0;
+    var hayProd  = d.estadoGlobal === 'EN_PRODUCCION' || t.finalizadas > 0;
     var todoFin  = t.unidades > 0 && t.finalizadas === t.unidades;
+    var hayDesp  = t.unidadesDespachadas > 0;
+    var todoDesp = t.unidades > 0 && t.unidadesDespachadas === t.unidades;
+    // Cobrado del todo: no queda nada por facturar y algo se facturó. El
+    // `facturadoDeMas` NO cuenta como completo — es un descuadre, no un logro.
+    var todoFact = t.facturado > 0 && t.porFacturar === 0 && !t.facturadoDeMas;
     var et = [
       { t:'Cotización',  v: t.cotizaciones + (t.cotizaciones===1?' cotización':' cotizaciones'), cls: 'ok' },
       { t:'Aprobación',  v: hayAprob ? t.aprobadas+' aprobada'+(t.aprobadas>1?'s':'') : 'pendiente', cls: hayAprob?'ok':'' },
       { t:'Programación',v: t.unidades ? nUnidades(t.unidades)+' en cola' : 'sin programar', cls: t.unidades?'ok':'' },
       { t:'Producción',  v: todoFin ? 'finalizada' : (hayProd ? 'en curso' : 'pendiente'), cls: todoFin?'ok':(hayProd?'act':'') },
-      { t:'Remisión',    v: 'módulo pendiente', cls:'futuro' },
-      { t:'Facturación', v: 'módulo pendiente', cls:'futuro' },
+      { t:'Despacho',    v: hayDesp ? (t.unidadesDespachadas+'/'+t.unidades+' · '+fmtNum(t.kgDespachado,0)+' kg')
+                                    : 'sin despachar',
+                         cls: todoDesp?'ok':(hayDesp?'act':'') },
+      { t:'Facturación', v: t.facturado ? (fmtMoney(t.facturado) +
+                              (t.porFacturar ? ' · faltan '+fmtMoney(t.porFacturar) : ''))
+                            : 'sin facturar',
+                         cls: todoFact?'ok':(t.facturado?'act':'') },
     ];
     return '<div class="hv-etapas">'+et.map(function(e){
       return '<div class="hv-etapa '+e.cls+'"><div class="t">'+esc(e.t)+'</div><div class="v">'+esc(e.v)+'</div></div>';
@@ -73,7 +86,56 @@
       (u.fechaEntrega ? '<span class="f">· entrega '+esc(fechaCorta(u.fechaEntrega))+'</span>' : '')+
       (u.atrasado ? '<span class="badge atr">Atrasado</span>' : '')+
       '<span class="f" style="margin-left:auto;">'+fmtNum(u.mlTotal,0)+' ML</span>'+
+      // Despacho y cobro de ESTA unidad. Lo que salio y bajo que factura salio:
+      // es la parte del ciclo que la hoja de vida no contaba.
+      (u.despachado
+        ? '<span class="hv-chip desp" title="'+esc((u.remisiones||[]).join(', '))+'">'+
+            'despachado'+(u.kgKit?' · '+fmtNum(u.kgKit,0)+' kg':'')+'</span>'
+        : '')+
+      ((u.facturas && u.facturas.length)
+        ? '<span class="hv-chip fact">'+esc(u.facturas.join(' · '))+'</span>' : '')+
+      (u.sinFacturar
+        ? '<span class="hv-chip sinf" title="Remisiones firmes sin factura">'+
+            u.sinFacturar+' sin facturar</span>' : '')+
+      (u.mlAvance ? '<span class="f">· avance '+fmtNum(u.mlAvance,0)+' ML</span>' : '')+
       (u.notaEnvio ? '<div class="hv-nota" style="flex-basis:100%;">📝 '+esc(u.notaEnvio)+'</div>' : '')+
+    '</div>';
+  }
+
+  // Las facturas del proyecto, con lo que se le asigno a cada cotizacion. Es el
+  // ultimo tramo del ciclo y hasta ahora no aparecia en ninguna parte de la hoja.
+  function facturasHtml(d) {
+    var filas = [];
+    (d.cotizaciones || []).forEach(function (c) {
+      (c.asignaciones || []).forEach(function (a) {
+        var f = (d.facturas || {})[a.facturaNumero] || {};
+        filas.push({ numero: a.facturaNumero, proyecto: c.proyecto,
+                     monto: (Number(a.monto)||0) + (Number(a.montoAiu)||0),
+                     aiu: Number(a.montoAiu)||0, kg: Number(a.kgFacturado)||0,
+                     fecha: f.fecha || '', dianStatus: f.dianStatus || '',
+                     pdfUrl: f.pdfUrl || '', origen: a.origen || '' });
+      });
+    });
+    filas.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+    return '<div class="hv-sec"><h3>Facturas ('+filas.length+')</h3>'+
+      (filas.length
+        ? filas.map(function (f) {
+            return '<div class="hv-uni">'+
+              '<span class="n">'+esc(f.numero)+'</span>'+
+              '<span class="f">'+esc(fechaCorta(f.fecha))+
+                (f.dianStatus==='DIAN_ACEPTADO'?' · aceptada DIAN':(f.dianStatus?' · '+esc(f.dianStatus):''))+'</span>'+
+              '<span class="f">· '+esc(f.proyecto||'')+'</span>'+
+              (f.kg?'<span class="f">· '+fmtNum(f.kg,0)+' kg</span>':'')+
+              '<span class="f" style="margin-left:auto;">'+fmtMoney(f.monto)+
+                (f.aiu?' (AIU '+fmtMoney(f.aiu)+')':'')+'</span>'+
+              (f.pdfUrl
+                ? '<a class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:3px 8px;min-height:0;" '+
+                  'target="_blank" rel="noopener" href="'+esc(f.pdfUrl)+'">PDF</a>'
+                : '')+
+            '</div>';
+          }).join('')
+        : '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Todavía no se ha asignado ninguna factura a este proyecto. '+
+          'Se hace desde <a href="facturacion.html">Facturación</a>.</div>')+
     '</div>';
   }
 
@@ -106,6 +168,17 @@
           '<div class="value">'+t.unidades+'</div><div class="sub">'+t.finalizadas+' finalizadas</div></div>'+
         '<div class="hv-card" style="border-left-color:#D97706;"><div class="label">Valor aprobado</div>'+
           '<div class="value" style="font-size:1.1rem;">'+fmtMoney(t.valorAprobado)+'</div><div class="sub">subtotal sin IVA</div></div>'+
+        '<div class="hv-card" style="border-left-color:#0891B2;"><div class="label">Despachado</div>'+
+          '<div class="value">'+fmtNum(t.kgDespachado,0)+'</div>'+
+          '<div class="sub">kg de kit · '+t.unidadesDespachadas+'/'+t.unidades+' unidades</div></div>'+
+        '<div class="hv-card" style="border-left-color:#16A34A;"><div class="label">Facturado</div>'+
+          '<div class="value" style="font-size:1.1rem;">'+fmtMoney(t.facturado)+'</div>'+
+          '<div class="sub">'+(t.aiu?'incluye '+fmtMoney(t.aiu)+' de AIU':'sin AIU registrado')+'</div></div>'+
+        '<div class="hv-card" style="border-left-color:'+(t.facturadoDeMas?'#DC2626':'#B45309')+';">'+
+          '<div class="label">'+(t.facturadoDeMas?'Cobrado de más':'Por facturar')+'</div>'+
+          '<div class="value" style="font-size:1.1rem;">'+
+            fmtMoney(t.facturadoDeMas || t.porFacturar)+'</div>'+
+          '<div class="sub">'+(t.expuesto?fmtMoney(t.expuesto)+' cobrado sin salir':'del valor aprobado')+'</div></div>'+
       '</div>'+
 
       '<div class="hv-sec"><h3>Cotizaciones del proyecto ('+t.cotizaciones+')</h3>'+
@@ -114,16 +187,38 @@
             '<div class="hv-cot-top">'+
               '<span class="hv-cot-nom">'+esc(c.proyecto||'(sin nombre)')+'</span>'+
               '<span class="'+(c.aprobada?'pill-aprob':'pill-noaprob')+'">'+(c.aprobada?'Aprobada':'No aprobada')+'</span>'+
+              (c.aprobada && c.estado
+                ? '<span class="hv-estado '+esc(c.estado)+'" style="margin-left:0;font-size:0.64rem;padding:2px 8px;">'+
+                    esc(ESTADO_TXT[c.estado]||c.estado)+'</span>' : '')+
               (c.version?'<span style="font-size:0.7rem;color:var(--cf-gray-text);">v'+esc(c.version)+'</span>':'')+
               '<span style="margin-left:auto;font-size:0.74rem;color:var(--cf-gray-text);">'+esc(fechaCorta(c.fecha))+'</span>'+
             '</div>'+
             '<div class="hv-cot-meta">'+nUnidades(c.cantidad)+' · '+fmtNum(c.mlTotal,0)+' ML · '+fmtMoney(c.subtotal)+' c/u'+
               (c.vinculadas?' · 🔗'+c.vinculadas+' carpeta'+(c.vinculadas>1?'s':''):' · sin carpeta vinculada')+'</div>'+
+            // El corte de cobro de ESTA cotizacion. Solo si esta aprobada: una
+            // sin aprobar no es trabajo comprometido y sus ceros no dicen nada.
+            (c.aprobada && c.facturacion
+              ? '<div class="hv-cot-meta">'+
+                  'Facturado '+fmtMoney(c.facturacion.facturado)+
+                  (c.facturacion.aiu?' (AIU '+fmtMoney(c.facturacion.aiu)+')':'')+
+                  (c.facturacion.facturadoDeMas
+                    ? ' · <span style="color:#DC2626;font-weight:700;">'+fmtMoney(c.facturacion.facturadoDeMas)+' de más</span>'
+                    : (c.facturacion.pendiente ? ' · faltan '+fmtMoney(c.facturacion.pendiente) : ' · saldada'))+
+                  (c.facturacion.expuesto
+                    ? ' · <span style="color:#B45309;">'+fmtMoney(c.facturacion.expuesto)+' cobrado sin salir</span>'
+                    : '')+
+                  (c.facturacion.aiuMixto
+                    ? ' · <span style="color:#92400E;" title="Unas facturas cobran AIU y otras no">AIU mixto</span>'
+                    : '')+
+                '</div>'
+              : '')+
             (c.notas?'<div class="hv-nota">📝 '+esc(c.notas)+'</div>':'')+
             (c.unidades.length ? c.unidades.map(unidadHtml).join('') : '')+
           '</div>';
         }).join('')+
       '</div>'+
+
+      facturasHtml(d)+
 
       '<div class="hv-sec"><h3>Carpetas de producción ('+d.carpetas.length+')</h3>'+
         (d.carpetas.length ? d.carpetas.map(function(k){

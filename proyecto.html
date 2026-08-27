@@ -23,11 +23,21 @@
     .hv-title { font-size:1.25rem; font-weight:800; color:var(--cf-dark); line-height:1.3; margin:2px 0 6px; }
     .hv-sub { font-size:0.8rem; color:var(--cf-gray-text); }
     .hv-estado { display:inline-block; font-size:0.72rem; font-weight:800; padding:3px 10px; border-radius:999px; margin-left:8px; vertical-align:middle; }
-    .hv-estado.en_produccion { background:#CFFAFE; color:#155E75; }
-    .hv-estado.en_cola       { background:#DBEAFE; color:#1D4ED8; }
-    .hv-estado.sin_cola      { background:#F1F5F9; color:#475569; }
-    .hv-estado.finalizado    { background:#D1FAE5; color:#065F46; }
-    .hv-estado.sin_aprobar   { background:#FEF3C7; color:#92400E; }
+    /* Los estados vienen de `_estadoCotizacion`, que es la unica derivacion del
+       sistema. Antes esta pagina calculaba los suyos con otra cadena de `if`. */
+    .hv-estado.EN_PRODUCCION { background:#CFFAFE; color:#155E75; }
+    .hv-estado.EN_COLA       { background:#DBEAFE; color:#1D4ED8; }
+    .hv-estado.SIN_COLA      { background:#F1F5F9; color:#475569; }
+    .hv-estado.PRODUCIDA     { background:#D1FAE5; color:#065F46; }
+    .hv-estado.PARCIAL       { background:#E0E7FF; color:#3730A3; }
+    .hv-estado.PAUSADA       { background:#FFEDD5; color:#9A3412; }
+    .hv-estado.SIN_APROBAR   { background:#FEF3C7; color:#92400E; }
+
+    /* Despacho y cobro, en las unidades */
+    .hv-chip { font-size:0.62rem; font-weight:800; padding:1px 7px; border-radius:999px; white-space:nowrap; }
+    .hv-chip.desp { background:#DBEAFE; color:#1D4ED8; }
+    .hv-chip.fact { background:#D1FAE5; color:#065F46; }
+    .hv-chip.sinf { background:#FEE2E2; color:#991B1B; }
 
     /* Etapas del ciclo de vida: las dos últimas aún no existen como módulo */
     .hv-etapas { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
@@ -85,6 +95,7 @@
     <a href="programacion.html" class="mod-nav-link">Programación</a>
     <a href="produccion.html"   class="mod-nav-link">Producción</a>
     <a href="remisiones.html"   class="mod-nav-link">Remisiones</a>
+    <a href="facturacion.html"  class="mod-nav-link">Facturación</a>
     <span class="mod-nav-sep" aria-hidden="true"></span>
     <a href="admin.html"        class="mod-nav-link">Asistencia</a>
   </nav>
