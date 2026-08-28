@@ -35,6 +35,7 @@
   var token = session.token;
 
   var _datos = null;
+  var _backendViejo = false;  // respondió un Apps Script anterior a esta pantalla
   var vista = 'facturas';     // cobrar | facturas | proyecto
   var abierta = null;         // número de la factura desplegada
   var sugAbierta = null;      // sugerencias de esa factura (llegan aparte)
@@ -138,6 +139,17 @@
 
     return apiFacturaTablero(token).then(function (r) {
       _datos = r;
+      // ¿El backend que respondió es el que esta pantalla necesita?
+      //
+      // Hace falta distinguirlo porque los dos casos se veían IGUAL y el mensaje
+      // que salía era el equivocado: sin `facturas` la lista queda vacía, y de
+      // ahí se concluía "el maestro de facturas está vacío, corre el sync" —
+      // mandando a arreglar un Sheet que estaba perfecto.
+      //
+      // `facturas` AUSENTE (undefined) es un backend viejo. `facturas` presente
+      // y vacío es un maestro de verdad vacío. Son cosas distintas y ahora se
+      // dicen distinto.
+      _backendViejo = (r && r.facturas === undefined);
       estado(null);
       pintar();
     }).catch(function (e) {
@@ -289,6 +301,10 @@
   }
 
   function vistaFacturas() {
+    // El backend viejo no manda `facturas`, así que esta vista no puede
+    // dibujarse. Se dice qué falta y cómo arreglarlo, en vez de mostrar una
+    // lista vacía que se lee como "no hay facturas".
+    if (_backendViejo) return avisoBackendViejo();
     var facturas = _datos.facturas || [];
     var sinRep = 0, nPend = 0;
     facturas.forEach(function (f) {
@@ -538,6 +554,31 @@
     return h;
   }
 
+  /** El backend desplegado es anterior a esta pantalla.
+   *
+   *  Se distingue de "no hay datos" a propósito: el síntoma es el mismo —una
+   *  lista vacía— pero la causa y el arreglo no se parecen en nada, y el mensaje
+   *  equivocado manda a correr un sync sobre un Sheet que está bien.
+   *
+   *  `facturasTotal` sí lo devuelve el backend viejo, así que cuando trae un
+   *  número se puede decir cuántas facturas hay de verdad. Es la prueba de que
+   *  el problema no son los datos. */
+  function avisoBackendViejo() {
+    var n = (_datos && _datos.facturasTotal) || 0;
+    return '<div class="aviso warn" style="margin:0 0 14px;">' +
+      '<strong>Falta subir el backend.</strong> El Apps Script que está respondiendo es anterior a ' +
+      'esta pantalla: no devuelve la lista de facturas que necesita.' +
+      (n ? ' <strong>Tus datos están bien</strong> — ese mismo backend reporta ' + n +
+           ' factura(s) en el maestro.' : '') +
+      '</div>' +
+      '<div class="aviso info" style="margin:0;">Para arreglarlo:<br>' +
+      '1. Pegar <code>apps-script/Remisiones.gs</code> en el editor de Apps Script.<br>' +
+      '2. <strong>Implementar › Administrar implementaciones › editar › Nueva versión</strong>. ' +
+      'Editar el código no basta: sin versión nueva, la Web App sigue sirviendo la anterior.<br>' +
+      '<br>Mientras tanto, <strong>Por cobrar</strong> y <strong>Por proyecto</strong> sí funcionan: ' +
+      'salen de datos que el backend viejo también manda.</div>';
+  }
+
   function refCotiz(c) {
     var cb = String(c.cb == null ? '' : c.cb).trim();
     if (!cb || cb === '0') return '';
@@ -556,10 +597,17 @@
     var bc = document.getElementById('badgeCobrar');
     bc.textContent = nCobrar;
     bc.className = 'vbadge' + (nCobrar ? '' : ' calmo');
-    var nFact = (_datos.facturas || []).filter(function (f) {
-      var e = estadoFactura(f); return !e.repartoOk || e.sugeridas;
-    }).length;
-    document.getElementById('badgeFact').textContent = nFact;
+    var bf = document.getElementById('badgeFact');
+    if (_backendViejo) {
+      // Un "0" aquí se leería como "no hay nada pendiente", que es justo lo que
+      // no se puede afirmar: no llegó el dato para saberlo.
+      bf.textContent = '!'; bf.className = 'vbadge';
+    } else {
+      bf.textContent = (_datos.facturas || []).filter(function (f) {
+        var e = estadoFactura(f); return !e.repartoOk || e.sugeridas;
+      }).length;
+      bf.className = 'vbadge calmo';
+    }
 
     Array.prototype.forEach.call(document.querySelectorAll('.vtab'), function (t) {
       t.setAttribute('aria-selected', String(t.getAttribute('data-v') === vista));
