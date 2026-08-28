@@ -404,8 +404,11 @@ async function apiFacturaCotizacion(token, cotizacionArchivo) {
 }
 // Marca una remisión como facturada. Una remisión no se reparte entre dos
 // facturas: si ya tiene otra, el backend la rechaza en vez de pisarla.
-async function apiRemisionFacturar(token, docId, facturaNumero, facturaFecha, facturaCufe) {
-  return apiCall('remision_facturar', { token, docId, facturaNumero, facturaFecha, facturaCufe });
+// Sin fecha ni CUFE: se pedían en cada registro y no los leía nadie — eran
+// columnas de solo escritura. Y sobraban por partida doble, porque el maestro
+// `Facturas` ya los trae de Dataico. El backend ignora los dos si llegan.
+async function apiRemisionFacturar(token, docId, facturaNumero) {
+  return apiCall('remision_facturar', { token, docId, facturaNumero });
 }
 async function apiRemisionDesfacturar(token, docId, motivo) {
   return apiCall('remision_desfacturar', { token, docId, motivo });

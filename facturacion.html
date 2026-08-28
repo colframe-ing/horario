@@ -18,93 +18,197 @@
     .mod-nav-link:hover:not(.active) { color: var(--cf-dark); }
     .mod-nav-sep { width:1px; background:var(--cf-gray-mid); margin:8px 6px; flex-shrink:0; }
 
-    .card-sec { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:14px; }
-    .card-sec h3 { font-size:0.82rem; font-weight:800; color:var(--cf-dark); margin:0 0 4px; text-transform:uppercase; letter-spacing:0.04em; }
-    .card-sec .sec-sub { font-size:0.74rem; color:var(--cf-gray-text); margin:0 0 12px; }
+    /* ══ LAS TRES VISTAS ══════════════════════════════════════════════════
+       Tres trabajos distintos, no cuatro tablas iguales: una ALERTA que cuesta
+       plata, un TRABAJO que se hace por factura, y un REPORTE que se mira.
+       Antes estaban intercaladas y saltando de eje en eje, que es lo que hacía
+       imposible saber por dónde empezar. */
+    .vtabs { display:flex; gap:3px; border-bottom:1.5px solid var(--cf-gray-mid); margin-bottom:16px; overflow-x:auto; }
+    .vtab { font-family:inherit; font-size:0.83rem; font-weight:700; cursor:pointer; white-space:nowrap;
+            padding:10px 15px; background:none; border:none; border-bottom:3px solid transparent;
+            color:var(--cf-gray-text); display:flex; align-items:center; gap:7px; }
+    .vtab:hover { color:var(--cf-dark); }
+    .vtab[aria-selected="true"] { color:var(--cf-blue); border-bottom-color:var(--cf-blue); }
+    .vbadge { font-size:0.66rem; font-weight:800; padding:1px 7px; border-radius:999px;
+              background:#FEE2E2; color:#991B1B; }
+    .vbadge.calmo { background:#F1F5F9; color:#475569; }
 
-    /* Cortes de arriba */
-    .fact-cortes { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:14px; }
-    .corte { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:12px 14px; border-left:4px solid var(--cf-gray-mid); }
-    .corte .lbl { font-size:0.66rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
-    .corte .val { font-size:1.05rem; font-weight:800; color:var(--cf-dark); margin-top:3px; }
-    .corte .sub { font-size:0.68rem; color:var(--cf-gray-text); margin-top:2px; }
-    .corte.aprobado  { border-left-color: var(--cf-blue); }
-    .corte.facturado { border-left-color: var(--cf-success); }
-    .corte.pendiente { border-left-color: #D97706; }
-    .corte.expuesto  { border-left-color: #DC2626; }
-
-    .fact-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
-    .fact-table th, .fact-table td { padding:7px 9px; text-align:right; border-bottom:1px solid var(--cf-gray-mid); }
-    .fact-table th:first-child, .fact-table td:first-child { text-align:left; }
-    .fact-table thead th { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); font-weight:800; }
-    .fact-table tbody tr:hover { background:#F8FAFC; }
-    .fact-table tfoot td { font-weight:800; border-top:2px solid var(--cf-dark); border-bottom:none; }
-    .proy { font-weight:700; color:var(--cf-dark); }
-    .cbv { font-size:0.68rem; color:var(--cf-gray-text); font-weight:700; }
-
-    .neg { color:#B45309; }        /* falta por cobrar */
-    .mal { color:#DC2626; font-weight:800; }  /* cobrado de más */
-    .ok  { color:#065F46; }
-
-    .chip { font-size:0.62rem; font-weight:800; padding:1px 7px; border-radius:999px; white-space:nowrap; }
-    .chip.aiu   { background:#FEF3C7; color:#92400E; }
-    .chip.exp   { background:#FEE2E2; color:#991B1B; }
-    .chip.dias  { background:#F1F5F9; color:#475569; }
-    .chip.dias.viejo { background:#FEE2E2; color:#991B1B; }
-
-    .vacio { text-align:center; color:var(--cf-gray-text); font-size:0.8rem; padding:22px 0; }
-    /* Cargando. `grid-column` porque el contenedor de los cortes es una grilla:
-       sin eso el spinner sale encajonado en la primera columna en vez de
-       centrado. En los contenedores que no son grilla la propiedad se ignora. */
-    .fact-cargando { text-align:center; padding:40px 24px; grid-column:1/-1; }
-    .fact-cargando .spinner { border-color:rgba(0,0,0,0.1); border-top-color:var(--cf-blue); }
-
-    /* Recarga silenciosa: la barra de estado que reemplaza a los cinco spinners
-       cuando el refresco viene DESPUÉS de escribir. Los datos viejos se quedan
-       en pantalla mientras llega el reemplazo. */
+    /* Barra de estado de la recarga silenciosa */
     .fact-estado { display:flex; align-items:center; gap:8px; font-size:0.74rem; font-weight:700;
                    padding:7px 12px; border-radius:var(--radius); margin-bottom:10px; }
     .fact-estado .spinner { width:13px; height:13px; border-width:2px;
                             border-color:rgba(0,0,0,0.12); border-top-color:var(--cf-blue); }
     .fact-estado.trabajando { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; }
-    /* Si el refresco falla, lo que quedó en pantalla es viejo. Decirlo importa
-       más que el toast: el toast se va a los tres segundos y estos números
-       siguen ahí, con cara de estar al día. */
     .fact-estado.viejo     { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+    .fact-cargando { text-align:center; padding:40px 24px; grid-column:1/-1; }
+    .fact-cargando .spinner { border-color:rgba(0,0,0,0.1); border-top-color:var(--cf-blue); }
 
-    /* Selección múltiple en "salió y nadie lo facturó" */
-    .fact-table td.sel, .fact-table th.sel { width:34px; text-align:center; padding-right:0; }
-    .fact-barra { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-                  padding:9px 12px; margin-bottom:10px; border-radius:var(--radius);
-                  background:#F1F5F9; border:1px solid var(--cf-gray-mid); }
-    .fact-barra .cuenta { font-size:0.76rem; font-weight:800; color:var(--cf-dark); }
-    .fact-barra.hidden { display:none; }
+    /* Cortes: cada vista muestra LOS SUYOS. Cinco tiles genéricos arriba de todo
+       mezclaban unidades porque intentaban resumir tres cosas a la vez. */
+    .fact-cortes { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-bottom:14px; }
+    .corte { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:12px 14px; border-left:4px solid var(--cf-gray-mid); }
+    .corte .lbl { font-size:0.64rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
+    .corte .val { font-size:1.1rem; font-weight:800; color:var(--cf-dark); margin-top:3px; font-variant-numeric:tabular-nums; }
+    .corte .sub { font-size:0.68rem; color:var(--cf-gray-text); margin-top:2px; }
+    .corte.a { border-left-color:var(--cf-blue); }
+    .corte.b { border-left-color:var(--cf-success); }
+    .corte.c { border-left-color:#D97706; }
+    .corte.d { border-left-color:#DC2626; }
+
+    .barra-f { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .buscar { flex:1 1 220px; min-width:170px; padding:8px 12px; font-family:inherit; font-size:0.85rem;
+              border:1.5px solid var(--cf-gray-mid); border-radius:var(--radius-sm); color:var(--cf-dark); }
+    .buscar:focus { outline:none; border-color:var(--cf-blue); }
+    .fchip { font-family:inherit; font-size:0.75rem; font-weight:700; cursor:pointer;
+             padding:7px 13px; border-radius:999px; border:1.5px solid var(--cf-gray-mid);
+             background:#fff; color:var(--cf-gray-text); }
+    .fchip:hover { border-color:var(--cf-blue); color:var(--cf-blue); }
+    .fchip[aria-pressed="true"] { background:var(--cf-dark); border-color:var(--cf-dark); color:#fff; }
+
+    /* ── Vista 1 · Por cobrar ─────────────────────────────────────────────
+       Agrupada POR PROYECTO porque la acción casi siempre es "esta factura
+       cubre estas tres del mismo proyecto". Los grupos van por su remisión más
+       vieja —así lo urgente flota— y las filas dentro por consecutivo, que es
+       como se busca con el papel en la mano. */
+    .grupo { background:#fff; border:1.5px solid var(--cf-gray-mid); border-radius:var(--radius);
+             margin-bottom:10px; overflow:hidden; }
+    .grupo.urgente { border-color:#DC2626; }
+    .grupo-top { display:flex; align-items:center; gap:11px; padding:10px 14px; background:#F8FAFC;
+                 border-bottom:1px solid var(--cf-gray-mid); flex-wrap:wrap; }
+    .grupo-top .gn { font-weight:800; font-size:0.88rem; color:var(--cf-dark); }
+    .gcb { font-size:0.68rem; color:var(--cf-gray-text); font-weight:700; }
+    .espacio { flex:1; }
+    .rem-fila { display:grid; grid-template-columns:26px minmax(110px,1fr) 84px 78px auto;
+                gap:11px; align-items:center; padding:9px 14px;
+                border-bottom:1px solid #EEF1F5; font-size:0.8rem; }
+    .rem-fila:last-child { border-bottom:none; }
+    .rem-fila .rnum { font-weight:700; font-variant-numeric:tabular-nums; color:var(--cf-dark); }
+    .dias { font-size:0.66rem; font-weight:800; padding:2px 8px; border-radius:999px;
+            background:#F1F5F9; color:#475569; white-space:nowrap; text-align:center; }
+    .dias.viejo { background:#FEE2E2; color:#991B1B; }
+    input[type="checkbox"] { width:15px; height:15px; accent-color:var(--cf-blue); cursor:pointer; }
+    .accion { position:sticky; bottom:12px; display:flex; gap:11px; align-items:center; flex-wrap:wrap;
+              background:var(--cf-dark); color:#fff; border-radius:var(--radius);
+              padding:11px 15px; margin-top:14px; box-shadow:0 6px 20px rgba(7,29,73,0.3); z-index:5; }
+    .accion .cuenta { font-weight:800; font-size:0.83rem; }
+    .accion button { font-family:inherit; font-size:0.76rem; font-weight:700; cursor:pointer;
+                     padding:6px 13px; border-radius:7px; border:1.5px solid rgba(255,255,255,0.4);
+                     background:transparent; color:#fff; }
+    .accion button.primario { background:#fff; color:var(--cf-dark); border-color:#fff; }
+    .accion button:hover { border-color:#fff; }
+    .accion .et { font-size:0.7rem; opacity:0.75; }
+    .sugfact { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+    /* ── Vista 2 · Facturas ───────────────────────────────────────────────
+       Una fila por factura con sus DOS pendientes a la vista: a qué remisiones
+       cubre y entre qué proyectos se reparte. */
+    .lista { display:flex; flex-direction:column; gap:9px; }
+    .fila { display:grid; grid-template-columns:minmax(140px,1.1fr) minmax(110px,0.8fr) minmax(180px,1.2fr) minmax(180px,1.2fr);
+            gap:14px; align-items:center; background:#fff; border:1.5px solid var(--cf-gray-mid);
+            border-radius:var(--radius); padding:12px 15px; cursor:pointer; text-align:left; width:100%;
+            font-family:inherit; color:inherit; transition:border-color .15s, box-shadow .15s; }
+    .fila:hover { border-color:var(--cf-blue); box-shadow:var(--shadow); }
+    .fila[aria-expanded="true"] { border-color:var(--cf-dark); box-shadow:var(--shadow); }
+    .num { font-size:0.98rem; font-weight:800; color:var(--cf-dark); }
+    .meta { font-size:0.69rem; color:var(--cf-gray-text); font-weight:600; margin-top:1px; }
+    .plata { font-size:0.92rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--cf-dark); }
+    .eje { display:flex; flex-direction:column; gap:4px; }
+    .eje-lbl { font-size:0.61rem; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:#8A93A2; }
+    .eje-val { display:flex; align-items:center; gap:7px; font-size:0.77rem; font-weight:700; font-variant-numeric:tabular-nums; }
+    .barrita { flex:1; height:5px; border-radius:999px; background:var(--cf-gray-mid); overflow:hidden; min-width:40px; }
+    .barrita > i { display:block; height:100%; border-radius:999px; background:var(--cf-blue); }
+    .barrita.full > i { background:var(--cf-success); }
+    .estado { font-size:0.65rem; font-weight:800; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+    .estado.ok   { background:#ECFDF5; color:#065F46; }
+    .estado.warn { background:#FFFBEB; color:#92400E; }
+    .estado.bad  { background:#FEF2F2; color:#991B1B; }
+    .estado.na   { background:#F1F5F9; color:#475569; }
+
+    /* El panel: LAS DOS MITADES DEL TRABAJO EN UN SOLO SITIO. Es la tesis de
+       este rediseño — antes había que ir a dos tablas distintas y ninguna
+       mostraba la factura entera. */
+    .panel { background:#fff; border:1.5px solid var(--cf-dark); border-top:none;
+             border-radius:0 0 var(--radius) var(--radius); padding:0 15px 15px; margin-top:-9px; }
+    .panel-top { display:flex; gap:12px; flex-wrap:wrap; align-items:baseline;
+                 padding:13px 0 9px; border-bottom:1px solid #EEF1F5; }
+    .nota-f { font-size:0.73rem; color:var(--cf-gray-text); font-style:italic; margin:8px 0 0; }
+    .aviso { font-size:0.74rem; border-radius:var(--radius-sm); padding:9px 12px; margin:11px 0 0; }
+    .aviso.warn { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+    .aviso.info { background:#F8FAFC; color:var(--cf-gray-text); border:1px solid var(--cf-gray-mid); }
+    .mitades { display:grid; grid-template-columns:repeat(auto-fit,minmax(275px,1fr)); gap:20px; margin-top:13px; }
+    .mitad h4 { font-size:0.67rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
+                color:var(--cf-gray-text); margin:0 0 3px; }
+    .mitad .h4sub { font-size:0.69rem; color:#8A93A2; margin:0 0 8px; }
+    .item { display:flex; align-items:flex-start; gap:9px; padding:8px 0;
+            border-bottom:1px solid #EEF1F5; font-size:0.79rem; }
+    .item:last-of-type { border-bottom:none; }
+    .item .ico { flex:none; width:17px; height:17px; border-radius:50%; display:grid; place-items:center;
+                 font-size:0.6rem; font-weight:800; margin-top:1px; }
+    .item.hecho .ico { background:#ECFDF5; color:#065F46; }
+    .item.sug   .ico { background:#F1F5F9; color:#475569; }
+    .item .cuerpo { flex:1; min-width:0; }
+    .item .t { font-weight:700; display:block; color:var(--cf-dark); }
+    .item .d { font-size:0.67rem; color:var(--cf-gray-text); display:block; margin-top:1px; }
+    .item .monto { font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+    .saldo { display:flex; justify-content:space-between; gap:10px; margin-top:10px; padding-top:9px;
+             border-top:2px solid var(--cf-dark); font-size:0.81rem; font-weight:800; font-variant-numeric:tabular-nums; }
+    .saldo .cero { color:#065F46; }
+    .saldo .queda { color:#92400E; }
+
+    /* ── Vista 3 · Por proyecto ───────────────────────────────────────────
+       Un REPORTE: se mira, no se opera. Por eso es una tabla densa con totales
+       y no una lista de tarjetas con botones. */
+    .tabla-wrap { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto; }
+    .fact-table { width:100%; border-collapse:collapse; font-size:0.79rem; }
+    .fact-table th, .fact-table td { padding:8px 11px; text-align:right; border-bottom:1px solid var(--cf-gray-mid); white-space:nowrap; }
+    .fact-table th:first-child, .fact-table td:first-child { text-align:left; white-space:normal; }
+    .fact-table thead th { font-size:0.63rem; text-transform:uppercase; letter-spacing:0.05em;
+                           color:var(--cf-gray-text); font-weight:800; background:#F8FAFC; }
+    .fact-table tbody tr:hover { background:#F8FAFC; }
+    .fact-table tfoot td { font-weight:800; border-top:2px solid var(--cf-dark); border-bottom:none; }
+    .fact-table td.n { font-variant-numeric:tabular-nums; }
+    .proy { font-weight:700; color:var(--cf-dark); }
+    .cbv { font-size:0.67rem; color:var(--cf-gray-text); font-weight:700; }
+    .neg { color:#B45309; font-weight:700; }
+    .mal { color:#DC2626; font-weight:800; }
+    .ok  { color:#065F46; }
+    .leyenda { font-size:0.75rem; color:var(--cf-gray-text); margin:12px 2px 0; max-width:74ch; }
+    .leyenda strong { color:var(--cf-dark); }
+
+    .vacio { text-align:center; color:var(--cf-gray-text); font-size:0.8rem; padding:26px 0; }
+    .btn-mini { font-size:0.69rem; font-weight:700; padding:4px 9px; border-radius:7px;
+                border:1.5px solid var(--cf-gray-mid); background:#fff; color:var(--cf-blue);
+                cursor:pointer; white-space:nowrap; font-family:inherit; }
+    .btn-mini:hover { border-color:var(--cf-blue); background:#F8FAFC; }
+    .btn-mini:disabled { opacity:0.5; cursor:default; }
+    .btn-mini.quitar { color:#8A93A2; }
+    .btn-mini.quitar:hover { border-color:#DC2626; color:#DC2626; }
+
+    /* Modal */
+    .modal-back { position:fixed; inset:0; background:rgba(7,29,73,0.45); display:flex;
+                  align-items:center; justify-content:center; z-index:60; padding:16px; }
+    .modal-box { background:#fff; border-radius:var(--radius); box-shadow:0 12px 40px rgba(0,0,0,0.25);
+                 width:100%; max-width:460px; max-height:90vh; overflow:auto; padding:18px; }
+    .modal-box h4 { margin:0 0 4px; font-size:0.95rem; font-weight:800; color:var(--cf-dark); }
+    .modal-box .hint { font-size:0.72rem; color:var(--cf-gray-text); margin:0 0 14px; }
+    .campo { margin-bottom:11px; }
+    .campo label { display:block; font-size:0.7rem; font-weight:800; text-transform:uppercase;
+                   letter-spacing:0.04em; color:var(--cf-gray-text); margin-bottom:4px; }
+    .campo input { width:100%; padding:8px 10px; border:1.5px solid var(--cf-gray-mid);
+                   border-radius:8px; font-family:inherit; font-size:0.85rem; color:var(--cf-dark); background:#fff; }
+    .campo input:focus { outline:none; border-color:var(--cf-blue); }
+    .campo .ayuda { font-size:0.68rem; color:var(--cf-gray-text); margin-top:3px; }
+    .modal-acciones { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
     .lote-fila { display:flex; justify-content:space-between; gap:10px; font-size:0.76rem;
                  padding:3px 0; border-bottom:1px solid var(--cf-gray-mid); }
     .lote-fila:last-child { border-bottom:none; }
     .lote-fila .bien { color:#065F46; font-weight:700; }
     .lote-fila .falla { color:#B91C1C; font-weight:700; }
-    .btn-mini { font-size:0.7rem; font-weight:700; padding:4px 9px; border-radius:7px; border:1.5px solid var(--cf-gray-mid); background:#fff; color:var(--cf-dark); cursor:pointer; white-space:nowrap; }
-    .btn-mini:hover { border-color:var(--cf-blue); color:var(--cf-blue); }
-    .btn-mini:disabled { opacity:0.5; cursor:default; }
 
-    /* Modal */
-    .modal-back { position:fixed; inset:0; background:rgba(7,29,73,0.45); display:flex; align-items:center; justify-content:center; z-index:60; padding:16px; }
-    .modal-box { background:#fff; border-radius:var(--radius); box-shadow:0 12px 40px rgba(0,0,0,0.25); width:100%; max-width:460px; max-height:90vh; overflow:auto; padding:18px; }
-    .modal-box h4 { margin:0 0 4px; font-size:0.95rem; font-weight:800; color:var(--cf-dark); }
-    .modal-box .hint { font-size:0.72rem; color:var(--cf-gray-text); margin:0 0 14px; }
-    .campo { margin-bottom:11px; }
-    .campo label { display:block; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); margin-bottom:4px; }
-    .campo input, .campo select, .campo textarea {
-      width:100%; padding:8px 10px; border:1.5px solid var(--cf-gray-mid); border-radius:8px;
-      font-family:inherit; font-size:0.85rem; color:var(--cf-dark); background:#fff;
+    @media (max-width:760px) {
+      .fila { grid-template-columns:1fr 1fr; }
+      .rem-fila { grid-template-columns:26px 1fr auto; }
     }
-    .campo input:focus, .campo select:focus, .campo textarea:focus { outline:none; border-color:var(--cf-blue); }
-    .campo .ayuda { font-size:0.68rem; color:var(--cf-gray-text); margin-top:3px; }
-    .modal-acciones { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
-    .aviso { font-size:0.72rem; padding:8px 10px; border-radius:8px; margin-bottom:11px; }
-    .aviso.warn { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
-    .aviso.info { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; }
   </style>
 </head>
 <body>
@@ -137,56 +241,19 @@
 
   <div class="admin-main admin-panel">
 
+    <div class="vtabs" role="tablist">
+      <button class="vtab" role="tab" data-v="cobrar" aria-selected="false">
+        Por cobrar <span class="vbadge" id="badgeCobrar">·</span></button>
+      <button class="vtab" role="tab" data-v="facturas" aria-selected="true">
+        Facturas <span class="vbadge calmo" id="badgeFact">·</span></button>
+      <button class="vtab" role="tab" data-v="proyecto" aria-selected="false">
+        Por proyecto</button>
+    </div>
+
     <div id="estadoCarga" class="fact-estado hidden"></div>
 
-    <div id="cortes" class="fact-cortes">
+    <div id="vista">
       <div class="fact-cargando"><span class="spinner"></span></div>
-    </div>
-
-    <!-- 4.1 — la alerta que cuesta plata -->
-    <div class="card-sec">
-      <h3>Salió y nadie lo facturó</h3>
-      <p class="sec-sub">
-        Remisiones despachadas o entregadas a las que todavía no se les ha anotado una factura,
-        <strong>en orden de consecutivo</strong>. La antigüedad va en su columna, marcada en rojo
-        a los 30 días. Registrar la factura aquí <strong>no emite nada en Dataico</strong>:
-        deja constancia de que esa remisión ya se cobró. <strong>Una factura puede cubrir varias
-        remisiones</strong>: márcalas y regístralas todas de una vez.
-      </p>
-      <div id="barraSel" class="fact-barra hidden"></div>
-      <div id="sinFacturar"><div class="fact-cargando"><span class="spinner"></span></div></div>
-    </div>
-
-    <!-- 4.2 y 4.3 — el dinero por cotización -->
-    <div class="card-sec">
-      <h3>Aprobado contra facturado</h3>
-      <p class="sec-sub">
-        Por cotización. El <strong>expuesto</strong> es lo que ya se cobró y todavía no ha salido de la planta:
-        anticipos y actas de obra. No es un error — es lo que la empresa debe entregar.
-      </p>
-      <div id="porCotizacion"><div class="fact-cargando"><span class="spinner"></span></div></div>
-    </div>
-
-    <!-- La salida: deshacer una factura mal registrada -->
-    <div class="card-sec">
-      <h3>Facturadas recientemente</h3>
-      <p class="sec-sub">
-        Las últimas que se registraron, <strong>del consecutivo más alto al más bajo</strong> — es la
-        única tabla que va al revés, para que lo recién hecho quede arriba. Registrar una factura
-        <strong>congela</strong> la remisión, así que si el número quedó mal, aquí se le quita y se
-        vuelve a hacer — sin tener que anular el despacho.
-      </p>
-      <div id="facturadas"><div class="fact-cargando"><span class="spinner"></span></div></div>
-    </div>
-
-    <!-- Facturas con saldo por repartir -->
-    <div class="card-sec">
-      <h3>Facturas por repartir</h3>
-      <p class="sec-sub">
-        Del maestro de facturas, <strong>en orden de número</strong>. La factura no dice a qué cotización
-        pertenece, así que asignarla es una decisión de una persona; esto es solo lo que falta por decidir.
-      </p>
-      <div id="facturas"><div class="fact-cargando"><span class="spinner"></span></div></div>
     </div>
 
   </div>
