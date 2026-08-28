@@ -186,8 +186,15 @@ async function apiProdProyectosList(token, filtros = {}) {
 async function apiProdProyectoDetalle(token, carpetaId) {
   return apiCall('prod_proyecto_detalle', { token, carpetaId });
 }
-async function apiProdScanNow(token) {
-  return apiCall('prod_scan_now', { token });
+// `carpetaId` opcional: además del escaneo normal, fuerza ESA carpeta borrándole
+// su `ultimoScan`. Hace falta porque Drive no actualiza la fecha de una carpeta
+// cuando se reemplaza el contenido de un archivo que ya estaba, así que una
+// exportación corregida encima de la anterior es invisible para el escaneo
+// incremental — y el botón de siempre parecía no hacer nada.
+async function apiProdScanNow(token, carpetaId) {
+  const payload = { token };
+  if (carpetaId) payload.carpetaId = carpetaId;
+  return apiCall('prod_scan_now', payload);
 }
 async function apiProdProyectoEstado(token, carpetaId, estado) {
   return apiCall('prod_proyecto_estado', { token, carpetaId, estado });

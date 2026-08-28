@@ -189,6 +189,11 @@
       <button id="btnVolverLista" class="btn btn-ghost btn-sm">← Volver</button>
       <h2 id="detalleNombre"></h2>
       <a id="btnDrive" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" style="font-size:0.8rem;">📂 Drive</a>
+      <!-- Para cuando se corrige una exportación encima de la anterior: Drive no
+           actualiza la fecha de la carpeta al reemplazar un archivo, así que el
+           escaneo normal la salta y los metros se quedan viejos. -->
+      <button id="btnRescan" class="btn btn-ghost btn-sm" style="font-size:0.8rem;"
+              title="Vuelve a leer esta carpeta aunque Drive diga que no cambió">↻ Re-escanear</button>
       <button id="btnEstado" class="btn btn-ghost btn-sm hidden" style="font-size:0.8rem;"></button>
     </div>
 

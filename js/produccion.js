@@ -371,6 +371,39 @@
 
     document.getElementById('btnVolverLista')?.addEventListener('click', cerrarDetalle);
 
+    // Re-escanear ESTA carpeta. El botón general de arriba solo mira lo que Drive
+    // dice que cambió, y Drive no marca como cambiada una carpeta a la que se le
+    // reemplazó el contenido de un archivo — que es justo lo que pasa al corregir
+    // una exportación. Este le borra el `ultimoScan` a la fila antes de escanear.
+    document.getElementById('btnRescan')?.addEventListener('click', async function () {
+      if (!proyectoActual) return;
+      const btn = this;
+      const carpetaId = proyectoActual.carpetaId;
+      const metrosAntes = proyectoActual.metrosTotal;
+      btn.disabled    = true;
+      btn.textContent = 'Re-escaneando…';
+      try {
+        await apiProdScanNow(token, carpetaId);
+        // Se vuelve a abrir el detalle para ver el resultado sin salir de aquí.
+        await abrirDetalle(carpetaId);
+        const ahora = proyectoActual ? proyectoActual.metrosTotal : metrosAntes;
+        // Decir si CAMBIÓ o no es el punto del botón: "no pasó nada" y "ya
+        // estaba bien" se ven igual, y son cosas distintas cuando acabas de
+        // corregir la exportación y quieres saber si el sistema ya la vio.
+        const dif = Math.round((ahora - metrosAntes) * 100) / 100;
+        toast(dif === 0
+          ? 'Carpeta releída: los metros no cambiaron (' + (ahora || 0).toFixed(1) + ' ML).'
+          : 'Carpeta releída: ' + (metrosAntes || 0).toFixed(1) + ' → ' + (ahora || 0).toFixed(1) + ' ML.',
+          dif === 0 ? 'info' : 'success');
+        cargarProyectos();
+      } catch (e) {
+        manejarError(e, 'rescan carpeta');
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = '↻ Re-escanear';
+      }
+    });
+
     document.getElementById('btnScanNow')?.addEventListener('click', async function () {
       const btn = this;
       btn.disabled    = true;
