@@ -378,6 +378,154 @@
     } catch (e) { manejarError(e, 'detalle'); }
   }
 
+  // ── Copiar una remisión ─────────────────────────────────────────────────
+  //
+  // Un proyecto de N casas iguales son N despachos con el mismo cliente, la
+  // misma obra y el mismo kit. Rehacerlos a mano era teclear dos veces lo que
+  // ya estaba escrito una.
+
+  /** Las dos marcas que el backend anexa a `observaciones` al corregir un
+   *  documento ya firme: `remItemsAjustar` escribe "[Ajuste de ítems …]" y
+   *  `remGuardar` sobre una remisión firme escribe "[Corrección post-despacho
+   *  …]" (R4-02). El banner de ajustes las muestra y la copia las descarta —
+   *  con la MISMA expresión, para que no haya dos ideas de qué es una marca. */
+  const RE_MARCA_AJUSTE = /^\[(Ajuste de ítems|Corrección post-despacho)/;
+
+  /**
+   * Los campos de cabecera que SÍ viajan en una copia.
+   *
+   * Es una lista de lo que se conserva y no de lo que se descarta, y la
+   * dirección importa: el día que `Remisiones` gane una columna, con esta
+   * lista la copia la deja vacía —alguien la nota y la escribe— y con la
+   * lista contraria se copiaría sola. En un documento que mueve inventario y
+   * termina en una factura, un campo heredado sin querer es un número que
+   * después no cuadra contra el papel.
+   */
+  const COPIA_CAMPOS = [
+    // Quién compra y a nombre de quién se factura.
+    'codCliente', 'nit', 'razonSocial', 'direccion', 'ciudad', 'telefono',
+    // A dónde va. Es el bloque que más se reteclea: N casas iguales van a la
+    // misma obra, con el mismo contacto.
+    'destinatario', 'direccionEnvio', 'contacto', 'telefonoDestino',
+    'municipio', 'codDane',
+    // El proyecto. `envioId` NO está acá, a propósito (ver copiarRemision).
+    'cotizacionArchivo', 'cb', 'version', 'proyecto',
+    // Términos comerciales del proyecto, no de este despacho.
+    'ordenCompra', 'noContrato', 'representanteComercial', 'doctoAlt',
+    // Acuerdos que duran más que un viaje: quién transporta, y si el cliente
+    // recoge en planta.
+    'recogeEnPlanta', 'transportadora',
+  ];
+
+  /**
+   * Deja en el editor un BORRADOR nuevo con los datos de la remisión abierta.
+   *
+   * NO ESCRIBE NADA. Carga el formulario sin guardar y quien copia revisa y le
+   * da a "Guardar borrador" como en cualquier otra. Se hizo así —y no con un
+   * endpoint `remision_copiar`— porque eso sería una segunda ruta de creación
+   * de documentos al lado de `remGuardar`, y la lección de R4-02 es justamente
+   * que la segunda puerta es la que se queda sin los frenos de la primera. Por
+   * el camino normal la copia pasa por las mismas validaciones (producto
+   * conocido, peso del kit obligatorio) y queda auditada como REMISION_CREADA.
+   *
+   * LO QUE NO SE HEREDA:
+   *
+   *   consecutivo · estado · creadoPor/Ts · enviadoTs · conciliadoPor/Ts ·
+   *   despachadoTs · motivoRechazo · pdfUrl · acuse*
+   *       Son el rastro de la OTRA remisión. El consecutivo, además, solo lo
+   *       asigna `remConciliar`.
+   *
+   *   facturaNumero · facturaCufe · facturaFecha
+   *       Una remisión no se reparte entre dos facturas. Heredar el número le
+   *       cobraría dos veces al mismo comprobante en `_factCotizsPorFactura`,
+   *       y esa es la fuente FUERTE del puente factura↔cotización.
+   *
+   *   envioId
+   *       Es CUÁL parte del proyecto sale, o sea justo lo que cambia entre dos
+   *       despachos del mismo proyecto. Heredarlo le sumaría los kg del
+   *       segundo envío al primero sin decir nada, y de ahí salen el
+   *       "despachado" de la hoja de vida y el "cobrado sin salir" de
+   *       facturación. Se deja en blanco: el selector queda en "Todo el
+   *       proyecto", que se ve.
+   *
+   *   conductor · cédula · placa · teléfono del conductor
+   *       Son de ESE viaje. Un dato de transporte viejo es peor que uno
+   *       vacío: el papel viaja con la mercancía identificando a quien no la
+   *       lleva. La transportadora sí se hereda — esa suele ser la misma.
+   *
+   *   las marcas de ajuste de `observaciones`
+   *       Explican una corrección que le pasó a la otra remisión.
+   *
+   *   `item` y `pesoSugeridoKg` de cada línea
+   *       El `item` es la llave de la fila del OTRO documento. Y la sugerencia
+   *       se calculó neta de lo despachado ANTES de ese envío, así que en la
+   *       copia mediría una desviación contra un número que ya no aplica.
+   */
+  async function copiarRemision() {
+    if (!doc || !doc.docId) return;
+    if (dirty && !await confirmar({
+      titulo: 'Copiar con cambios sin guardar',
+      mensaje: 'Esta remisión tiene cambios sin guardar. La copia parte de lo que ves en ' +
+               'pantalla, y los cambios de la original se pierden.',
+      btnOk: 'Copiar igual', peligro: true,
+    })) return;
+
+    const origen = { docId: doc.docId, consecutivo: doc.consecutivo || '' };
+
+    // Se lee del FORMULARIO, no de `doc`: los campos de cabecera solo bajan a
+    // `doc` cuando se guarda, así que copiando de `doc` la copia se llevaba lo
+    // último guardado y perdía lo que se acabara de escribir en pantalla —
+    // justo lo contrario de lo que dice el aviso de arriba. De paso, esto
+    // hereda las normalizaciones de leerCabecera(): placa en mayúsculas, y el
+    // municipio resuelto a su nombre con el código DANE aparte.
+    const enPantalla = leerCabecera();
+
+    const copia = {
+      docId: '', estado: 'BORRADOR', fecha: hoyISO(),
+      envioId: '', _cajas: [], _puedeEditar: true,
+    };
+    COPIA_CAMPOS.forEach(k => { if (enPantalla[k] !== undefined) copia[k] = enPantalla[k]; });
+
+    copia.observaciones = String(enPantalla.observaciones || '').split(' | ')
+      .filter(t => t.trim() && !RE_MARCA_AJUSTE.test(t.trim()))
+      .join(' | ');
+
+    // Las líneas: producto, cantidad, peso y caja. El empaque de dos despachos
+    // iguales es el mismo, así que la caja se hereda; `nCajas` lo recalcula
+    // solo `leerCabecera()` a partir del detalle.
+    copia._detalle = (doc._detalle || []).map(l => ({
+      idProducto: l.idProducto || '',
+      // `_libre` se fija explícito y no se deja inferir: renderLineas() solo
+      // infiere cuando llega `undefined`, y pide que el caso `false` sea
+      // siempre explícito para no convertir en libre una línea de catálogo.
+      _libre: !l.idProducto && !!l.descripcion,
+      descripcion: l.descripcion || '',
+      unidad: l.unidad || '',
+      cantidad: (l.cantidad === '' || l.cantidad == null) ? '' : l.cantidad,
+      pesoKg: (l.pesoKg === '' || l.pesoKg == null) ? '' : l.pesoKg,
+      cajaNum: (l.cajaNum === '' || l.cajaNum == null) ? '' : l.cajaNum,
+      observacionLinea: l.observacionLinea || '',
+      atributos: l.atributos,
+      // El peso salió de pesar OTRO despacho: es un punto de partida bueno y
+      // no un hecho de este. `COPIADO` lo dice en la fila y, de paso, hace que
+      // autoPesoSiAplica() no lo pise — esa solo toca '' y CALCULADO_UNITARIO.
+      pesoFuente: (num(l.pesoKg) > 0) ? 'COPIADO' : '',
+    }));
+
+    doc = copia;
+    doc._copiadaDe = origen;
+    editandoDesc.clear();
+    // Sucio desde el primer segundo: hay un documento en pantalla que no está
+    // en ninguna hoja, y salir sin guardar lo pierde.
+    dirty = true;
+    pintarEditor();
+    window.scrollTo(0, 0);
+    toast('Copia de ' + (origen.consecutivo || 'la remisión') + ' lista. Revísala y guárdala.',
+          'success', 5000);
+  }
+
+  onClick('btnCopiar', copiarRemision);
+
   function pintarEditor() {
     const nuevo = !doc.docId;
     const est = String(doc.estado || 'BORRADOR').toUpperCase();
@@ -443,7 +591,7 @@
     // post-despacho …]" (R4-02). Las dos son lo mismo para quien va a conciliar
     // —el pedido no sale como se cotizó— así que van al mismo banner.
     const ajustes = String(doc.observaciones || '').split(' | ')
-      .filter(t => /^\[(Ajuste de ítems|Corrección post-despacho)/.test(t.trim()));
+      .filter(t => RE_MARCA_AJUSTE.test(t.trim()));
     const bannerAjuste = $('edAjusteBanner');
     if (ajustes.length) {
       bannerAjuste.innerHTML = '<span>⚠</span><div><strong>Esta remisión tiene ' + ajustes.length +
@@ -467,6 +615,24 @@
       banner.classList.add('oculto');
     }
 
+    // Aviso de copia. Vive mientras el documento siga sin guardar: al guardar,
+    // `doc.docId` deja de estar vacío y desaparece solo — desde ahí ya es una
+    // remisión como cualquier otra y de dónde salió no cambia nada de lo que
+    // hace. Dice lo que NO se trajo, que es justo lo que nadie va a echar de
+    // menos mirando un formulario lleno.
+    const bannerCopia = $('edCopiaBanner');
+    if (nuevo && doc._copiadaDe) {
+      bannerCopia.innerHTML = '<span>⧉</span><div>' +
+        '<strong>Copia de ' + esc(doc._copiadaDe.consecutivo || 'una remisión sin numerar') +
+        '</strong> — todavía sin guardar.' +
+        '<div style="margin-top:4px;">No se copiaron <strong>el envío del proyecto</strong>, ' +
+        '<strong>el conductor y la placa</strong> ni <strong>la factura</strong>. Los pesos ' +
+        'vienen de la pesada de esa remisión: verifícalos antes de conciliar.</div></div>';
+      bannerCopia.classList.remove('oculto');
+    } else {
+      bannerCopia.classList.add('oculto');
+    }
+
     // Botones según estado y permisos
     const editable = doc._puedeEditar !== false;
     const puedeEnviar = editable && est === 'BORRADOR' && !nuevo;
@@ -483,6 +649,12 @@
     $('btnRechazar').classList.toggle('oculto', !(M.esAdmin && est === 'POR_CONCILIAR'));
     $('btnAnular').classList.toggle('oculto', !(M.esAdmin && !nuevo && est !== 'ANULADA'));
     $('btnImprimir').classList.toggle('oculto', nuevo);
+    // Copiar se ofrece sobre cualquier remisión YA guardada, sin importar su
+    // estado: la más común de copiar es una FACTURADA —esa casa ya salió, va
+    // la siguiente— y una ANULADA se anuló por algo que no tiene que ver con
+    // el kit. Lo único que no se puede copiar es un borrador sin guardar,
+    // porque no hay de dónde.
+    $('btnCopiar').classList.toggle('oculto', nuevo);
     $('btnSugerir').classList.toggle('oculto', !(editable && doc.cotizacionArchivo));
     // Importar cambia la lista entera de ítems (agrega líneas), así que exige
     // permiso completo — no el permiso suelto post-bloqueo de
@@ -870,6 +1042,14 @@
       // pesada real: si se pesa la caja y difiere, basta con corregir el
       // campo — al tocarlo pasa a MANUAL y este aviso desaparece solo.
       return `<div class="desv" style="color:var(--cf-gray-text);font-style:italic;">≈ calculado</div>`;
+    }
+    if (l.pesoFuente === 'COPIADO' && num(l.pesoKg) > 0) {
+      // Salió de pesar OTRO despacho. Se marca por lo mismo que "≈ calculado":
+      // es un punto de partida plausible, no una pesada de esta remisión, y
+      // quien concilia tiene que poder ver de un vistazo qué pesos nadie
+      // verificó todavía en ESTE despacho. Al tocar el campo pasa a MANUAL y
+      // la marca desaparece sola.
+      return `<div class="desv" style="color:#1E40AF;font-style:italic;">⧉ copiado</div>`;
     }
     return '';
   }

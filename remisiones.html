@@ -222,6 +222,12 @@
           <button id="btnRechazar" class="btn btn-ghost btn-sm oculto" style="color:#B91C1C;">Devolver</button>
           <button id="btnAnular" class="btn btn-ghost btn-sm oculto" style="color:#B91C1C;">Anular</button>
           <button id="btnImprimir" class="btn btn-ghost btn-sm oculto">Imprimir</button>
+          <!-- Copiar parte de la remisión que estás MIRANDO, no de una fila de
+               la lista: este documento mueve inventario, y copiar uno que no se
+               revisó es como se copia el equivocado. El clic de más es a
+               propósito. -->
+          <button id="btnCopiar" class="btn btn-ghost btn-sm oculto"
+                  title="Crear un borrador nuevo con estos mismos datos e ítems">⧉ Copiar</button>
         </div>
       </div>
 
@@ -237,6 +243,13 @@
       <div id="edAjusteBanner" class="rem-alerta oculto" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B;align-items:flex-start;"></div>
 
       <div id="edEstadoBanner" class="rem-alerta oculto"></div>
+
+      <!-- Qué NO se trajo la copia. Va como aviso fijo y no como toast: lo que
+           falta es justo lo que nadie va a echar de menos mirando el formulario
+           lleno, y un mensaje de cinco segundos no alcanza para eso. Desaparece
+           solo al guardar, porque desde ahí ya es una remisión como cualquiera. -->
+      <div id="edCopiaBanner" class="rem-alerta oculto"
+           style="background:#EFF6FF;border-color:#BFDBFE;color:#1E40AF;align-items:flex-start;"></div>
 
       <!-- Proyecto / cotización -->
       <div class="ed-bloque">
