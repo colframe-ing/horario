@@ -192,13 +192,52 @@
     poblarBuscadores();
   }
 
-  (async function init() {
-    try { await cargarMaestros(); } catch (e) { manejarError(e, 'maestros'); }
+  // LA CARGA DEL CATÁLOGO, EN VUELO.
+  //
+  // Se guarda la promesa y no un booleano, y es la pieza que hace que el
+  // paralelismo de `init()` sea seguro: quien abra el editor antes de que el
+  // catálogo llegue **espera solo lo que falte**, sin botones deshabilitados
+  // que haya que acordarse de volver a habilitar y sin una carrera en la que
+  // el editor se pinta con `M` vacío.
+  //
+  // Con `M` vacío el editor no revienta —arranca con listas vacías— pero sale
+  // MAL callado: `esAdmin` es `false` de entrada, así que un admin vería
+  // escondidos Conciliar, Rechazar y Anular y pensaría que no tiene permiso.
+  let maestrosEnVuelo = null;
 
+  /** Espera el catálogo. Devuelve false si no se pudo traer. */
+  async function catalogoListo() {
+    try { await maestrosEnVuelo; return true; }
+    catch (e) {
+      toast('El catálogo no cargó. Toca "↻ Catálogo" y vuelve a intentar.', 'error', 4000);
+      return false;
+    }
+  }
+
+  (async function init() {
+    // Las fechas van ANTES de cualquier llamada, porque `cargarLista()` las lee
+    // de los inputs. Antes se ponían después del `await` del catálogo, que es
+    // parte de por qué la lista no podía arrancar primero.
     const hoy = hoyISO();
     $('fHasta').value = hoy;
     $('fDesde').value = hoy.slice(0, 8) + '01';
+
+    // LAS DOS EN PARALELO, Y LA TABLA NO ESPERA AL CATÁLOGO.
+    //
+    // Estaban en serie: `await cargarMaestros()` y sólo después `cargarLista()`.
+    // Son dos viajes a Apps Script encadenados, y el de arriba trae ~58 KB de
+    // catálogo (la mitad son los 1.123 municipios) que la tabla **no usa**:
+    // `renderLista` no toca `M`, sólo campos que vienen en la respuesta de
+    // `remision_list`.
+    //
+    // Y el `Cargando…` de la tabla es el placeholder estático de
+    // `remisiones.html`, así que cubría los DOS viajes sin distinguirlos: se
+    // veía una sola espera larga donde había dos, una de ellas innecesaria.
+    maestrosEnVuelo = cargarMaestros();
     cargarLista();
+    // El error del catálogo se reporta una vez, acá; `catalogoListo()` no lo
+    // vuelve a mostrar como error de red, solo dice qué hacer.
+    maestrosEnVuelo.catch((e) => manejarError(e, 'maestros'));
   })();
 
   // El catálogo (productos/clientes/municipios) se cachea 6 h en el backend
@@ -208,8 +247,11 @@
   onClick('btnRefrescarCatalogo', async () => {
     const btn = $('btnRefrescarCatalogo');
     btn.disabled = true; btn.textContent = 'Actualizando…';
+    // Se reemplaza la promesa en vuelo: si la carga inicial falló, este botón
+    // es el reintento, y `catalogoListo()` tiene que empezar a decir que sí.
+    maestrosEnVuelo = cargarMaestros(true);
     try {
-      await cargarMaestros(true);
+      await maestrosEnVuelo;
       toast('Catálogo actualizado.', 'success');
     } catch (e) { manejarError(e, 'maestros'); }
     finally { btn.disabled = false; btn.textContent = '↻ Catálogo'; }
@@ -344,7 +386,12 @@
     dirty = false;
     mostrarVista('lista'); cargarLista();
   });
-  $('btnNueva').addEventListener('click', () => nuevaRemision());
+  // Igual que `abrirRemision`: el borrador nuevo se prellena con los productos
+  // `frecuente` del catálogo, así que sin catálogo saldría vacío y en silencio.
+  $('btnNueva').addEventListener('click', async () => {
+    if (!(await catalogoListo())) return;
+    nuevaRemision();
+  });
 
   function nuevaRemision() {
     // Se prellena con los ítems típicos (marca `frecuente` del catálogo, ver
@@ -366,6 +413,11 @@
   }
 
   async function abrirRemision(docId) {
+    // El editor SÍ necesita el catálogo (descripciones de producto, `esAdmin`
+    // para los botones de conciliar/anular). Si la lista llegó primero —que es
+    // lo normal desde que las dos cargas van en paralelo— acá se espera lo que
+    // falte, que casi siempre es nada.
+    if (!(await catalogoListo())) return;
     try {
       const res = await apiRemDetalle(token, docId);
       doc = Object.assign({}, res.remision, {
@@ -2230,9 +2282,38 @@
     const etiqueta = btn.textContent;
     btn.disabled = true; btn.textContent = 'Guardando…';
     try {
-      const res = await apiRemGuardar(token, leerCabecera(), doc._detalle, motivo);
+      // LA CABECERA SE GUARDA EN UNA VARIABLE PORQUE HAY QUE VOLCARLA A `doc`.
+      //
+      // Sin esto, guardar BORRABA DE LA PANTALLA lo que se acababa de guardar
+      // bien. El recorrido era:
+      //
+      //   1. `leerCabecera()` lee los inputs y los manda; el backend los graba.
+      //   2. Nada de eso vuelve a `doc`: `remGuardar` solo devuelve docId,
+      //      estado, pesoTotalKg, lineas y observaciones.
+      //   3. `pintarEditor()` repinta TODOS los inputs desde `doc`, y su `set()`
+      //      escribe '' cuando el valor es null **o undefined**.
+      //
+      // Resultado: cada campo de cabecera volvía al valor que `doc` traía desde
+      // que el documento se ABRIÓ, no al que se acababa de grabar. En un campo
+      // que ya tenía valor no se nota —vuelve al mismo— pero en uno que se
+      // acaba de llenar por primera vez el input queda VACÍO, y la hoja con el
+      // dato: exactamente "me borró el transportador y en el Sheet sí está".
+      //
+      // Le pasa a toda la cabecera (conductor, placa, orden de compra,
+      // contacto, dirección de envío…), y se notaba en el transportador porque
+      // es lo último que se llena, sobre un documento que ya existía sin él.
+      //
+      // El molde ya estaba en este archivo: `btnGuardarTransportador` hace su
+      // `Object.assign(doc, transportador)` justo por esto. Ese botón solo se
+      // ve cuando el documento ya NO es editable, así que mientras se llena el
+      // borrador el único camino era este, que era el que no lo hacía.
+      const cab = leerCabecera();
+      const res = await apiRemGuardar(token, cab, doc._detalle, motivo);
+      // Primero lo que se persistió, después lo que el backend corrige encima.
+      Object.assign(doc, cab);
       doc.docId = res.docId;
       doc.pesoTotalKg = res.pesoTotalKg;
+      if (res.estado) doc.estado = res.estado;
       // El backend pudo anexar la marca del motivo a observaciones: se refleja
       // acá para que el banner de ajustes la muestre y para que el próximo
       // guardado no la mande de vuelta sin ella.
