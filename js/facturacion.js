@@ -175,6 +175,17 @@
   // los grupos van por su remisión más vieja: así lo urgente flota sin perder el
   // orden por consecutivo dentro de cada uno, que es como se busca teniendo el
   // papel en la mano.
+  // A-01 · PLATA SIN COBRAR Y PAPELEO PENDIENTE NO SON LO MISMO.
+  //
+  // Cada fila trae un `motivo` del backend: `SIN_COBRAR` (la cotización tiene
+  // saldo) o `SOLO_REGISTRO` (ya está cobrada —o hubo anticipo— y lo único que
+  // falta es escribirle el número a esta remisión).
+  //
+  // Un backend anterior no manda `motivo`, y entonces todo cuenta como
+  // `SIN_COBRAR`: es el comportamiento de siempre, y es el lado seguro.
+  // Degradar por omisión escondería plata.
+  function soloRegistro(r) { return r && r.motivo === 'SOLO_REGISTRO'; }
+
   function vistaCobrar() {
     var lista = (_datos.sinFacturar || []);
     if (!lista.length) {
@@ -192,30 +203,66 @@
       // `dias` puede ser null cuando la fila no tiene fecha: cuenta como 0 para
       // no mandar el grupo entero al tope por un dato faltante.
       g.maxDias = g.rs.reduce(function (m, x) { return Math.max(m, x.dias || 0); }, 0);
+      // El grupo es HOMOGÉNEO: el motivo se deriva del saldo de la cotización, y
+      // el grupo es justamente una cotización. Así que basta mirar la primera.
+      g.soloRegistro = soloRegistro(g.rs[0]);
       return g;
-    }).sort(function (a, b) { return b.maxDias - a.maxDias; });
+    }).sort(function (a, b) {
+      // La plata primero, y dentro de cada bloque lo más viejo arriba. El
+      // papeleo se hace cuando se pueda; la deuda no espera a que baje.
+      if (a.soloRegistro !== b.soloRegistro) return a.soloRegistro ? 1 : -1;
+      return b.maxDias - a.maxDias;
+    });
 
-    var viejas = lista.filter(function (r) { return (r.dias || 0) >= 30; }).length;
+    // Los cortes cuentan SOLO la plata. Antes el primero decía `lista.length`,
+    // que sumaba papeleo: "12 sin cobrar" cuando nueve ya estaban cobradas.
+    // El de 30 días también se filtra — envejecer un trámite no es una deuda.
+    var plata  = lista.filter(function (r) { return !soloRegistro(r); });
+    var tramit = lista.filter(soloRegistro);
+    var viejas = plata.filter(function (r) { return (r.dias || 0) >= 30; }).length;
+    var proyPlata = {};
+    plata.forEach(function (r) { proyPlata[r.cotizacionArchivo || ''] = true; });
+
     var h = '<div class="fact-cortes">' +
-      corte('d', 'Sin cobrar', lista.length, lista.length === 1 ? 'remisión despachada' : 'remisiones despachadas') +
+      corte('d', 'Sin cobrar', plata.length,
+            plata.length === 1 ? 'remisión despachada' : 'remisiones despachadas') +
       corte('c', 'Más de 30 días', viejas, viejas === 1 ? 'remisión' : 'remisiones') +
-      corte('a', 'Proyectos', grupos.length, 'con algo sin cobrar') +
+      corte('a', 'Proyectos', Object.keys(proyPlata).length, 'con algo sin cobrar') +
+      (tramit.length
+        ? corte('b', 'Solo registro', tramit.length,
+                tramit.length === 1 ? 'ya cobrada, falta el número' : 'ya cobradas, falta el número')
+        : '') +
       '</div>';
 
+    if (plata.length === 0 && tramit.length) {
+      h += '<div class="aviso info">Nada por cobrar. Las ' + tramit.length + ' de abajo ' +
+        'ya están cobradas en su cotización: lo único que falta es anotarles el número ' +
+        'de factura.</div>';
+    }
+
     h += grupos.map(function (g) {
-      return '<div class="grupo' + (g.maxDias >= 30 ? ' urgente' : '') + '">' +
+      // `urgente` solo si es plata: un trámite de 90 días no es una deuda de 90
+      // días, y pintarlo igual es lo que enseña a ignorar el color.
+      var urge = !g.soloRegistro && g.maxDias >= 30;
+      return '<div class="grupo' + (urge ? ' urgente' : '') +
+             (g.soloRegistro ? ' tramite' : '') + '">' +
         '<div class="grupo-top">' +
           '<input type="checkbox" data-grupo="' + esc(g.archivo) + '" ' +
             'aria-label="Marcar todas las de ' + esc(g.proyecto || g.archivo) + '">' +
           '<span class="gn">' + esc(g.proyecto || g.archivo || '(sin proyecto)') + '</span>' +
+          (g.soloRegistro
+            ? '<span class="etq-tramite" title="La cotización ya está cobrada por completo. ' +
+              'Falta anotarle el número de factura a estas remisiones.">solo registro</span>'
+            : '') +
           '<span class="espacio"></span>' +
           '<span class="gcb">' + g.rs.length + (g.rs.length === 1 ? ' remisión' : ' remisiones') + '</span>' +
-          '<span class="dias' + (g.maxDias >= 30 ? ' viejo' : '') + '">hasta ' + g.maxDias + ' d</span>' +
+          '<span class="dias' + (urge ? ' viejo' : '') + '">hasta ' + g.maxDias + ' d</span>' +
         '</div>' +
         g.rs.map(function (r) {
           var dias = r.dias == null
             ? '<span class="dias">sin fecha</span>'
-            : '<span class="dias' + (r.dias >= 30 ? ' viejo' : '') + '">' + r.dias + ' d</span>';
+            : '<span class="dias' + (!g.soloRegistro && r.dias >= 30 ? ' viejo' : '') + '">' +
+              r.dias + ' d</span>';
           return '<div class="rem-fila">' +
             '<input type="checkbox" data-rem="' + esc(r.docId) + '" data-arch="' + esc(r.cotizacionArchivo || '') + '"' +
               (marcadas[r.docId] ? ' checked' : '') + (r.docId ? '' : ' disabled') +
@@ -593,7 +640,12 @@
   // ── Render ───────────────────────────────────────────────────────────────
   function pintar() {
     if (!_datos) return;
-    var nCobrar = (_datos.sinFacturar || []).length;
+    // A-01: el badge cuenta plata, no papeleo. Es el número que alguien mira de
+    // reojo para decidir si tiene algo que cobrar hoy, así que sumarle las
+    // remisiones ya cobradas lo volvía inservible.
+    var nCobrar = (_datos.sinFacturar || []).filter(function (r) {
+      return !soloRegistro(r);
+    }).length;
     var bc = document.getElementById('badgeCobrar');
     bc.textContent = nCobrar;
     bc.className = 'vbadge' + (nCobrar ? '' : ' calmo');

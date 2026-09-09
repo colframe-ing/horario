@@ -73,6 +73,13 @@
     .grupo { background:#fff; border:1.5px solid var(--cf-gray-mid); border-radius:var(--radius);
              margin-bottom:10px; overflow:hidden; }
     .grupo.urgente { border-color:#DC2626; }
+    /* A-01 · "solo registro": la cotización ya está cobrada y falta anotarle el
+       número a la remisión. Se apaga en vez de alarmar — es papeleo, no deuda. */
+    .grupo.tramite { border-color:var(--cf-gray-mid); opacity:0.82; }
+    .grupo.tramite .grupo-top { background:#F1F5F9; }
+    .etq-tramite { font-size:0.6rem; font-weight:800; text-transform:uppercase;
+                   letter-spacing:0.04em; color:var(--cf-success); border:1px solid var(--cf-success);
+                   border-radius:999px; padding:1px 7px; white-space:nowrap; cursor:help; }
     .grupo-top { display:flex; align-items:center; gap:11px; padding:10px 14px; background:#F8FAFC;
                  border-bottom:1px solid var(--cf-gray-mid); flex-wrap:wrap; }
     .grupo-top .gn { font-weight:800; font-size:0.88rem; color:var(--cf-dark); }
