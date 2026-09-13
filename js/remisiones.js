@@ -422,6 +422,10 @@
       const res = await apiRemDetalle(token, docId);
       doc = Object.assign({}, res.remision, {
         _detalle: res.detalle || [], _cajas: res.cajas || [], _puedeEditar: !!res.puedeEditar,
+        // Versión de los campos resguardados con la que se abrió el editor
+        // (R4-06). Viaja de vuelta en cada guardado; los tres endpoints que
+        // tocan esos campos devuelven la nueva para no chocar consigo mismos.
+        _huella: res.huella || '',
       });
       editandoDesc.clear();
       dirty = false;
@@ -661,7 +665,14 @@
         'Mientras esté así, <strong>no es un documento válido para despacho</strong>.</span>';
       banner.classList.remove('oculto');
     } else if (doc.motivoRechazo) {
-      banner.innerHTML = '<span>↩</span><span>Devuelta: <strong>' + esc(doc.motivoRechazo) + '</strong></span>';
+      // El mismo campo lleva el motivo de un rechazo y el de una anulación
+      // (R4-07): lo que los distingue es el estado, no la celda. Antes anular no
+      // escribía nada y tampoco limpiaba, así que una remisión devuelta y
+      // después anulada mostraba acá el motivo del rechazo viejo como si fuera
+      // el de la anulación.
+      const anulada = est === 'ANULADA';
+      banner.innerHTML = '<span>' + (anulada ? '⊘' : '↩') + '</span><span>' +
+        (anulada ? 'Anulada' : 'Devuelta') + ': <strong>' + esc(doc.motivoRechazo) + '</strong></span>';
       banner.classList.remove('oculto');
     } else {
       banner.classList.add('oculto');
@@ -754,8 +765,9 @@
       transportadora: $('edTransportadora').value.trim(),
     };
     try {
-      await apiRemTransportadorSet(token, doc.docId, transportador);
+      const res = await apiRemTransportadorSet(token, doc.docId, transportador);
       Object.assign(doc, transportador);
+      if (res && res.huella) doc._huella = res.huella;
       dirty = false;
       toast('Transportador guardado.', 'success');
     } catch (e) { manejarError(e, 'transportador'); }
@@ -802,6 +814,7 @@
       const res = await apiRemItemsAjustar(token, doc.docId, items, motivo);
       doc.pesoTotalKg = res.pesoTotalKg;
       doc.observaciones = res.observaciones;
+      if (res.huella) doc._huella = res.huella;
       dirty = false;
       toast('Ajuste guardado · ' + fmtNum(res.pesoTotalKg) + ' kg', 'success', 5000);
     } catch (e) { manejarError(e, 'items-ajuste'); }
@@ -2308,7 +2321,7 @@
       // ve cuando el documento ya NO es editable, así que mientras se llena el
       // borrador el único camino era este, que era el que no lo hacía.
       const cab = leerCabecera();
-      const res = await apiRemGuardar(token, cab, doc._detalle, motivo);
+      const res = await apiRemGuardar(token, cab, doc._detalle, motivo, doc._huella);
       // Primero lo que se persistió, después lo que el backend corrige encima.
       Object.assign(doc, cab);
       doc.docId = res.docId;
@@ -2318,6 +2331,7 @@
       // acá para que el banner de ajustes la muestre y para que el próximo
       // guardado no la mande de vuelta sin ella.
       if (res.observaciones !== undefined) doc.observaciones = res.observaciones;
+      if (res.huella) doc._huella = res.huella;
       dirty = false;
       if (!silencioso) {
         toast((esFirme() ? 'Corrección guardada' : 'Borrador guardado') +

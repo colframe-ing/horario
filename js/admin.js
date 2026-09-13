@@ -39,6 +39,31 @@
   let horariosList   = [];  // lista completa de horarios definidos en Sheets
   let horarioMap     = {};  // índice nombre → { inicio, fin } para render rápido
   let operariosCache = [];  // operarios activos, usado para poblar filtros de tabs
+
+  // ── LOS DATOS DE CADA FILA NO VIAJAN EN EL HTML (hallazgo R6-01) ─────────
+  //
+  // Estas cuatro listas guardan lo que cada fila pintada necesita, y el HTML
+  // solo lleva el ÍNDICE en un `data-i`. Antes los argumentos se serializaban
+  // dentro de un `onclick`:
+  //
+  //     const opJson = JSON.stringify(op).replace(/"/g, '&quot;');
+  //     `<button onclick="abrirEditar(${opJson})">`
+  //
+  // y eso era ejecutable. `JSON.stringify` escapa `"` y `\`, pero **nadie
+  // escapaba el `&`** — y el parser de HTML decodifica las entidades del
+  // atributo ANTES de que el motor de JS evalúe el `onclick`, así que el texto
+  // literal `&quot;` dentro de un nombre se convertía en una comilla real ya
+  // dentro del código:
+  //
+  //     nombre:  x&quot;+alert(1)+&quot;
+  //     ejecuta: abrirEditar({"cedula":"1","nombre":"x"+alert(1)+""})
+  //
+  // Con un índice no hay nada que escapar: el dato nunca sale de memoria. Es el
+  // patrón que `remisiones.js` ya usaba (`impFilasCache[parseInt(sel.dataset.i)]`).
+  let registrosRender  = [];   // filas visibles de la tabla de registros
+  let operariosRender  = [];   // filas visibles de la tabla de operarios
+  let sesionesRender   = [];   // tarjetas de sesiones abiertas
+  let celdasTurno      = [];   // argumentos de cada celda de la grilla de programación
   let operarioEditar = null; // operario que está siendo editado en el modal
   let progCargada    = false; // flag para lazy-load de la pestaña Programación
 
@@ -134,13 +159,12 @@
       bodyRegistros.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--cf-gray-text);padding:32px;">Sin registros para el período seleccionado</td></tr>';
       return;
     }
-    bodyRegistros.innerHTML = rowsFil.map(r => {
+    registrosRender = rowsFil;
+    bodyRegistros.innerHTML = rowsFil.map((r, i) => {
       const porAdmin = r.marcadoPor && r.marcadoPor !== 'OPERARIO';
       const adminBadge = porAdmin
         ? '<span style="font-size:0.65rem;background:#EDE9FE;color:#7C3AED;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:700;">ADMIN</span>'
         : '';
-      // Timestamp escapado para uso en atributo HTML (no contiene ' ni caracteres peligrosos)
-      const tsAttr = (r.timestamp || '').replace(/'/g, '');
       return `
       <tr>
         <td><strong>${esc(r.nombre)}</strong>${adminBadge}</td>
@@ -149,11 +173,51 @@
         <td>${esc(r.fecha)}</td>
         <td style="font-weight:700;">${fmtHora(r.hora)}</td>
         <td style="text-align:right;">
-          ${r.timestamp ? `<button class="btn btn-ghost btn-sm" style="color:#DC2626;border-color:#FECACA;padding:3px 8px;font-size:0.72rem;" onclick="eliminarRegistro('${tsAttr}')">🗑</button>` : ''}
+          ${r.timestamp ? `<button class="btn btn-ghost btn-sm" data-acc="eliminar" data-i="${i}" style="color:#DC2626;border-color:#FECACA;padding:3px 8px;font-size:0.72rem;">🗑</button>` : ''}
         </td>
       </tr>`;
     }).join('');
   }
+
+  // ── Los cuatro despachadores de clic (R6-01) ───────────────────────────
+  //
+  // Uno por contenedor, puesto UNA vez sobre un elemento que no se repinta. El
+  // `innerHTML` de adentro se reemplaza entero en cada render, así que enganchar
+  // botón por botón después de pintar obligaría a acordarse de volver a hacerlo
+  // en cada sitio que repinta — y olvidarse deja un botón mudo, sin error.
+  //
+  // `closest('[data-acc]')` en vez de `e.target.dataset`: varios botones tienen
+  // hijos (el emoji del 🗑, los spans de la celda de turno) y el clic llega en
+  // el hijo, no en el botón.
+  function alHacerClic(idContenedor, acciones) {
+    const cont = document.getElementById(idContenedor);
+    if (!cont) return;
+    cont.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-acc]');
+      if (!el || !cont.contains(el)) return;
+      const fn = acciones[el.dataset.acc];
+      if (fn) fn(parseInt(el.dataset.i, 10));
+    });
+  }
+
+  alHacerClic('bodyRegistros', {
+    eliminar: (i) => { const r = registrosRender[i]; if (r) eliminarRegistro(r.timestamp); },
+  });
+  alHacerClic('bodyProgramacion', {
+    turno: (i) => { const a = celdasTurno[i]; if (a) editarTurno(a[0], a[1], a[2], a[3], a[4]); },
+  });
+  alHacerClic('bodyOperarios', {
+    editar:      (i) => { const op = operariosRender[i]; if (op) abrirEditar(op); },
+    marcar:      (i) => { const op = operariosRender[i]; if (op) abrirMarcar(op); },
+    reporte:     (i) => { const op = operariosRender[i]; if (op) abrirReporte(op); },
+    desbloquear: (i) => { const op = operariosRender[i]; if (op) desbloquearOperario(op); },
+  });
+  alHacerClic('sesionesAbiertasBody', {
+    cerrar: (i) => {
+      const ses = sesionesRender[i];
+      if (ses) abrirMarcar({ cedula: ses.cedula, nombre: ses.nombre });
+    },
+  });
 
   document.getElementById('btnExportReg').addEventListener('click', () => {
     const filtro = document.getElementById('filtroOpReg').value;
@@ -401,6 +465,9 @@
 
   function renderProgramacion(dias) {
     const hoy = fmtDate(new Date());
+    // Se vacía acá y no en `celdaTurno`: esa se llama una vez por celda, y
+    // limpiarla adentro borraría las anteriores de la misma grilla.
+    celdasTurno = [];
 
     // Header
     document.getElementById('progHead').innerHTML = `<tr>
@@ -573,12 +640,17 @@
       contenido = `<div style="color:#D97706;font-size:0.75rem;font-weight:700;">Sin prog.<br>${trabH.toFixed(1)}h</div>`;
     }
 
-    const opJson  = JSON.stringify({ cedula: op.cedula, nombre: op.nombre }).replace(/"/g, '&quot;');
-    const novJson = JSON.stringify(nov || null).replace(/"/g, '&quot;');
-    const iniVal  = prog ? prog.horaInicio : '';
-    const finVal  = prog ? prog.horaFin    : '';
+    // Los argumentos NO viajan en el HTML: se guardan acá y la celda solo lleva
+    // el índice (R6-01). `celdasTurno` lo vacía el render en cada repintado.
+    const i = celdasTurno.push([
+      { cedula: op.cedula, nombre: op.nombre },
+      fecha,
+      prog ? prog.horaInicio : '',
+      prog ? prog.horaFin    : '',
+      nov || null,
+    ]) - 1;
     return `<td style="padding:3px;">
-      <div onclick="editarTurno(${opJson},'${fecha}','${iniVal}','${finVal}',${novJson})"
+      <div data-acc="turno" data-i="${i}"
            style="background:${bg};border-radius:7px;padding:5px 4px;text-align:center;
                   cursor:pointer;min-height:58px;display:flex;flex-direction:column;
                   align-items:center;justify-content:center;transition:filter 0.1s;"
@@ -629,7 +701,7 @@
     actualizarCalcHoras();
   });
 
-  window.editarTurno = (op, fecha, horaInicio, horaFin, novExistente) => {
+  function editarTurno(op, fecha, horaInicio, horaFin, novExistente) {
     turnoEditando = { ...op, fecha };
     const d = new Date(fecha + 'T00:00:00');
     const fechaLabel = DIAS_CORTO[(d.getDay() + 6) % 7] + ' ' +
@@ -673,7 +745,7 @@
 
     turnoAlert.classList.add('hidden');
     modalTurno.classList.remove('hidden');
-  };
+  }
 
   function cerrarModalTurno() { modalTurno.classList.add('hidden'); turnoEditando = null; }
 
@@ -1052,8 +1124,8 @@
       body.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No hay operarios. Agrega el primero.</p></div></td></tr>';
       return;
     }
-    body.innerHTML = operarios.map(op => {
-      const opJson = JSON.stringify(op).replace(/"/g,'&quot;');
+    operariosRender = operarios;
+    body.innerHTML = operarios.map((op, i) => {
       const bloqueadoBadge = op.bloqueado
         ? '<span class="badge badge-inactive" style="margin-left:6px;font-size:0.65rem;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">BLOQUEADO</span>'
         : '';
@@ -1061,7 +1133,7 @@
         ? '<span class="badge badge-active" style="margin-left:6px;font-size:0.65rem;">ADMIN</span>'
         : '';
       const btnDesbloquear = op.bloqueado
-        ? `<button class="btn btn-ghost btn-sm" style="color:#DC2626;border-color:#FECACA;" onclick="desbloquearOperario(${opJson})">Desbloquear</button>`
+        ? `<button class="btn btn-ghost btn-sm" data-acc="desbloquear" data-i="${i}" style="color:#DC2626;border-color:#FECACA;">Desbloquear</button>`
         : '';
       return `
       <tr>
@@ -1073,9 +1145,9 @@
         <td>${fmtHorario(op.horario)}</td>
         <td><span class="badge ${op.activo ? 'badge-active' : 'badge-inactive'}">${op.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" onclick="abrirEditar(${opJson})">Editar</button>
-          <button class="btn btn-primary btn-sm" style="background:var(--cf-dark);border-color:var(--cf-dark);" onclick="abrirMarcar(${opJson})">Asistencia</button>
-          <button class="btn btn-ghost btn-sm" onclick="abrirReporte(${opJson})">Reporte</button>
+          <button class="btn btn-ghost btn-sm" data-acc="editar" data-i="${i}">Editar</button>
+          <button class="btn btn-primary btn-sm" data-acc="marcar" data-i="${i}" style="background:var(--cf-dark);border-color:var(--cf-dark);">Asistencia</button>
+          <button class="btn btn-ghost btn-sm" data-acc="reporte" data-i="${i}">Reporte</button>
           ${btnDesbloquear}
         </td>
       </tr>`;
@@ -1162,7 +1234,7 @@
       : `Obligatorio — ${longitud} dígitos`;
   }
 
-  window.abrirEditar = (op) => abrirModal(op);
+  function abrirEditar(op) { abrirModal(op); }
 
   // ── Marcar por operario ──
   let operarioMarcar = null;
@@ -1210,7 +1282,7 @@
     operarioMarcar = null;
   }
 
-  window.abrirMarcar = (op) => abrirModalMarcar(op);
+  function abrirMarcar(op) { abrirModalMarcar(op); }
 
   document.getElementById('modalMarcarClose').addEventListener('click', cerrarModalMarcar);
   document.getElementById('btnMarcarCancel').addEventListener('click', cerrarModalMarcar);
@@ -1249,20 +1321,20 @@
   });
 
   // ── Desbloquear operario ──
-  window.desbloquearOperario = async (op) => {
+  async function desbloquearOperario(op) {
     if (!await confirmar({ titulo: 'Desbloquear operario', mensaje: `¿Desbloquear la cuenta de ${op.nombre}? El operario podrá volver a iniciar sesión.`, btnOk: 'Desbloquear' })) return;
     try {
       await apiAdminDesbloquear(token, op.cedula);
       toast(`Cuenta de ${op.nombre} desbloqueada correctamente.`, 'success');
       await cargarOperarios();
     } catch (e) { manejarError(e, 'desbloquearOperario'); }
-  };
+  }
 
   // ── Modal reporte PDF ──
   let operarioParaReporte = null;
   const modalReporte = document.getElementById('modalReporte');
 
-  window.abrirReporte = (op) => {
+  function abrirReporte(op) {
     operarioParaReporte = op;
     document.getElementById('reporteOperarioInfo').innerHTML =
       '<strong>' + esc(op.nombre) + '</strong> &nbsp;·&nbsp; Cédula: ' + esc(String(op.cedula));
@@ -1270,7 +1342,7 @@
     document.getElementById('reporteMes').value =
       ahora.getFullYear() + '-' + String(ahora.getMonth() + 1).padStart(2, '0');
     modalReporte.classList.remove('hidden');
-  };
+  }
 
   function cerrarModalReporte() { modalReporte.classList.add('hidden'); operarioParaReporte = null; }
   document.getElementById('modalReporteClose').addEventListener('click', cerrarModalReporte);
@@ -1421,8 +1493,9 @@
     }
 
     const ahora = new Date();
+    sesionesRender = sesiones;
     body.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:10px;">' +
-      sesiones.map(s => {
+      sesiones.map((s, i) => {
         const entradaDt = new Date(s.fecha + 'T' + (s.hora.length === 5 ? s.hora + ':00' : s.hora));
         const diffMs = ahora - entradaDt;
         const diffH  = Math.max(0, Math.floor(diffMs / 3600000));
@@ -1434,7 +1507,6 @@
         const colorT  = esLargo ? '#DC2626' : '#D97706';
         const bgAv    = esLargo ? '#DC2626' : '#D97706';
         const inicial = esc((s.nombre.trim()[0] || '?').toUpperCase());
-        const opJson  = JSON.stringify({ cedula: s.cedula, nombre: s.nombre }).replace(/"/g, '&quot;');
         return `<div style="background:${bgCard};border:1px solid ${bdCard};border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px;min-width:230px;max-width:280px;">
           <div style="width:36px;height:36px;border-radius:50%;background:${bgAv};color:#fff;font-weight:800;font-size:0.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${inicial}</div>
           <div style="flex:1;min-width:0;">
@@ -1442,7 +1514,7 @@
             <div style="font-size:0.72rem;color:var(--cf-gray-text);">Entró: ${esc(s.fecha)} ${esc(s.hora.slice(0,5))}</div>
             <div style="font-size:0.75rem;font-weight:700;color:${colorT};">⏱ ${tiempoLabel}${esLargo ? ' ⚠ larga' : ''}</div>
           </div>
-          <button class="btn btn-primary btn-sm" style="font-size:0.72rem;padding:5px 10px;background:var(--cf-dark);border-color:var(--cf-dark);flex-shrink:0;" onclick="abrirMarcar(${opJson})">Cerrar</button>
+          <button class="btn btn-primary btn-sm" data-acc="cerrar" data-i="${i}" style="font-size:0.72rem;padding:5px 10px;background:var(--cf-dark);border-color:var(--cf-dark);flex-shrink:0;">Cerrar</button>
         </div>`;
       }).join('') + '</div>';
   }
@@ -1450,7 +1522,7 @@
   document.getElementById('btnRefreshSesiones').addEventListener('click', cargarSesionesAbiertas);
 
   // ── Eliminar registro individual ──
-  window.eliminarRegistro = async (timestampReg) => {
+  async function eliminarRegistro(timestampReg) {
     // Busca los datos de display en el array ya cargado (evita pasar strings al onclick)
     const r = registrosData.find(x => x.timestamp === timestampReg);
     const nombre = r ? r.nombre : '(operario)';
@@ -1468,7 +1540,7 @@
       toast(`Registro de ${res.nombre} (${res.tipo} del ${res.fecha}) eliminado.`, 'success');
       await cargarRegistros();
     } catch (e) { manejarError(e, 'eliminarRegistro'); }
-  };
+  }
 
   // ============================================================
   // TAB: TARDANZAS — dashboard de análisis (réplica del análisis manual:
@@ -1623,6 +1695,15 @@
     REMISION_EDITADA:           { txt: 'Remisión editada',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ESTADO:            { txt: 'Cambio de estado',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_CONCILIADA:        { txt: 'Remisión conciliada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    // Solo aparece cuando remConciliar encuentra un documento DESPACHADO sin
+    // sus movimientos de inventario y los completa (R4-04). En rojo a
+    // propósito: cada fila de estas es un despacho que estuvo sin registrar
+    // en el libro, y vale la pena que salte a la vista en el filtro.
+    REMISION_LIBRO_REPARADO:    { txt: 'Libro reparado',              color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    // El gemelo del anterior, por el otro lado: un ajuste post-despacho cuyo
+    // delta NO se pudo escribir en el libro. La fila trae los deltas exactos,
+    // que es lo que hace falta para repararlo a mano.
+    REMISION_LIBRO_PENDIENTE:   { txt: 'Libro SIN corregir',          color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_FACTURADA:         { txt: 'Remisión facturada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_DESFACTURADA:      { txt: 'Factura quitada',           color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEMS_AJUSTADOS:   { txt: 'Ítems ajustados',            color: '#D97706', g: 'Remisiones (hoja AuditoriaRemisiones)' },
@@ -1909,7 +1990,16 @@
   // SIEMPRE usar para datos que vienen del backend (nombres, cédulas, etc.)
   // para prevenir XSS si algún dato contiene < > & "
   function esc(str) {
-    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    // `str == null ? '' : str` y NO `str || ''` (hallazgo R6-07): con el `||`,
+    // un 0 se convertía en cadena vacía, y donde este panel pinta un cero
+    // —minutos de tardanza, horas, cajas— salía una celda en blanco. En un
+    // tablero de asistencia "vacío" y "cero" son lecturas opuestas.
+    // El `'` se escapa como en las otras siete copias: acá no hay atributo con
+    // comilla simple hoy, pero que las ocho no sean intercambiables es cómo se
+    // cuela la próxima diferencia.
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function fmtDate(d) {

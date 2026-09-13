@@ -317,8 +317,16 @@ async function apiRemDetalle(token, docId) {
 // motivo: obligatorio SOLO si la remisión ya está despachada o entregada y el
 // cambio mueve cantidades o pesos — el backend corrige el libro de inventario
 // con ese delta y deja el motivo en el documento (ver remGuardar, R4-02).
-async function apiRemGuardar(token, remision, detalle, motivo) {
-  return apiCall('remision_guardar', { token, remision, detalle, motivo: motivo || '' });
+//
+// huella: la que vino en `remision_detalle` al abrir el editor. Es el control de
+// concurrencia de los campos que OTROS endpoints escriben —observaciones y el
+// bloque del transportador— y el backend rechaza el guardado si cambiaron desde
+// entonces (R4-06). Se manda vacía al crear un documento nuevo: no hay versión
+// previa contra la cual comparar.
+async function apiRemGuardar(token, remision, detalle, motivo, huella) {
+  return apiCall('remision_guardar', {
+    token, remision, detalle, motivo: motivo || '', huella: huella || '',
+  });
 }
 async function apiRemEnviar(token, docId) {
   return apiCall('remision_enviar', { token, docId });
