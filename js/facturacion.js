@@ -195,7 +195,8 @@
     var porProy = {};
     lista.forEach(function (r) {
       var k = r.cotizacionArchivo || '(sin proyecto)';
-      (porProy[k] = porProy[k] || { archivo: r.cotizacionArchivo, proyecto: r.proyecto, rs: [] }).rs.push(r);
+      (porProy[k] = porProy[k] || { archivo: r.cotizacionArchivo, proyecto: r.proyecto,
+                                    cb: r.cb, version: r.version, rs: [] }).rs.push(r);
     });
     var grupos = Object.keys(porProy).map(function (k) {
       var g = porProy[k];
@@ -206,6 +207,13 @@
       // El grupo es HOMOGÉNEO: el motivo se deriva del saldo de la cotización, y
       // el grupo es justamente una cotización. Así que basta mirar la primera.
       g.soloRegistro = soloRegistro(g.rs[0]);
+      // Estado de la casilla del grupo. Solo cuentan las que se pueden marcar:
+      // una fila sin `docId` lleva la casilla deshabilitada, y exigirla para
+      // decir "todas" dejaría el grupo eternamente a medias.
+      var marcables = g.rs.filter(function (x) { return !!x.docId; });
+      var n = marcables.filter(function (x) { return marcadas[x.docId]; }).length;
+      g.todas   = marcables.length > 0 && n === marcables.length;
+      g.algunas = n > 0;
       return g;
     }).sort(function (a, b) {
       // La plata primero, y dentro de cada bloque lo más viejo arriba. El
@@ -247,9 +255,27 @@
       return '<div class="grupo' + (urge ? ' urgente' : '') +
              (g.soloRegistro ? ' tramite' : '') + '">' +
         '<div class="grupo-top">' +
-          '<input type="checkbox" data-grupo="' + esc(g.archivo) + '" ' +
-            'aria-label="Marcar todas las de ' + esc(g.proyecto || g.archivo) + '">' +
+          // EL CHECKBOX DEL GRUPO SOLO CUANDO HAY MÁS DE UNA.
+          //
+          // Con una sola remisión hacía exactamente lo mismo que el de la fila,
+          // así que eran dos casillas para una decisión. Y como nunca se
+          // dibujaba marcada, al oprimirla se marcaba la de abajo y ella se
+          // quedaba en blanco: parecía que no había funcionado. Reportado.
+          //
+          // Cuando sí hay varias tiene sentido —es "marcar todas"— y ahora
+          // refleja el estado: marcada si lo están todas, a medias si algunas.
+          // `indeterminate` no se puede poner por atributo, así que va en
+          // `data-medias` y lo aplica `pintar()` después de escribir el HTML.
+          (g.rs.length > 1
+            ? '<input type="checkbox" data-grupo="' + esc(g.archivo) + '"' +
+                (g.todas ? ' checked' : '') + (g.algunas && !g.todas ? ' data-medias="1"' : '') +
+                ' aria-label="Marcar todas las de ' + esc(g.proyecto || g.archivo) + '">'
+            : '<span class="sin-casilla" aria-hidden="true"></span>') +
           '<span class="gn">' + esc(g.proyecto || g.archivo || '(sin proyecto)') + '</span>' +
+          // El código de la cotización: es lo que está escrito en el papel, y dos
+          // obras pueden llamarse igual.
+          (g.cb ? '<span class="gcb-ref">CB' + esc(g.cb) +
+                  (g.version ? '.' + esc(g.version) : '') + '</span>' : '') +
           (g.soloRegistro
             ? '<span class="etq-tramite" title="La cotización ya está cobrada por completo. ' +
               'Falta anotarle el número de factura a estas remisiones.">solo registro</span>'
@@ -512,7 +538,10 @@
           return ((r.consecutivo || '') + ' ' + (r.proyecto || '')).toLowerCase().indexOf(b) !== -1; }) ||
         (f.reparto || []).some(function (r) {
           return ((r.cb || '') + ' ' + (r.proyecto || '')).toLowerCase().indexOf(b) !== -1; });
-    }).sort(porRef('numero'));
+    // DE LA MÁS NUEVA A LA MÁS ANTIGUA: son las que están sin repartir y las que
+    // alguien tiene en la mano. Las viejas ya se procesaron, y si una vieja
+    // quedara pendiente sigue encontrándose por el buscador y por los filtros.
+    }).sort(function (a, b) { return porRef('numero')(b, a); });
 
     if (!vis.length) {
       return h + '<div class="vacio">' +
@@ -832,6 +861,13 @@
     document.getElementById('vista').innerHTML =
       vista === 'cobrar' ? vistaCobrar() : (vista === 'proyecto' ? vistaProyecto() : vistaFacturas());
 
+    // `indeterminate` es una PROPIEDAD, no un atributo: no se puede escribir en
+    // el HTML y se pierde en cada repintado. Se aplica acá, justo después de
+    // volcar la vista, a partir del `data-medias` que dejó el render.
+    Array.prototype.forEach.call(
+      document.querySelectorAll('[data-medias]'),
+      function (c) { c.indeterminate = true; });
+
     var b = document.getElementById('buscar');
     if (b && busca) { b.focus(); b.setSelectionRange(busca.length, busca.length); }
   }
@@ -906,6 +942,45 @@
     }).catch(function (e) { cerrarModal(); manejarError(e); });
   }
 
+  /**
+   * Acepta una de las que la compuerta frenó por consecuencia.
+   *
+   * Se escribe por `factura_asignar`, que es el MISMO camino de siempre con sus
+   * mismas validaciones — la compuerta nunca bloqueó esta ruta, solo la
+   * automática. No hay ningún salto nuevo que abrir.
+   *
+   * `origen` conserva de dónde salió el reparto (NOTAS / REMISION / OC) y
+   * `sobreAviso` dice que una persona lo aceptó sabiendo lo que decía el aviso.
+   * Se separan para que el conteo de "cuántas automáticas hubo que anular" no
+   * se contamine con decisiones humanas.
+   */
+  function aceptarRevisable(i, btn) {
+    if (!loteAuto) return;
+    var revs = (loteAuto.frenadas || []).filter(function (f) {
+      return f.revisable && (f.propuestas || []).length;
+    });
+    var f = revs[i];
+    if (!f) return;
+    btn.disabled = true;
+    btn.textContent = 'Asignando\u2026';
+    var nota = 'Aceptada sobre aviso: pasaba del aprobado';
+    Promise.all(f.propuestas.map(function (p) {
+      return apiFacturaAsignar(token, f.numero, p.cotizacionArchivo, p.monto, p.montoAiu,
+                               p.kgFacturado, p.origen, nota, p.concepto, true);
+    })).then(function () {
+      // Se quita de la lista en memoria y se repinta el modal: la persona sigue
+      // con las demás sin perder el sitio.
+      loteAuto.frenadas = (loteAuto.frenadas || []).filter(function (x) { return x !== f; });
+      modal(htmlLoteAuto(loteAuto));
+      toast(f.numero + ' asignada.', 'ok');
+      return refrescar();
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = 'Asignar igual';
+      manejarError(e);
+    });
+  }
+
   /** Los motivos, en palabras. El código va al lado para poder buscarlo. */
   var MOTIVO_LOTE = {
     YA_TIENE_REPARTO:       'ya tiene reparto',
@@ -940,13 +1015,49 @@
            }).join('') + '</div>';
     }
 
-    // Las frenadas AGRUPADAS por motivo: son las que alguien tiene que mirar, y
-    // en una lista plana de treinta no se ve cuál es el problema de fondo.
-    if (fren.length) {
+    // ── LAS QUE SE PUEDEN REVISAR ──
+    //
+    // La compuerta las frenó SOLO por la consecuencia —dejarían al proyecto por
+    // encima de lo aprobado— pero la propuesta que calculó está completa. Y
+    // pasarse del aprobado no es por sí mismo un error: la factura final no
+    // siempre cuadra al peso con la cotización.
+    //
+    // Antes esto era una línea con números y nada más, así que para aceptar una
+    // había que cerrar, buscarla, abrirla y teclear el monto a mano. Van
+    // primero, desplegadas, y con su botón.
+    var revisables = fren.filter(function (f) { return f.revisable && (f.propuestas || []).length; });
+    var resto = fren.filter(function (f) { return revisables.indexOf(f) === -1; });
+
+    if (revisables.length) {
+      h += '<div class="lote-rev"><h5>' + revisables.length +
+        (revisables.length === 1 ? ' pide' : ' piden') + ' que la mires</h5>' +
+        '<p class="hint">Dejar\u00edan el proyecto por encima de lo aprobado. Suele ser que la ' +
+        'factura final no cuadra al peso con la cotizaci\u00f3n \u2014 rev\u00edsalas y acepta las que ' +
+        'est\u00e9n bien.</p>' +
+        revisables.map(function (f, i) {
+          return '<div class="lote-r"><div class="lote-rtop">' +
+              '<span class="lote-num">' + esc(f.numero) + '</span>' +
+              f.propuestas.map(function (p) {
+                return '<span class="lote-p">' + esc(p.proyecto || p.cotizacionArchivo) +
+                       ' <b>' + money(p.monto + p.montoAiu) + '</b></span>';
+              }).join('') +
+              '<button class="btn-mini primario" data-rev-ok="' + i + '">Asignar igual</button>' +
+            '</div>' +
+            '<div class="lote-rnum">Dejar\u00eda el proyecto en <b>' + money(f.quedaria) +
+              '</b> contra <b>' + money(f.aprobado) + '</b> aprobado' +
+              (f.aprobado > 0 ? ' \u00b7 ' + money(f.quedaria - f.aprobado) + ' de m\u00e1s' : '') +
+            '</div></div>';
+        }).join('') + '</div>';
+    }
+
+    // El RESTO, agrupado por motivo: son las que no se pueden aceptar de un
+    // clic porque su propuesta no está completa o no es de fiar. En una lista
+    // plana de treinta no se ve cuál es el problema de fondo.
+    if (resto.length) {
       var porMotivo = {};
-      fren.forEach(function (f) { (porMotivo[f.motivo] = porMotivo[f.motivo] || []).push(f.numero); });
-      h += '<details class="lote-fren"><summary>' + fren.length +
-           (fren.length === 1 ? ' queda' : ' quedan') + ' para mirar a mano</summary>' +
+      resto.forEach(function (f) { (porMotivo[f.motivo] = porMotivo[f.motivo] || []).push(f.numero); });
+      h += '<details class="lote-fren"><summary>' + resto.length +
+           (resto.length === 1 ? ' queda' : ' quedan') + ' para mirar a mano</summary>' +
         Object.keys(porMotivo).map(function (m) {
           return '<div class="lote-m"><span class="lote-mt">' +
             esc(MOTIVO_LOTE[m] || m) + '</span> <span class="lote-mn">' +
@@ -1188,6 +1299,9 @@
     if (b.getAttribute('data-auto')) { abrirLoteAuto(); return; }
     if (b.getAttribute('data-auto-ok')) { confirmarLoteAuto(); return; }
     if (b.getAttribute('data-auto-no')) { loteAuto = null; cerrarModal(); return; }
+    if ((n = b.getAttribute('data-rev-ok')) !== null && n !== '') {
+      aceptarRevisable(parseInt(n, 10), b); return;
+    }
     if (b.classList.contains('fila')) { abrirFactura(b.getAttribute('data-num')); return; }
 
     // ── Vista Por cobrar ──

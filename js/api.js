@@ -402,10 +402,14 @@ async function apiFacturaTablero(token) {
 // `concepto` es CONTRATO (por defecto) o PROVEEDURIA: lo segundo es material
 // que no es acero —las Q— y no se compara contra el valor aprobado, porque no
 // tiene uno. Se manda aparte y no se deduce del monto.
-async function apiFacturaAsignar(token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota, concepto) {
+// `sobreAviso` marca las que una persona aceptó después de que la compuerta las
+// frenara. Queda en la auditoría y NO en `origen`: son dos poblaciones
+// distintas y hay que poder medirlas por separado.
+async function apiFacturaAsignar(token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota, concepto, sobreAviso) {
   return apiCall('factura_asignar', {
     token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota,
     concepto: concepto || 'CONTRATO',
+    sobreAviso: !!sobreAviso,
   });
 }
 async function apiFacturaAsignacionAnular(token, asigId, motivo) {
