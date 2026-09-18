@@ -56,6 +56,27 @@
     .corte.d { border-left-color:#DC2626; }
 
     .barra-f { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    /* "Asignar las seguras" escribe, así que va separado de los filtros —que no
+       hacen nada— con `margin-left:auto`. Un botón que escribe al lado de otros
+       que solo filtran es como se oprime sin querer. */
+    .btn-auto { margin-left:auto; font-family:inherit; font-size:0.78rem; font-weight:700;
+                padding:7px 13px; border-radius:8px; cursor:pointer; white-space:nowrap;
+                background:#fff; color:var(--cf-blue); border:1.5px solid var(--cf-blue); }
+    .btn-auto:hover { background:var(--cf-blue); color:#fff; }
+
+    /* El plan del lote, dentro del modal. */
+    .lote-lista { max-height:240px; overflow-y:auto; margin:10px 0; }
+    .lote-f { display:flex; gap:9px; align-items:baseline; flex-wrap:wrap;
+              padding:6px 0; border-bottom:1px solid var(--cf-gray-mid); }
+    .lote-num { font-weight:800; font-size:0.84rem; color:var(--cf-dark);
+                font-variant-numeric:tabular-nums; min-width:62px; }
+    .lote-p { font-size:0.78rem; color:var(--cf-gray-text); }
+    .lote-p b { color:var(--cf-dark); font-variant-numeric:tabular-nums; }
+    .lote-fren { margin-top:10px; font-size:0.79rem; }
+    .lote-fren summary { cursor:pointer; font-weight:700; color:var(--cf-gray-text); }
+    .lote-m { margin:6px 0 0 4px; }
+    .lote-mt { font-weight:700; color:var(--cf-dark); }
+    .lote-mn { color:var(--cf-gray-text); font-variant-numeric:tabular-nums; }
     .buscar { flex:1 1 220px; min-width:170px; padding:8px 12px; font-family:inherit; font-size:0.85rem;
               border:1.5px solid var(--cf-gray-mid); border-radius:var(--radius-sm); color:var(--cf-dark); }
     .buscar:focus { outline:none; border-color:var(--cf-blue); }
@@ -116,8 +137,26 @@
             font-family:inherit; color:inherit; transition:border-color .15s, box-shadow .15s; }
     .fila:hover { border-color:var(--cf-blue); box-shadow:var(--shadow); }
     .fila[aria-expanded="true"] { border-color:var(--cf-dark); box-shadow:var(--shadow); }
+    /* El cliente va JUNTO al número y no debajo: son la misma pregunta —cuál es
+       esta factura— y separarlos empujaría el proyecto a un tercer renglón.
+       FLEX y no un `<span>` suelto: `text-overflow` solo actúa sobre una caja de
+       bloque, así que en línea los puntos suspensivos no aparecen y la razón
+       social empuja las columnas de plata. `min-width:0` en los tres niveles
+       —celda, .num y .cli— es lo que permite encoger: por defecto un ítem de
+       grid o de flex no baja de su contenido, y sin eso el recorte tampoco pasa.
+       Las razones sociales reales llegan a 24 caracteres ("UNION TEMPORAL IETA
+       2026") y el número nunca se recorta: es lo único que no puede faltar. */
     .num { font-size:0.98rem; font-weight:800; color:var(--cf-dark); }
-    .meta { font-size:0.69rem; color:var(--cf-gray-text); font-weight:600; margin-top:1px; }
+    /* Solo en la FILA: `.num` también se usa en la cabecera del panel, que ya es
+       un flex con `align-items:baseline`, y volverlo contenedor allá no aporta
+       nada y sí puede mover la línea base. */
+    .fila > div { min-width:0; }
+    .fila .num { display:flex; align-items:baseline; gap:7px; min-width:0; }
+    .fila .num > .n { flex:0 0 auto; }
+    .cli { flex:0 1 auto; min-width:0; font-size:0.74rem; font-weight:700;
+           color:var(--cf-gray-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .meta { font-size:0.69rem; color:var(--cf-gray-text); font-weight:600; margin-top:1px;
+            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .plata { font-size:0.92rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--cf-dark); }
     .eje { display:flex; flex-direction:column; gap:4px; }
     .eje-lbl { font-size:0.61rem; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:#8A93A2; }
@@ -174,6 +213,20 @@
     .fact-table tbody tr:hover { background:#F8FAFC; }
     .fact-table tfoot td { font-weight:800; border-top:2px solid var(--cf-dark); border-bottom:none; }
     .fact-table td.n { font-variant-numeric:tabular-nums; }
+    /* LOS DOS BLOQUES. La raya vertical es el punto entero del cambio: lo de la
+       izquierda se compara contra el valor aprobado y lo de la derecha no,
+       porque la proveeduría no tiene uno. Sin la separación, siete columnas de
+       plata se leen como si todas contaran igual. */
+    .fact-table th.g1 { background:#F8FAFC; }
+    .fact-table th.g2, .fact-table td:nth-child(5) { background:#FFFBEB; }
+    .fact-table th.g2 { border-left:2px solid #FCD34D; }
+    .fact-table tbody td:nth-child(5), .fact-table tfoot td:nth-child(5) { border-left:2px solid #FCD34D; }
+    /* Los rótulos de grupo van CENTRADOS sobre sus columnas. Heredada la
+       alineación a la derecha del resto de la tabla, "Del contrato" quedaba
+       encima de "Por facturar" y parecía rotular solo esa. */
+    .fact-table thead tr:first-child th { font-size:0.6rem; padding-bottom:3px; text-align:center; }
+    .prov-val { color:#B45309; font-weight:700; }
+    .estado.prov { background:#FEF3C7; color:#92400E; }
     .proy { font-weight:700; color:var(--cf-dark); }
     .cbv { font-size:0.67rem; color:var(--cf-gray-text); font-weight:700; }
     .neg { color:#B45309; font-weight:700; }

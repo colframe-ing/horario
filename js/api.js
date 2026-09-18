@@ -399,9 +399,13 @@ async function apiFacturaTablero(token) {
 }
 // monto va SIN AIU y montoAiu aparte: el subtotal de la cotización incluye AIU,
 // pero no todas las facturas lo cobran, y mezclarlos esconde la diferencia.
-async function apiFacturaAsignar(token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota) {
+// `concepto` es CONTRATO (por defecto) o PROVEEDURIA: lo segundo es material
+// que no es acero —las Q— y no se compara contra el valor aprobado, porque no
+// tiene uno. Se manda aparte y no se deduce del monto.
+async function apiFacturaAsignar(token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota, concepto) {
   return apiCall('factura_asignar', {
     token, facturaNumero, cotizacionArchivo, monto, montoAiu, kgFacturado, origen, nota,
+    concepto: concepto || 'CONTRATO',
   });
 }
 async function apiFacturaAsignacionAnular(token, asigId, motivo) {
@@ -425,4 +429,15 @@ async function apiRemisionDesfacturar(token, docId, motivo) {
 // nada se asigna hasta que una persona lo confirme.
 async function apiFacturaSugerencias(token, facturaNumero) {
   return apiCall('factura_sugerencias', { token, facturaNumero });
+}
+// Asigna de un golpe las facturas que pasan la compuerta (`_factCompuerta`).
+//
+// SIN `confirmar` ES UN SIMULACRO: no escribe nada y devuelve exactamente lo
+// que haría. Es lo que la pantalla muestra antes de que alguien apruebe.
+//
+// SOLO VIAJAN NÚMEROS. Ni montos, ni proyectos, ni orígenes: el reparto lo
+// decide el servidor volviendo a correr la compuerta dentro del lock. Mandarlo
+// desde acá sería dejar que el navegador decida contra qué proyecto se cobra.
+async function apiFacturaAsignarLote(token, numeros, confirmar) {
+  return apiCall('factura_asignar_lote', { token, numeros, confirmar: !!confirmar });
 }

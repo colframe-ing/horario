@@ -322,6 +322,121 @@
   }
 
   // ══ VISTA 2 · FACTURAS ═══════════════════════════════════════════════════
+
+  // ── Lo que dice la fila ──────────────────────────────────────────────────
+  //
+  // La fila mostraba `fecha · DIAN {dianStatus}`. En las 148 facturas del
+  // histórico ese campo dice `DIAN_ACEPTADO` en LAS 148: un campo con un solo
+  // valor no informa nada, y estaba ocupando el renglón más caro de la
+  // pantalla. En su lugar van el cliente y el proyecto, que son dos de las tres
+  // formas en que alguien busca una factura (la tercera es el número, que ya
+  // estaba).
+  //
+  // Las tres son FUNCIONES PURAS y están probadas en `facturacion_fila.test.js`
+  // contra el archivo real.
+
+  /** El estado DIAN normal. Todo lo demás se muestra. */
+  var DIAN_NORMAL = 'DIAN_ACEPTADO';
+
+  /** El estado DIAN, solo cuando dice algo, y ya listo para pintar.
+   *
+   *  La regla es "todo lo que NO sea el normal" y no una lista de valores
+   *  malos: un estado que nadie previó tiene que saltar a la vista en vez de
+   *  pasar de largo por no estar en la lista.
+   *
+   *  Y se le quita el prefijo `DIAN_` que el propio valor trae, porque la
+   *  etiqueta de al lado ya dice DIAN: sin esto sale "DIAN DIAN_RECHAZADO",
+   *  que es la misma tartamudez que tenía la fila antes de este cambio. */
+  function dianAnormal(f) {
+    var s = String((f && f.dianStatus) || '').trim();
+    if (!s || s.toUpperCase() === DIAN_NORMAL) return '';
+    return s.replace(/^DIAN[_ ]/i, '');
+  }
+
+  /** A quién se le cobró.
+   *
+   *  `razonSocial` viene VACÍA en 14 de las 148 del histórico, así que sin
+   *  respaldo la fila quedaría peor que antes en el 9% de los casos. Cuando no
+   *  hay ninguno de los dos se devuelve cadena vacía y no un guion: un guion se
+   *  lee como "no tiene cliente", que es una afirmación, y lo que pasa es que
+   *  no lo sabemos. */
+  function clienteDe(f) {
+    var rs = String((f && f.razonSocial) || '').trim();
+    if (rs) return rs;
+    var nit = String((f && f.nit) || '').trim();
+    return nit ? 'NIT ' + nit : '';
+  }
+
+  /** Los proyectos de una factura, por orden de firmeza.
+   *
+   *    1. el reparto vivo  — un HECHO: alguien lo asignó
+   *    2. las remisiones   — un HECHO: la factura salió amparando eso
+   *    3. lo que dice la nota — una PROPUESTA, y sale rotulada
+   *
+   *  LOS NIVELES NO SE MEZCLAN. Si hay reparto, la nota no agrega nada a la
+   *  fila; si hay remisiones, tampoco. Pintar juntos un hecho y una propuesta,
+   *  sin rótulo, es exactamente cómo una propuesta termina leyéndose como un
+   *  hecho — y acá el hecho es a quién se le cobró plata.
+   *
+   *  `ctx` es lo que la vista ya tiene en memoria: `porArchivo` (archivo →
+   *  nombre del proyecto, de `_datos.cotizaciones`) y `candidatas`
+   *  (`candidatasPorCotizacion`, que el tablero ya manda). Ninguna llamada
+   *  nueva. */
+  function proyectosDe(f, ctx) {
+    var porArchivo = (ctx && ctx.porArchivo) || {};
+    var candidatas = (ctx && ctx.candidatas) || {};
+    var vistos = {}, nombres = [];
+    var agregar = function (nombre) {
+      var n = String(nombre || '').trim();
+      if (!n || vistos[n]) return;
+      vistos[n] = true;
+      nombres.push(n);
+    };
+
+    // 1 — el reparto. `proyecto` puede venir vacío cuando la cotización no está
+    // en la cola; el archivo sigue sirviendo para buscar el nombre.
+    ((f && f.reparto) || []).forEach(function (a) {
+      agregar(a.proyecto || porArchivo[a.cotizacionArchivo]);
+    });
+    if (nombres.length) return { nombres: nombres, propuesto: false };
+
+    // 2 — las remisiones que ampara.
+    ((f && f.remisiones) || []).forEach(function (r) {
+      agregar(r.proyecto || porArchivo[r.cotizacionArchivo]);
+    });
+    if (nombres.length) return { nombres: nombres, propuesto: false };
+
+    // 3 — lo que la nota menciona. Solo `NOTA`/`AMBAS`: una candidata por
+    // `REMISION` dice "esta factura ya está en otra remisión de ese proyecto",
+    // que es otra afirmación y se vería por el eje de remisiones si aplicara a
+    // ESTA factura.
+    Object.keys(candidatas).forEach(function (archivo) {
+      (candidatas[archivo] || []).forEach(function (c) {
+        if (c.numero !== (f && f.numero)) return;
+        if (c.motivo !== 'NOTA' && c.motivo !== 'AMBAS') return;
+        agregar(porArchivo[archivo]);
+      });
+    });
+    return { nombres: nombres, propuesto: nombres.length > 0 };
+  }
+
+  /** El rótulo de la fila: el primero y cuántos más. */
+  function rotuloProyectos(p) {
+    var ns = (p && p.nombres) || [];
+    if (!ns.length) return '';
+    var txt = ns.length > 1 ? ns[0] + ' +' + (ns.length - 1) : ns[0];
+    return p.propuesto ? 'propuesto: ' + txt : txt;
+  }
+
+  /** El índice archivo → nombre de proyecto, que `proyectosDe` necesita. */
+  function indiceProyectos() {
+    var out = {};
+    ((_datos && _datos.cotizaciones) || []).forEach(function (c) {
+      if (c.archivo) out[c.archivo] = c.proyecto || c.archivo;
+    });
+    return out;
+  }
+
   function estadoFactura(f) {
     var rTot = (f.remisiones || []).length;
     return {
@@ -368,13 +483,18 @@
 
     h += '<div class="barra-f">' +
       '<input class="buscar" id="buscar" type="search" value="' + esc(busca) + '" ' +
-        'placeholder="Buscar factura, proyecto o remisión…" aria-label="Buscar">' +
+        'placeholder="Buscar factura, cliente, proyecto o remisión…" aria-label="Buscar">' +
       [['todas', 'Todas'], ['pendiente', 'Algo pendiente'],
        ['reparto', 'Sin repartir'], ['remision', 'Con remisiones sueltas']]
         .map(function (x) {
           return '<button class="fchip" data-f="' + x[0] + '" aria-pressed="' +
                  (filtro === x[0]) + '">' + x[1] + '</button>';
-        }).join('') + '</div>';
+        }).join('') +
+      // No dice cuántas son hasta que se oprime, a propósito: saberlo obligaría
+      // a correr la compuerta en cada carga de la pantalla, y la compuerta lee
+      // seis hojas. Un clic muestra el plan; el segundo lo escribe.
+      '<button class="btn-auto" data-auto="1">Asignar las seguras…</button>' +
+      '</div>';
 
     var vis = facturas.filter(function (f) {
       var e = estadoFactura(f);
@@ -383,7 +503,11 @@
       if (filtro === 'pendiente' && e.repartoOk && !e.sugeridas) return false;
       if (!busca) return true;
       var b = busca.toLowerCase();
-      return (f.numero + ' ' + (f.notas || '')).toLowerCase().indexOf(b) !== -1 ||
+      // El cliente entra a la búsqueda junto con el número y las notas: con 51
+      // clientes distintos en el histórico, "las de INFRAESTRUCTURA" es una de
+      // las tres formas naturales de llegar a una factura.
+      return (f.numero + ' ' + (f.notas || '') + ' ' +
+              (f.razonSocial || '') + ' ' + (f.nit || '')).toLowerCase().indexOf(b) !== -1 ||
         (f.remisiones || []).some(function (r) {
           return ((r.consecutivo || '') + ' ' + (r.proyecto || '')).toLowerCase().indexOf(b) !== -1; }) ||
         (f.reparto || []).some(function (r) {
@@ -396,6 +520,9 @@
           : 'El maestro de facturas está vacío. Corre <code>factImportarFacturas()</code> o el .bat de sync.') +
         '</div>';
     }
+
+    var ctxProy = { porArchivo: indiceProyectos(),
+                    candidatas: (_datos && _datos.candidatasPorCotizacion) || {} };
 
     h += '<div class="lista">' + vis.map(function (f) {
       var e = estadoFactura(f), ab = abierta === f.numero;
@@ -415,10 +542,17 @@
         : (f.sinAsignar < 0 ? '<span class="estado bad">' + money(f.sinAsignar) + ' de más</span>'
           : '<span class="estado warn">' + money(f.sinAsignar) + '</span>');
 
+      var cli = clienteDe(f), dian = dianAnormal(f);
+      var proy = rotuloProyectos(proyectosDe(f, ctxProy));
+
       return '<button class="fila" data-num="' + esc(f.numero) + '" aria-expanded="' + ab + '">' +
-          '<div><div class="num">' + esc(f.numero) + '</div><div class="meta">' +
+          '<div><div class="num"><span class="n">' + esc(f.numero) + '</span>' +
+            (cli ? '<span class="cli">' + esc(cli) + '</span>' : '') + '</div>' +
+          '<div class="meta">' +
             esc(f.fecha || 'sin fecha') +
-            (f.enMaestro ? (f.dianStatus ? ' · DIAN ' + esc(f.dianStatus) : '') : ' · fuera del maestro') +
+            (proy ? ' · ' + esc(proy) : '') +
+            (dian ? ' · DIAN ' + esc(dian) : '') +
+            (f.enMaestro ? '' : ' · fuera del maestro') +
           '</div></div>' +
           '<div class="plata">' + money(f.subtotal) + '</div>' +
           '<div class="eje"><span class="eje-lbl">Remisiones</span><span class="eje-val">' + ejeR + '</span></div>' +
@@ -439,7 +573,8 @@
     var h = '<div class="panel"><div class="panel-top">' +
       '<span class="num">' + esc(f.numero) + '</span>' +
       '<span class="meta">' + esc(f.fecha || 'sin fecha') + ' · ' + money(f.subtotal) +
-        (f.dianStatus ? ' · DIAN ' + esc(f.dianStatus) : '') + '</span>' +
+        (clienteDe(f) ? ' · ' + esc(clienteDe(f)) : '') +
+        (dianAnormal(f) ? ' · DIAN ' + esc(dianAnormal(f)) : '') + '</span>' +
       (f.pdfUrl ? '<a class="btn-mini" href="' + esc(f.pdfUrl) + '" target="_blank" rel="noopener">Ver PDF</a>' : '') +
       '</div>';
 
@@ -491,7 +626,9 @@
       '<p class="h4sub">Contra el subtotal. El AIU cuenta.</p>';
     h += (f.reparto || []).map(function (a) {
       return '<div class="item hecho"><span class="ico">✓</span>' +
-        '<span class="cuerpo"><span class="t">' + esc(a.proyecto || a.cotizacionArchivo) + '</span>' +
+        '<span class="cuerpo"><span class="t">' + esc(a.proyecto || a.cotizacionArchivo) +
+          (a.concepto === 'PROVEEDURIA'
+            ? ' <span class="estado prov">proveedur\u00eda</span>' : '') + '</span>' +
           '<span class="d">CB' + esc(a.cb) + (a.version ? '.' + esc(a.version) : '') +
           (a.montoAiu > 0 ? ' · AIU ' + money(a.montoAiu) : '') + '</span></span>' +
         '<span class="monto">' + money((Number(a.monto) || 0) + (Number(a.montoAiu) || 0)) + '</span>' +
@@ -570,29 +707,57 @@
       var pend = r.facturadoDeMas > 0
         ? '<span class="mal">+' + money(r.facturadoDeMas) + '</span>'
         : (r.pendiente > 0 ? '<span class="neg">' + money(r.pendiente) + '</span>' : '<span class="ok">—</span>');
+      // La proveeduría se marca en la fila: que un proyecto tenga cobros que no
+      // salen de su cotización es justo lo que antes no se veía.
+      if (r.adicional > 0) {
+        chips += ' <span class="estado prov" title="Cobros que no salen de la cotizaci\u00f3n de acero">' +
+                 'con proveedur\u00eda</span>';
+      }
       return '<tr>' +
         '<td><span class="proy">' + esc(c.proyecto || c.archivo) + '</span>' + chips +
           '<div class="cbv">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') + ' · ' + esc(c.estado) + '</div></td>' +
         '<td class="n">' + money(r.valorAprobado) + '</td>' +
         '<td class="n">' + money(r.facturado) + (r.aiu > 0 ? '<div class="cbv">AIU ' + money(r.aiu) + '</div>' : '') + '</td>' +
         '<td class="n">' + pend + '</td>' +
+        // ADICIONAL. Sin "pendiente" y sin "de más" a propósito: la proveeduría
+        // no tiene valor aprobado contra el cual compararse, y ponerle uno
+        // inventado es lo que esta columna viene a evitar.
+        '<td class="n">' + (r.adicional > 0
+          ? '<span class="prov-val">' + money(r.adicional) + '</span>' +
+            '<div class="cbv">' + r.adicionalN + (r.adicionalN === 1 ? ' cobro' : ' cobros') + '</div>'
+          : '—') + '</td>' +
         '<td class="n">' + (r.expuesto > 0 ? '<span class="neg">' + money(r.expuesto) + '</span>' : '—') + '</td>' +
         '<td class="n">' + num(r.unidadesDespachadas) + '/' + num(r.unidades) + '</td>' +
         '<td><button class="btn-mini" data-asignar="' + esc(c.archivo) + '" ' +
           'data-proy="' + esc(c.proyecto || c.archivo) + '">Asignar</button></td></tr>';
     }).join('');
 
+    // LAS CABECERAS AGRUPADAS EN DOS BLOQUES, y esa raya es el punto entero de
+    // este cambio: lo de la izquierda se compara contra el aprobado; lo de la
+    // derecha, no. Sin la separación visual, siete columnas de plata se leen
+    // como si todas contaran igual.
     h += '<div class="tabla-wrap"><table class="fact-table">' +
-      '<thead><tr><th>Proyecto</th><th>Aprobado</th><th>Facturado</th><th>Por facturar</th>' +
+      '<thead><tr>' +
+        '<th></th><th class="g1" colspan="3">Del contrato</th>' +
+        '<th class="g2">Adicional</th><th colspan="3"></th></tr>' +
+      '<tr><th>Proyecto</th><th class="g1">Aprobado</th><th class="g1">Facturado</th>' +
+      '<th class="g1">Por facturar</th><th class="g2">Proveedur\u00eda</th>' +
       '<th>Cobrado sin salir</th><th>Despachado</th><th></th></tr></thead>' +
       '<tbody>' + filas + '</tbody>' +
       '<tfoot><tr><td>Total</td><td class="n">' + money(tot.valorAprobado) + '</td>' +
       '<td class="n">' + money(tot.facturado) + '</td>' +
       '<td class="n">' + (tot.facturadoDeMas > 0 ? '<span class="mal">+' + money(tot.facturadoDeMas) + '</span> / ' : '') +
         money(tot.pendiente) + '</td>' +
+      '<td class="n">' + (tot.adicional > 0 ? money(tot.adicional) : '—') + '</td>' +
       '<td class="n">' + money(tot.expuesto) + '</td><td></td><td></td></tr></tfoot>' +
       '</table></div>';
 
+    if (tot.adicional > 0) {
+      h += '<p class="leyenda"><strong>Adicional</strong> es lo que se le cobr\u00f3 al proyecto y NO sale de su ' +
+        'cotizaci\u00f3n: proveedur\u00eda de material distinto al acero, las Q. No tiene "por facturar" ni ' +
+        '"cobrado de m\u00e1s" porque no hay valor aprobado contra el cual compararlo \u2014 invent\u00e1rselo ser\u00eda ' +
+        'peor que dejarlo sin comparar. Se muestra junto al contrato y nunca sumado con \u00e9l.</p>';
+    }
     h += '<p class="leyenda"><strong>Cobrado sin salir</strong> es plata que ya se facturó y cuyo material ' +
       'todavía no ha salido de la planta: anticipos y actas de obra. No es un error — es lo que la empresa ' +
       'debe entregar. Vive aquí, junto al proyecto que le da contexto, y no en los cortes generales.</p>' +
@@ -700,6 +865,104 @@
   }
 
   // ── Modales ──────────────────────────────────────────────────────────────
+  // ══ ASIGNAR LAS SEGURAS ══════════════════════════════════════════════════
+  //
+  // Dos clics, y el primero no escribe nada. El simulacro trae exactamente lo
+  // que el segundo haría; el servidor vuelve a correr la compuerta al escribir,
+  // así que lo que se ve acá es una propuesta, no una promesa — si algo cambió
+  // en el medio, lo que manda es el segundo cálculo y el informe lo dice.
+  var loteAuto = null;   // el simulacro que se está mostrando
+
+  function abrirLoteAuto() {
+    modal('<h4>Asignar las seguras</h4>' +
+          '<p class="hint"><span class="spinner"></span> Revisando las facturas sin repartir…</p>');
+    apiFacturaAsignarLote(token, null, false).then(function (r) {
+      loteAuto = r;
+      modal(htmlLoteAuto(r, false));
+    }).catch(function (e) { cerrarModal(); manejarError(e); });
+  }
+
+  function confirmarLoteAuto() {
+    // Se mandan los NÚMEROS que se mostraron, no el reparto: el reparto lo
+    // recalcula el servidor. Así lo que se aprueba es "estas facturas", que es
+    // lo que la persona de verdad miró.
+    var nums = (loteAuto && loteAuto.asignadas || []).map(function (a) { return a.numero; });
+    if (!nums.length) { cerrarModal(); return; }
+    modal('<h4>Asignar las seguras</h4><p class="hint"><span class="spinner"></span> Escribiendo…</p>');
+    apiFacturaAsignarLote(token, nums, true).then(function (r) {
+      cerrarModal();
+      toast(r.escritas
+        ? 'Se asignaron ' + r.escritas + (r.escritas === 1 ? ' reparto.' : ' repartos.')
+        : 'No se escribió nada: las condiciones cambiaron.', r.escritas ? 'ok' : 'error');
+      // Si el segundo cálculo frenó algo que el simulacro daba por bueno, no se
+      // esconde: es justo el caso que hay que mirar.
+      var perdidas = nums.length - (r.asignadas || []).length;
+      if (perdidas > 0) {
+        toast(perdidas + (perdidas === 1 ? ' factura quedó' : ' facturas quedaron') +
+              ' sin asignar al confirmar. Revísalas en la lista.', 'error');
+      }
+      loteAuto = null;
+      return refrescar();
+    }).catch(function (e) { cerrarModal(); manejarError(e); });
+  }
+
+  /** Los motivos, en palabras. El código va al lado para poder buscarlo. */
+  var MOTIVO_LOTE = {
+    YA_TIENE_REPARTO:       'ya tiene reparto',
+    SIN_PROPUESTAS:         'no hay contra qué proponerla',
+    HAY_SIN_RESOLVER:       'la nota dice algo que no se pudo resolver',
+    HAY_CONTRADICCIONES:    'la nota y las remisiones no coinciden',
+    CONFIANZA_INSUFICIENTE: 'la propuesta es una suposición, no un dato',
+    MONTO_A_MANO:           'el monto no sale de una línea ni de un subtotal',
+    SUMA_NO_CUADRA:         'lo propuesto no suma la factura entera',
+    SIN_APROBADO:           'el proyecto no tiene valor aprobado',
+    PASA_DEL_APROBADO:      'dejaría el proyecto cobrado de más',
+    NO_EN_MAESTRO:          'no está en el maestro de facturas',
+    RECHAZADA_AL_ESCRIBIR:  'la escritura la rechazó',
+  };
+
+  function htmlLoteAuto(r) {
+    var asig = r.asignadas || [], fren = r.frenadas || [];
+    var h = '<h4>Asignar las seguras</h4>';
+
+    if (!asig.length) {
+      h += '<p class="hint">De las ' + r.revisadas + ' revisadas, <strong>ninguna</strong> ' +
+           'se puede asignar sola.</p>';
+    } else {
+      h += '<p class="hint">De las ' + r.revisadas + ' revisadas, <strong>' + asig.length +
+           '</strong> se pueden asignar solas. Esto es lo que se va a escribir:</p>' +
+           '<div class="lote-lista">' + asig.map(function (a) {
+             return '<div class="lote-f"><span class="lote-num">' + esc(a.numero) + '</span>' +
+               a.propuestas.map(function (p) {
+                 return '<span class="lote-p">' + esc(p.proyecto || p.cotizacionArchivo) +
+                        ' <b>' + money(p.monto + p.montoAiu) + '</b></span>';
+               }).join('') + '</div>';
+           }).join('') + '</div>';
+    }
+
+    // Las frenadas AGRUPADAS por motivo: son las que alguien tiene que mirar, y
+    // en una lista plana de treinta no se ve cuál es el problema de fondo.
+    if (fren.length) {
+      var porMotivo = {};
+      fren.forEach(function (f) { (porMotivo[f.motivo] = porMotivo[f.motivo] || []).push(f.numero); });
+      h += '<details class="lote-fren"><summary>' + fren.length +
+           (fren.length === 1 ? ' queda' : ' quedan') + ' para mirar a mano</summary>' +
+        Object.keys(porMotivo).map(function (m) {
+          return '<div class="lote-m"><span class="lote-mt">' +
+            esc(MOTIVO_LOTE[m] || m) + '</span> <span class="lote-mn">' +
+            esc(porMotivo[m].slice(0, 12).join(', ')) +
+            (porMotivo[m].length > 12 ? ' +' + (porMotivo[m].length - 12) : '') + '</span></div>';
+        }).join('') + '</details>';
+    }
+
+    h += '<div class="modal-acciones">' +
+      '<button class="btn btn-sm" data-auto-no="1">' + (asig.length ? 'Cancelar' : 'Cerrar') + '</button>' +
+      (asig.length ? '<button class="btn btn-sm btn-primary" data-auto-ok="1">Asignar ' +
+                     asig.length + (asig.length === 1 ? ' factura' : ' facturas') + '</button>' : '') +
+      '</div>';
+    return h;
+  }
+
   function cerrarModal() { document.getElementById('modalCont').innerHTML = ''; }
   function modal(html) {
     document.getElementById('modalCont').innerHTML =
@@ -843,6 +1106,10 @@
   /** El formulario de asignar. `previo` prellena desde una propuesta; se rellena
    *  y NO se envía: quien cobra tiene que ver el monto y decidir el AIU. */
   function abrirAsignar(archivo, proyecto, previo) {
+    // Lo que la nota sugiere, si la factura abierta trae una referencia Q. La
+    // referencia NO elige el proyecto —eso sería emparejar por nombre— pero sí
+    // dice de qué es el cobro.
+    var pre = (sugAbierta && sugAbierta.sugiereProveeduria) ? 'PROVEEDURIA' : 'CONTRATO';
     modal('<h4>Asignar factura</h4><p class="hint">' + esc(proyecto) + '</p>' +
       '<div class="campo"><label>Factura</label>' +
         '<input id="aNumero" placeholder="FE322" autocomplete="off" value="' +
@@ -858,6 +1125,21 @@
       '<div class="campo"><label>Kg facturados (opcional)</label>' +
         '<input id="aKg" type="number" step="0.01" min="0" placeholder="0" value="' +
           ((previo && previo.kg) || '') + '"></div>' +
+      // QUÉ se le está cobrando al proyecto. Por defecto el contrato, que es lo
+      // normal; proveeduría son las Q —material que no es acero— y no se
+      // comparan contra el aprobado porque no tienen uno.
+      '<div class="campo"><label>Concepto</label>' +
+        '<select id="aConcepto">' +
+          '<option value="CONTRATO"' + (pre === 'PROVEEDURIA' ? '' : ' selected') + '>' +
+            'Del contrato (la cotización de acero)</option>' +
+          '<option value="PROVEEDURIA"' + (pre === 'PROVEEDURIA' ? ' selected' : '') + '>' +
+            'Proveeduría — material distinto al acero (Q)</option>' +
+        '</select>' +
+        '<div class="ayuda">' + (pre === 'PROVEEDURIA'
+          ? '<strong>La nota menciona una Q</strong>, así que se propone proveeduría. ' +
+            'Cámbialo si no es eso.'
+          : 'La proveeduría se muestra aparte en el proyecto: no tiene valor aprobado ' +
+            'contra el cual compararse.') + '</div></div>' +
       '<div class="campo"><label>Nota (opcional)</label>' +
         '<input id="aNota" maxlength="300" placeholder="acta de obra 1, anticipo…"></div>' +
       '<div class="modal-acciones"><button class="btn btn-sm" id="aCancel">Cancelar</button>' +
@@ -871,11 +1153,12 @@
       var aiu    = parseFloat(document.getElementById('aAiu').value) || 0;
       var kg     = parseFloat(document.getElementById('aKg').value) || 0;
       var nota   = document.getElementById('aNota').value.trim();
+      var concepto = document.getElementById('aConcepto').value;
       if (!numero) { toast('Escribe el número de factura', 'error'); return; }
       if (monto + aiu <= 0) { toast('El monto tiene que ser mayor a cero (el AIU cuenta)', 'error'); return; }
       var btn = this;
       btn.disabled = true;
-      apiFacturaAsignar(token, numero, archivo, monto, aiu, kg, 'MANUAL', nota)
+      apiFacturaAsignar(token, numero, archivo, monto, aiu, kg, 'MANUAL', nota, concepto)
         .then(function (r) {
           cerrarModal();
           if (r.facturaConocida === false) {
@@ -902,6 +1185,9 @@
       vista = v; abierta = null; sugAbierta = null; pintar(); return;
     }
     if (b.classList.contains('fchip')) { filtro = b.getAttribute('data-f'); pintar(); return; }
+    if (b.getAttribute('data-auto')) { abrirLoteAuto(); return; }
+    if (b.getAttribute('data-auto-ok')) { confirmarLoteAuto(); return; }
+    if (b.getAttribute('data-auto-no')) { loteAuto = null; cerrarModal(); return; }
     if (b.classList.contains('fila')) { abrirFactura(b.getAttribute('data-num')); return; }
 
     // ── Vista Por cobrar ──

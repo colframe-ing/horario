@@ -1802,10 +1802,22 @@
     // peso SÍ exigen motivo al guardar (ver btnGuardarAjusteItems) porque,
     // a diferencia de la caja, cambian lo que se factura.
     const limitadosDeshabilitados = doc._puedeEditar === false && !puedeEditarPostBloqueo();
-    // Dividir una línea entre varias cajas solo tiene sentido si esa línea ya
-    // existe en la hoja (necesita su número de ítem) — una recién agregada y
-    // sin guardar todavía no tiene nada que dividir en el backend.
-    const puedeDividirItems = puedeEditarPostBloqueo();
+    // Dividir necesita que la línea exista en la hoja (el backend trabaja sobre
+    // su número de ítem), pero eso NO es razón para esconder el botón mientras
+    // el borrador está sin guardar: al tocarlo se guarda primero
+    // (ver `abrirModalDividir`).
+    //
+    // Antes el botón exigía `doc.docId` —por `puedeEditarPostBloqueo`— y además
+    // `l.item != null`. Sobre una remisión recién creada eso no se cumplía
+    // nunca, ni después de guardar, porque el cliente no recibía los ítems
+    // asignados. Lo único que lo destrababa era salir a la lista y volver a
+    // abrir el documento.
+    //
+    // `!doc.docId` cubre el documento nuevo, que por definición es un borrador
+    // editable: `nuevaRemision()` lo crea con estado BORRADOR. No se toca
+    // `puedeEditarPostBloqueo()`, que es el espejo exacto de `_remVetoDespacho`
+    // y no debe divergir.
+    const puedeDividirItems = puedeEditarPostBloqueo() || !doc.docId;
     tb.innerHTML = doc._detalle.map((l, i) => {
       // Una línea es LIBRE si se creó como tal (_libre === true), o si viene del
       // backend (_libre undefined) sin producto pero con descripción.
@@ -1859,7 +1871,7 @@
                    title="${kitSinPeso ? 'Obligatorio: es el dato que se factura' : ''}" ${limitadosDeshabilitados ? 'disabled' : ''}>${sug}</td>
         <td><input type="number" step="1" min="1" data-f="cajaNum" data-i="${i}" value="${esc(l.cajaNum)}" ${limitadosDeshabilitados ? 'disabled' : ''}></td>
         <td style="white-space:nowrap;">
-          ${(puedeDividirItems && l.item != null) ? `<button type="button" class="btn-icon btn-dividir" data-i="${i}" title="Dividir en varias cajas (ej. no cabe todo por peso)" style="color:#1D4ED8;">⊞</button>` : ''}
+          ${puedeDividirItems ? `<button type="button" class="btn-icon btn-dividir" data-i="${i}" title="Dividir en varias cajas (ej. no cabe todo por peso)" style="color:#1D4ED8;">⊞</button>` : ''}
           <button class="btn-icon btn-del" data-i="${i}" title="Quitar" style="color:#DC2626;">✕</button>
         </td>
       </tr>`;
@@ -1889,7 +1901,41 @@
       };
     });
     tb.querySelectorAll('.btn-dividir').forEach(b => {
-      b.onclick = () => abrirModalDividir(parseInt(b.dataset.i));
+      b.onclick = async () => {
+        const i = parseInt(b.dataset.i);
+        // GUARDAR PRIMERO SI HACE FALTA. `remItemDividir` trabaja sobre la hoja:
+        // necesita el docId del documento y el número de ítem de la línea, y una
+        // recién tecleada no tiene ninguno de los dos.
+        //
+        // Es el mismo patrón que ya usan Enviar y Conciliar —`if (!await
+        // guardar(true)) return;`— en vez de repartir la lógica de partir entre
+        // el navegador y el backend, que es como dos reglas iguales empiezan a
+        // divergir (R2-15, R5-04).
+        //
+        // `guardar(true)` es silencioso pero NO calla sus errores: si falta el
+        // cliente o el destinatario, sale su propio aviso y esto se detiene sin
+        // abrir un modal que no iba a poder guardar nada.
+        //
+        // SE GUARDA LA LÍNEA, NO SU ÍNDICE. `guardar()` arranca con
+        // `quitarPrecargadasVacias()`, que REASIGNA `doc._detalle` con un
+        // filtro: los 8 típicos que `nuevaRemision()` prellena y que sigan sin
+        // cantidad desaparecen, y todo lo que venía después se corre. Con el
+        // índice capturado antes, `abrirModalDividir(i)` caía en `undefined` y
+        // su `if (!l) return` no abría nada NI DECÍA NADA — el mismo síntoma
+        // que este arreglo vino a quitar, pero solo cuando la línea que se
+        // parte no era la primera.
+        //
+        // `filter` conserva las referencias, así que la línea se vuelve a
+        // ubicar por identidad.
+        const linea = doc._detalle[i];
+        if (!linea) return;
+        if (!doc.docId || linea.item == null) {
+          if (!await guardar(true)) return;
+        }
+        const j = doc._detalle.indexOf(linea);
+        if (j < 0) return;   // la quitó el guardado: no hay nada que partir
+        abrirModalDividir(j);
+      };
     });
     // Reordenar escribiendo el número destino, en vez de flechas: con listas
     // largas, mover un ítem del final al principio a golpe de clic era muy
@@ -2332,6 +2378,18 @@
       // guardado no la mande de vuelta sin ella.
       if (res.observaciones !== undefined) doc.observaciones = res.observaciones;
       if (res.huella) doc._huella = res.huella;
+      // Y los números de ítem que el backend acaba de asignar, por la misma
+      // razón que la cabecera de arriba: sin esto `doc._detalle` se queda sin
+      // saber cómo se llaman las líneas que se acaban de guardar, y el botón
+      // "⊞ Dividir en varias cajas" —que solo se pinta con `l.item != null`—
+      // no aparecía hasta salir a la lista y volver a abrir el documento.
+      //
+      // El orden es 1:1 con lo que se mandó: el backend numera por posición y
+      // NO filtra líneas (una inválida aborta el guardado entero), así que el
+      // índice i de acá es el mismo de allá.
+      if (res.items && res.items.length === doc._detalle.length) {
+        doc._detalle.forEach(function (l, i) { l.item = res.items[i]; });
+      }
       dirty = false;
       if (!silencioso) {
         toast((esFirme() ? 'Corrección guardada' : 'Borrador guardado') +

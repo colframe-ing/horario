@@ -1689,6 +1689,10 @@
     // Asignar es la decisión humana del módulo: la factura no dice a qué
     // cotización pertenece, así que alguien lo dice y queda registrado quién.
     FACTURA_ASIGNAR:            { txt: 'Factura asignada',           color: '#16A34A', g: 'Facturación' },
+    // El resumen del lote. Las filas siguen saliendo una a una como
+    // FACTURA_ASIGNAR —con `lote: true` en el detalle— porque un solo registro
+    // que diga "se asignaron ocho" no sirve para deshacer una.
+    FACTURA_ASIGNAR_LOTE:       { txt: 'Asignación en lote',         color: '#16A34A', g: 'Facturación' },
     FACTURA_ASIGNACION_ANULAR:  { txt: 'Asignación anulada',         color: '#DC2626', g: 'Facturación' },
     // — Remisiones (hoja AuditoriaRemisiones) —
     REMISION_CREADA:            { txt: 'Remisión creada',            color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
