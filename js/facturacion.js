@@ -186,6 +186,106 @@
   // Degradar por omisión escondería plata.
   function soloRegistro(r) { return r && r.motivo === 'SOLO_REGISTRO'; }
 
+  /** De donde puede venir una candidata para que se use sola. Es una lista
+   *  CERRADA a proposito: si manana el backend agrega un motivo mas flojo,
+   *  entraria solo y sin que nadie lo hubiera decidido. */
+  var CAND_AUTO = ['NOTA', 'AMBAS', 'REMISION'];
+
+  /**
+   * A qué remisiones se les puede anotar su número de factura sin mirarlas una
+   * por una.
+   *
+   * Es la hermana de `_factCompuerta`, para el eje contrario: aquella reparte
+   * PLATA entre proyectos, esta anota un NÚMERO en un documento.
+   *
+   * POR QUÉ ESTA VIVE ACÁ Y AQUELLA EN EL BACKEND, que no es una
+   * inconsistencia:
+   *
+   *   · La compuerta de facturas decide MONTO y PROYECTO. Si eso viniera del
+   *     cliente, el reparto lo decidiría el cliente, así que se recalcula en el
+   *     servidor dentro del lock.
+   *   · Esta solo EMPAREJA dos identificadores que la persona ve en pantalla, y
+   *     quien escribe sigue siendo `remision_facturar`, que valida la
+   *     cardinalidad y rechaza pisar una factura distinta. No hay ninguna
+   *     decisión delegada al navegador.
+   *
+   * Y no cuesta ninguna llamada: el tablero ya trae las tres cosas que necesita
+   * —las remisiones sin facturar, el índice de candidatas y el maestro—.
+   *
+   * LA CONSECUENCIA, ACÁ, ES CONGELAR: registrar una factura deja la remisión
+   * sin poder cambiar ítems ni cantidades, ni siendo admin. Por eso se niega
+   * cuando no se puede verificar, no cuando parece dudoso.
+   *
+   * FUNCIÓN PURA sobre `_datos`.
+   */
+  function planRegistrarSeguras() {
+    var cands = (_datos && _datos.candidatasPorCotizacion) || {};
+    var porNum = {};
+    ((_datos && _datos.facturas) || []).forEach(function (f) { porNum[f.numero] = f; });
+
+    // Las pendientes, agrupadas por proyecto. Solo las accionables: sin `docId`
+    // no hay documento que facturar, y el consecutivo no sirve de llave porque
+    // puede estar vacío.
+    var porProy = {};
+    ((_datos && _datos.sinFacturar) || []).forEach(function (r) {
+      if (!r.docId) return;
+      var k = r.cotizacionArchivo || '';
+      if (!k) return;
+      (porProy[k] = porProy[k] || []).push(r);
+    });
+
+    var listas = [], frenadas = [];
+    Object.keys(porProy).forEach(function (archivo) {
+      var docs = porProy[archivo];
+      var proyecto = docs[0].proyecto || archivo;
+      var frenar = function (motivo, detalle) {
+        frenadas.push({ archivo: archivo, proyecto: proyecto, motivo: motivo,
+                        detalle: detalle, docs: docs });
+      };
+
+      var utiles = (cands[archivo] || []).filter(function (c) {
+        return CAND_AUTO.indexOf(c.motivo) !== -1;
+      });
+      if (!utiles.length) {
+        return frenar('SIN_CANDIDATA',
+          'Ninguna factura apunta a este proyecto: ni por su nota, ni por otra remisi\u00f3n.');
+      }
+      if (utiles.length > 1) {
+        return frenar('VARIAS_CANDIDATAS',
+          'Hay ' + utiles.length + ' facturas que podr\u00edan ser: ' +
+          utiles.map(function (c) { return c.numero; }).join(', ') + '.');
+      }
+
+      var f = porNum[utiles[0].numero];
+      if (!f || !f.enMaestro) {
+        return frenar('FUERA_DEL_MAESTRO',
+          utiles[0].numero + ' no est\u00e1 en el maestro: no se puede ver de qui\u00e9n es ni por ' +
+          'cu\u00e1nto, y congelar una remisi\u00f3n con un n\u00famero sin verificar es lo que despu\u00e9s ' +
+          'hay que deshacer.');
+      }
+
+      // LA CONDICIÓN DE CONSECUENCIA. Si esa factura ya se repartó a OTROS
+      // proyectos y a este no, decir además que ampara remisiones de aquí es
+      // una contradicción entre los dos ejes del módulo — y es justo el
+      // descuadre que nadie nota hasta cuadrar a fin de mes.
+      var rep = (f.reparto || []);
+      if (rep.length && !rep.some(function (a) { return a.cotizacionArchivo === archivo; })) {
+        return frenar('REPARTO_DE_OTRO',
+          f.numero + ' ya se reparti\u00f3 a ' +
+          rep.map(function (a) { return a.proyecto || a.cotizacionArchivo; }).join(', ') +
+          ', y a este proyecto no se le cobr\u00f3 nada de ella.');
+      }
+
+      listas.push({ numero: f.numero, factura: f, archivo: archivo, proyecto: proyecto,
+                    docs: docs.map(function (r) {
+                      return { docId: r.docId, rotulo: r.consecutivo || '(sin consecutivo)',
+                               archivo: archivo, dias: r.dias };
+                    }) });
+    });
+
+    return { listas: listas, frenadas: frenadas };
+  }
+
   function vistaCobrar() {
     var lista = (_datos.sinFacturar || []);
     if (!lista.length) {
@@ -241,6 +341,19 @@
                 tramit.length === 1 ? 'ya cobrada, falta el número' : 'ya cobradas, falta el número')
         : '') +
       '</div>';
+
+    // El botón va DESPUÉS de los cortes y antes de los grupos: se lee el estado,
+    // y después se decide. Solo aparece si hay algo que proponer — un botón que
+    // siempre dice "0" enseña a no oprimirlo.
+    var planReg = planRegistrarSeguras();
+    if (planReg.listas.length) {
+      var nDocs = planReg.listas.reduce(function (n, l) { return n + l.docs.length; }, 0);
+      h += '<div class="barra-f"><span class="hint" style="margin:0;">' +
+        'El sistema sabe qu\u00e9 factura va en <strong>' + nDocs +
+        (nDocs === 1 ? '</strong> de estas remisiones' : '</strong> de estas remisiones') +
+        '.</span>' +
+        '<button class="btn-auto" data-regauto="1">Registrar las seguras\u2026</button></div>';
+    }
 
     if (plata.length === 0 && tramit.length) {
       h += '<div class="aviso info">Nada por cobrar. Las ' + tramit.length + ' de abajo ' +
@@ -657,7 +770,7 @@
       return '<div class="item hecho"><span class="ico">✓</span>' +
         '<span class="cuerpo"><span class="t">' + esc(a.proyecto || a.cotizacionArchivo) +
           (a.concepto === 'PROVEEDURIA'
-            ? ' <span class="estado prov">proveedur\u00eda</span>' : '') + '</span>' +
+            ? ' <span class="estado prov">proveeduría</span>' : '') + '</span>' +
           '<span class="d">CB' + esc(a.cb) + (a.version ? '.' + esc(a.version) : '') +
           (a.montoAiu > 0 ? ' · AIU ' + money(a.montoAiu) : '') + '</span></span>' +
         '<span class="monto">' + money((Number(a.monto) || 0) + (Number(a.montoAiu) || 0)) + '</span>' +
@@ -739,8 +852,8 @@
       // La proveeduría se marca en la fila: que un proyecto tenga cobros que no
       // salen de su cotización es justo lo que antes no se veía.
       if (r.adicional > 0) {
-        chips += ' <span class="estado prov" title="Cobros que no salen de la cotizaci\u00f3n de acero">' +
-                 'con proveedur\u00eda</span>';
+        chips += ' <span class="estado prov" title="Cobros que no salen de la cotización de acero">' +
+                 'con proveeduría</span>';
       }
       return '<tr>' +
         '<td><span class="proy">' + esc(c.proyecto || c.archivo) + '</span>' + chips +
@@ -770,7 +883,7 @@
         '<th></th><th class="g1" colspan="3">Del contrato</th>' +
         '<th class="g2">Adicional</th><th colspan="3"></th></tr>' +
       '<tr><th>Proyecto</th><th class="g1">Aprobado</th><th class="g1">Facturado</th>' +
-      '<th class="g1">Por facturar</th><th class="g2">Proveedur\u00eda</th>' +
+      '<th class="g1">Por facturar</th><th class="g2">Proveeduría</th>' +
       '<th>Cobrado sin salir</th><th>Despachado</th><th></th></tr></thead>' +
       '<tbody>' + filas + '</tbody>' +
       '<tfoot><tr><td>Total</td><td class="n">' + money(tot.valorAprobado) + '</td>' +
@@ -782,10 +895,10 @@
       '</table></div>';
 
     if (tot.adicional > 0) {
-      h += '<p class="leyenda"><strong>Adicional</strong> es lo que se le cobr\u00f3 al proyecto y NO sale de su ' +
-        'cotizaci\u00f3n: proveedur\u00eda de material distinto al acero, las Q. No tiene "por facturar" ni ' +
-        '"cobrado de m\u00e1s" porque no hay valor aprobado contra el cual compararlo \u2014 invent\u00e1rselo ser\u00eda ' +
-        'peor que dejarlo sin comparar. Se muestra junto al contrato y nunca sumado con \u00e9l.</p>';
+      h += '<p class="leyenda"><strong>Adicional</strong> es lo que se le cobró al proyecto y NO sale de su ' +
+        'cotización: proveeduría de material distinto al acero, las Q. No tiene "por facturar" ni ' +
+        '"cobrado de más" porque no hay valor aprobado contra el cual compararlo — inventárselo sería ' +
+        'peor que dejarlo sin comparar. Se muestra junto al contrato y nunca sumado con él.</p>';
     }
     h += '<p class="leyenda"><strong>Cobrado sin salir</strong> es plata que ya se facturó y cuyo material ' +
       'todavía no ha salido de la planta: anticipos y actas de obra. No es un error — es lo que la empresa ' +
@@ -907,7 +1020,8 @@
   // que el segundo haría; el servidor vuelve a correr la compuerta al escribir,
   // así que lo que se ve acá es una propuesta, no una promesa — si algo cambió
   // en el medio, lo que manda es el segundo cálculo y el informe lo dice.
-  var loteAuto = null;   // el simulacro que se está mostrando
+  var loteAuto = null;      // el simulacro que se está mostrando
+  var grupoAbierto = null;  // qué motivo está desplegado dentro de él
 
   function abrirLoteAuto() {
     modal('<h4>Asignar las seguras</h4>' +
@@ -954,31 +1068,277 @@
    * Se separan para que el conteo de "cuántas automáticas hubo que anular" no
    * se contamine con decisiones humanas.
    */
+  function aceptarPorNumero(numero, btn) {
+    var fs = (loteAuto && loteAuto.frenadas || []).filter(function (f) {
+      return f.numero === numero && (f.propuestas || []).length;
+    });
+    if (!fs.length) return;
+    escribirFrenada(fs[0], btn);
+  }
+
   function aceptarRevisable(i, btn) {
     if (!loteAuto) return;
     var revs = (loteAuto.frenadas || []).filter(function (f) {
       return f.revisable && (f.propuestas || []).length;
     });
-    var f = revs[i];
-    if (!f) return;
+    if (revs[i]) escribirFrenada(revs[i], btn);
+  }
+
+  /**
+   * Escribe el reparto que el sistema propuso para UNA frenada.
+   *
+   * Lo usan los dos caminos —el bloque de arriba y el de dentro de un grupo—
+   * porque son la misma decisión tomada en dos sitios de la pantalla. Con una
+   * copia en cada uno, arreglar algo en una dejaría la otra atrás.
+   *
+   * Solo se llama con propuestas COMPLETAS: las parciales se muestran, pero no
+   * llevan botón de escribir.
+   */
+  function escribirFrenada(f, btn) {
+    var rotulo = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Asignando\u2026';
-    var nota = 'Aceptada sobre aviso: pasaba del aprobado';
+    btn.textContent = 'Asignando…';
+    var nota = 'Aceptada sobre aviso: ' + (MOTIVO_LOTE[f.motivo] || f.motivo);
     Promise.all(f.propuestas.map(function (p) {
       return apiFacturaAsignar(token, f.numero, p.cotizacionArchivo, p.monto, p.montoAiu,
                                p.kgFacturado, p.origen, nota, p.concepto, true);
     })).then(function () {
       // Se quita de la lista en memoria y se repinta el modal: la persona sigue
-      // con las demás sin perder el sitio.
+      // con las demás sin perder el sitio ni el grupo abierto.
       loteAuto.frenadas = (loteAuto.frenadas || []).filter(function (x) { return x !== f; });
       modal(htmlLoteAuto(loteAuto));
       toast(f.numero + ' asignada.', 'ok');
       return refrescar();
     }).catch(function (e) {
       btn.disabled = false;
-      btn.textContent = 'Asignar igual';
+      btn.textContent = rotulo;
       manejarError(e);
     });
+  }
+
+  /** Cuántas facturas se pintan de un grupo antes de cortar. El resto se
+   *  trabaja desde la lista, que tiene buscador y filtros: meter ciento
+   *  cincuenta filas en un modal no las hace más manejables. */
+  var LOTE_TOPE = 25;
+
+  /**
+   * Las facturas de un motivo, con lo que hace falta para decidir cada una.
+   *
+   * Tres formas de fila, según lo que el sistema tenga:
+   *   · con propuesta COMPLETA → botón para asignarla tal cual
+   *   · con propuesta PARCIAL  → se muestra con su pero, y se abre a mano
+   *   · sin nada              → la nota y el cliente, que es de donde sale la
+   *                              pista, y se abre a mano
+   */
+  function cuerpoGrupo(motivo, fs) {
+    var h = '<div class="lote-gc">';
+    if (MOTIVO_AYUDA[motivo]) h += '<p class="hint">' + MOTIVO_AYUDA[motivo] + '</p>';
+
+    // Más nueva primero, igual que la lista de facturas.
+    var orden = fs.slice().sort(function (a, b) { return porRef('numero')(b, a); });
+
+    h += orden.slice(0, LOTE_TOPE).map(function (f) {
+      var completas = (f.propuestas || []);
+      var parciales = (f.parciales || []);
+      var muestra = completas.length ? completas : parciales;
+
+      var fila = '<div class="lote-f2">' +
+        '<div class="lote-f2top">' +
+          '<span class="lote-num">' + esc(f.numero) + '</span>' +
+          (f.cliente ? '<span class="cli">' + esc(f.cliente) + '</span>' : '') +
+          '<span class="espacio"></span>' +
+          (f.subtotal ? '<span class="plata">' + money(f.subtotal) + '</span>' : '') +
+        '</div>';
+
+      if (f.nota) fila += '<div class="lote-nota">nota: “' + esc(f.nota) + '”</div>';
+
+      if (muestra.length) {
+        fila += '<div class="lote-prop">' +
+          (completas.length ? '' : '<span class="etq-parcial">sin confirmar</span> ') +
+          muestra.map(function (p) {
+            return '<span class="lote-p">' + esc(p.proyecto || p.cotizacionArchivo) +
+                   ' <b>' + (p.monto + p.montoAiu ? money(p.monto + p.montoAiu) : 'sin monto') +
+                   '</b></span>';
+          }).join('') + '</div>';
+      } else {
+        fila += '<div class="lote-prop"><span class="lote-nada">' +
+                esc(f.detalle || 'El sistema no encontró contra qué proponerla.') +
+                '</span></div>';
+      }
+
+      if (f.quedaria) {
+        fila += '<div class="lote-rnum">Dejaría el proyecto en <b>' + money(f.quedaria) +
+          '</b> contra <b>' + money(f.aprobado) + '</b> aprobado</div>';
+      }
+
+      fila += '<div class="lote-f2acc">' +
+        (completas.length
+          ? '<button class="btn-mini primario" data-rev-num="' + esc(f.numero) + '">Asignar</button>'
+          : '') +
+        '<button class="btn-mini" data-ver-fact="' + esc(f.numero) + '">Abrir y hacerlo a mano</button>' +
+      '</div></div>';
+      return fila;
+    }).join('');
+
+    if (orden.length > LOTE_TOPE) {
+      h += '<p class="hint">Y ' + (orden.length - LOTE_TOPE) + ' más. Se trabajan desde la ' +
+        'lista de facturas, que tiene buscador y filtros.</p>';
+    }
+    return h + '</div>';
+  }
+
+  /** Lo que conviene saber al entrar a cada motivo. */
+  var MOTIVO_AYUDA = {
+    PASA_DEL_APROBADO:
+      'Dejarían el proyecto por encima de lo aprobado. Suele ser que la factura final no ' +
+      'cuadra al peso con la cotización — revísalas y acepta las que estén bien.',
+    SIN_APROBADO:
+      'Su cotización no tiene valor aprobado, así que no hay contra qué medir en qué ' +
+      'queda el proyecto. La propuesta en sí está completa.',
+    CONFIANZA_INSUFICIENTE:
+      'La nota cita una cotización y en la cola hay otra versión. Es plausible, no un ' +
+      'dato — por eso lo confirma una persona. Abre la factura para elegir cuál.',
+    HAY_SIN_RESOLVER:
+      'La nota SÍ decía algo, pero no se pudo resolver del todo: una Q de proveeduría, o ' +
+      'una cotización que no está en la cola de producción.',
+    MONTO_A_MANO:
+      'Se sabe contra qué proyecto va, pero no por cuánto: el reparto no viene en las ' +
+      'líneas de la factura y hay más de un candidato.',
+    SUMA_NO_CUADRA:
+      'Lo que se pudo proponer no suma el subtotal de la factura, así que falta una parte.',
+    HAY_CONTRADICCIONES:
+      'La nota dice un proyecto y las remisiones dicen otro. Vale la pena mirar cuál de los ' +
+      'dos está mal antes de asignar.',
+    YA_TIENE_REPARTO:
+      'Ya están asignadas. Aparecen aquí solo para que sepas que no se tocaron.',
+    SIN_PROPUESTAS:
+      'Sin nota y sin remisiones que las amparen no hay de dónde sacar el proyecto. Se ' +
+      'asignan a mano, o se le anota el número de factura a su remisión.',
+    NO_EN_MAESTRO:
+      'No están en el maestro de facturas: el sync todavía no las trajo.',
+  };
+
+  // ══ REGISTRAR LAS SEGURAS ═════════════════════════════════════════
+  //
+  // El mismo patrón que "Asignar las seguras": dos clics, y el primero no
+  // escribe nada. Acá el plan se calcula en el navegador —ver
+  // `planRegistrarSeguras`— y quien escribe sigue siendo `remision_facturar`,
+  // una por una.
+  var planAuto = null;
+
+  function abrirRegistrarAuto() {
+    planAuto = planRegistrarSeguras();
+    modal(htmlRegistrarAuto(planAuto));
+  }
+
+  function htmlRegistrarAuto(p) {
+    var nDocs = p.listas.reduce(function (n, l) { return n + l.docs.length; }, 0);
+    var h = '<h4>Registrar las seguras</h4>' +
+      '<p class="hint">Esto <strong>no emite nada en Dataico</strong>: anota en cada remisi\u00f3n ' +
+      'el n\u00famero de la factura que ya la cubre.</p>' +
+      '<div class="aviso warn">Al registrarlas, las <strong>' + nDocs + ' remisiones quedan ' +
+      'congeladas</strong>: no se les podr\u00e1n cambiar \u00edtems ni cantidades, ni siendo admin. Si ' +
+      'alguna queda mal, se le quita la factura y se vuelve a hacer.</div>' +
+      '<div class="lote-lista">' + p.listas.map(function (l) {
+        return '<div class="lote-r"><div class="lote-rtop">' +
+            '<span class="lote-num">' + esc(l.numero) + '</span>' +
+            (clienteDe(l.factura) ? '<span class="cli">' + esc(clienteDe(l.factura)) + '</span>' : '') +
+            '<span class="espacio"></span>' +
+            '<span class="plata">' + money(l.factura.subtotal) + '</span>' +
+          '</div>' +
+          '<div class="lote-rnum">' + esc(l.proyecto) + ' \u00b7 ' +
+            esc(l.docs.map(function (d) { return d.rotulo; }).join(', ')) + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+
+    // Las frenadas, agrupadas por motivo. No llevan botón: para estas hay que
+    // elegir la factura, y eso se hace con la ficha delante — el botón
+    // "Registrar factura" de cada grupo, que ya la muestra.
+    if (p.frenadas.length) {
+      var porM = {};
+      p.frenadas.forEach(function (f) { (porM[f.motivo] = porM[f.motivo] || []).push(f); });
+      h += '<details class="lote-fren"><summary>' + p.frenadas.length +
+        (p.frenadas.length === 1 ? ' proyecto queda' : ' proyectos quedan') +
+        ' para elegir a mano</summary>' +
+        Object.keys(porM).map(function (m) {
+          return '<div class="lote-m"><span class="lote-mt">' + esc(MOTIVO_REG[m] || m) +
+            '</span> <span class="lote-mn">' +
+            esc(porM[m].slice(0, 8).map(function (f) { return f.proyecto; }).join(', ')) +
+            (porM[m].length > 8 ? ' +' + (porM[m].length - 8) : '') + '</span></div>';
+        }).join('') + '</details>';
+    }
+
+    return h + '<div id="fProgreso" class="ayuda" style="min-height:14px;"></div>' +
+      '<div class="modal-acciones">' +
+      '<button class="btn btn-sm" data-regauto-no="1">Cancelar</button>' +
+      '<button class="btn btn-sm btn-primary" data-regauto-ok="1">Registrar ' + nDocs +
+      (nDocs === 1 ? ' remisi\u00f3n' : ' remisiones') + '</button></div>';
+  }
+
+  var MOTIVO_REG = {
+    SIN_CANDIDATA:     'ninguna factura apunta a ese proyecto',
+    VARIAS_CANDIDATAS: 'hay m\u00e1s de una factura posible \u2014 hay que elegir',
+    FUERA_DEL_MAESTRO: 'la factura no est\u00e1 en el maestro todav\u00eda',
+    REPARTO_DE_OTRO:   'esa factura ya se reparti\u00f3 a otro proyecto',
+  };
+
+  /**
+   * Escribe el plan, UNA POR UNA.
+   *
+   * No en paralelo: `remFacturar` toma el script lock de Apps Script, así que
+   * lanzarlas juntas no las hace concurrentes — las pone a esperarse, con
+   * riesgo de que alguna agote su `waitLock` y falle por congestión y no por su
+   * propio motivo. Es la misma razón por la que `abrirRegistrar` ya lo hacía
+   * así.
+   *
+   * Una que falle NO aborta las demás, salvo la sesión vencida.
+   */
+  function confirmarRegistrarAuto(btn) {
+    if (!planAuto) return;
+    var pares = [];
+    planAuto.listas.forEach(function (l) {
+      l.docs.forEach(function (d) { pares.push({ numero: l.numero, doc: d }); });
+    });
+    if (!pares.length) { cerrarModal(); return; }
+
+    btn.disabled = true;
+    var prog = document.getElementById('fProgreso');
+    var hechas = [];
+    var cadena = Promise.resolve();
+    pares.forEach(function (par, i) {
+      cadena = cadena.then(function () {
+        if (prog) prog.textContent = 'Registrando ' + (i + 1) + ' de ' + pares.length +
+          ': ' + par.doc.rotulo + ' \u2192 ' + par.numero + '\u2026';
+        return apiRemisionFacturar(token, par.doc.docId, par.numero)
+          .then(function () { hechas.push({ par: par, ok: true }); })
+          .catch(function (e) {
+            if (e && e.tipo === 'auth') throw e;
+            hechas.push({ par: par, ok: false, msg: (e && e.message) || 'fall\u00f3' });
+          });
+      });
+    });
+
+    cadena.then(function () {
+      var bien = hechas.filter(function (h) { return h.ok; });
+      var mal  = hechas.filter(function (h) { return !h.ok; });
+      if (!mal.length) {
+        cerrarModal(); planAuto = null; marcadas = {};
+        toast('Registradas ' + bien.length + ' remisiones', 'ok');
+        return refrescar();
+      }
+      // Con fallos el modal NO se cierra: el resumen de qué entró y qué no es
+      // justo lo que hay que leer, y un toast de tres segundos no alcanza.
+      if (prog) {
+        prog.innerHTML = hechas.map(function (h) {
+          return '<div class="lote-fila"><span>' + esc(h.par.doc.rotulo) + ' \u2192 ' +
+            esc(h.par.numero) + '</span>' +
+            (h.ok ? '<span class="bien">registrada</span>'
+                  : '<span class="falla">' + esc(h.msg) + '</span>') + '</div>';
+        }).join('');
+      }
+      toast(bien.length + ' registrada(s), ' + mal.length + ' sin registrar', 'error');
+      if (bien.length) refrescar();
+    }).catch(manejarError).finally(function () { btn.disabled = false; });
   }
 
   /** Los motivos, en palabras. El código va al lado para poder buscarlo. */
@@ -1031,9 +1391,9 @@
     if (revisables.length) {
       h += '<div class="lote-rev"><h5>' + revisables.length +
         (revisables.length === 1 ? ' pide' : ' piden') + ' que la mires</h5>' +
-        '<p class="hint">Dejar\u00edan el proyecto por encima de lo aprobado. Suele ser que la ' +
-        'factura final no cuadra al peso con la cotizaci\u00f3n \u2014 rev\u00edsalas y acepta las que ' +
-        'est\u00e9n bien.</p>' +
+        '<p class="hint">Dejarían el proyecto por encima de lo aprobado. Suele ser que la ' +
+        'factura final no cuadra al peso con la cotización — revísalas y acepta las que ' +
+        'estén bien.</p>' +
         revisables.map(function (f, i) {
           return '<div class="lote-r"><div class="lote-rtop">' +
               '<span class="lote-num">' + esc(f.numero) + '</span>' +
@@ -1043,27 +1403,43 @@
               }).join('') +
               '<button class="btn-mini primario" data-rev-ok="' + i + '">Asignar igual</button>' +
             '</div>' +
-            '<div class="lote-rnum">Dejar\u00eda el proyecto en <b>' + money(f.quedaria) +
+            '<div class="lote-rnum">Dejaría el proyecto en <b>' + money(f.quedaria) +
               '</b> contra <b>' + money(f.aprobado) + '</b> aprobado' +
-              (f.aprobado > 0 ? ' \u00b7 ' + money(f.quedaria - f.aprobado) + ' de m\u00e1s' : '') +
+              (f.aprobado > 0 ? ' · ' + money(f.quedaria - f.aprobado) + ' de más' : '') +
             '</div></div>';
         }).join('') + '</div>';
     }
 
-    // El RESTO, agrupado por motivo: son las que no se pueden aceptar de un
-    // clic porque su propuesta no está completa o no es de fiar. En una lista
-    // plana de treinta no se ve cuál es el problema de fondo.
+    // ── EL RESTO, POR MOTIVO, Y CADA GRUPO SE ABRE ──
+    //
+    // Antes esto era una lista de consecutivos dentro de un <details>. Con 177
+    // frenadas eso no es un informe, es un muro: decía cuántas y por qué, y no
+    // daba ningún camino para trabajarlas.
+    //
+    // Ahora cada motivo es un botón. Al abrirlo salen SUS facturas con de quién
+    // son, por cuánto, qué decía la nota y qué alcanzó a encontrar el
+    // emparejador — y con la acción que corresponda a cada caso.
+    //
+    // Que el grupo haya que ABRIRLO a propósito es lo que hace seguro mostrar
+    // propuestas incompletas: se entra a un motivo concreto, con su explicación
+    // encima, en vez de ver treinta botones idénticos donde unos escriben algo
+    // verificado y otros una suposición.
     if (resto.length) {
       var porMotivo = {};
-      resto.forEach(function (f) { (porMotivo[f.motivo] = porMotivo[f.motivo] || []).push(f.numero); });
-      h += '<details class="lote-fren"><summary>' + resto.length +
-           (resto.length === 1 ? ' queda' : ' quedan') + ' para mirar a mano</summary>' +
+      resto.forEach(function (f) { (porMotivo[f.motivo] = porMotivo[f.motivo] || []).push(f); });
+      h += '<div class="lote-grupos"><h5>' + resto.length +
+        (resto.length === 1 ? ' queda' : ' quedan') + ' para mirar a mano</h5>' +
         Object.keys(porMotivo).map(function (m) {
-          return '<div class="lote-m"><span class="lote-mt">' +
-            esc(MOTIVO_LOTE[m] || m) + '</span> <span class="lote-mn">' +
-            esc(porMotivo[m].slice(0, 12).join(', ')) +
-            (porMotivo[m].length > 12 ? ' +' + (porMotivo[m].length - 12) : '') + '</span></div>';
-        }).join('') + '</details>';
+          var fs = porMotivo[m], abierto = grupoAbierto === m;
+          return '<div class="lote-g' + (abierto ? ' abierto' : '') + '">' +
+            '<button class="lote-gt" data-grupo-m="' + esc(m) + '" aria-expanded="' + abierto + '">' +
+              '<span class="lote-gflecha">' + (abierto ? '▾' : '▸') + '</span>' +
+              '<span class="lote-mt">' + esc(MOTIVO_LOTE[m] || m) + '</span>' +
+              '<span class="lote-gn">' + fs.length + '</span>' +
+            '</button>' +
+            (abierto ? cuerpoGrupo(m, fs) : '') +
+          '</div>';
+        }).join('') + '</div>';
     }
 
     h += '<div class="modal-acciones">' +
@@ -1114,11 +1490,111 @@
   //
   // YA NO PIDE FECHA NI CUFE: se escribían y no los leía nadie, y el maestro ya
   // los trae de Dataico.
+  /**
+   * QUÉ FACTURA ES ESTA, mientras se escribe el número.
+   *
+   * Registrar una factura CONGELA las remisiones, y el único dato que había
+   * para decidir era el número tecleado. Un dígito de más y se congela el
+   * documento equivocado con el número de otro cliente.
+   *
+   * No cuesta ninguna llamada: `factura_tablero` ya trae el maestro entero con
+   * su cliente, su reparto y las remisiones que ampara.
+   *
+   * `archivos` son las cotizaciones de las remisiones que se van a registrar, y
+   * sirven para LA COMPROBACIÓN QUE IMPORTA: si esta factura ya ampara
+   * remisiones de otro proyecto, eso se dice antes y no después.
+   */
+  function fichaFactura(numero, archivos) {
+    var n = String(numero || '').trim().toUpperCase();
+    if (!n) return '';
+
+    var f = (_datos.facturas || []).filter(function (x) {
+      return String(x.numero).toUpperCase() === n;
+    })[0];
+
+    if (!f) {
+      // No es un error: una factura recién emitida puede no estar en el maestro
+      // todavía. Pero hay que decir que no se pudo verificar nada, en vez de
+      // callar y que el silencio se lea como "todo bien".
+      return '<div class="ficha ficha-nd"><strong>No está en el maestro.</strong> ' +
+        'Puede ser recién emitida — se registra igual, pero <strong>nada de lo de abajo ' +
+        'se pudo verificar</strong>: ni el cliente, ni el monto, ni contra qué proyecto va.</div>';
+    }
+
+    var h = '<div class="ficha"><div class="ficha-top">' +
+      '<span class="lote-num">' + esc(f.numero) + '</span>' +
+      (clienteDe(f) ? '<span class="cli">' + esc(clienteDe(f)) + '</span>' : '') +
+      '<span class="espacio"></span>' +
+      '<span class="plata">' + money(f.subtotal) + '</span></div>' +
+      '<div class="ficha-meta">' + esc(f.fecha || 'sin fecha') +
+        (dianAnormal(f) ? ' · <strong>DIAN ' + esc(dianAnormal(f)) + '</strong>' : '') +
+      '</div>';
+
+    if (f.notas) h += '<div class="lote-nota">nota: “' + esc(f.notas) + '”</div>';
+
+    // A qué proyectos ya está repartida, y cuánto le queda.
+    var rep = (f.reparto || []);
+    if (rep.length) {
+      h += '<div class="ficha-l"><span class="ficha-k">Repartida a</span>' +
+        rep.map(function (a) {
+          return '<span class="lote-p">' + esc(a.proyecto || a.cotizacionArchivo) +
+                 ' <b>' + money(a.monto + a.montoAiu) + '</b></span>';
+        }).join('') + '</div>';
+    }
+    h += '<div class="ficha-l"><span class="ficha-k">Sin repartir</span>' +
+      (Math.abs(f.sinAsignar) < 0.5
+        ? '<span class="estado ok">repartida del todo</span>'
+        : '<span class="estado ' + (f.sinAsignar < 0 ? 'bad' : 'warn') + '">' +
+          money(f.sinAsignar) + (f.sinAsignar < 0 ? ' de más' : '') + '</span>') +
+      '</div>';
+
+    // LA COMPROBACIÓN QUE IMPORTA: qué remisiones ampara ya, y de qué proyecto.
+    var rems = (f.remisiones || []);
+    if (rems.length) {
+      // Solo se puede avisar si se sabe contra qué comparar. Desde el panel de
+      // una factura se llega sin proyecto —se está amarrando una remisión
+      // suelta— y ahí callar es lo correcto: un aviso que dice "no es ninguno
+      // de los proyectos" cuando no hay ninguno con qué comparar es ruido, y el
+      // ruido enseña a ignorar los avisos de verdad.
+      var otros = {};
+      if (archivos.length) {
+        rems.forEach(function (r) {
+          if (archivos.indexOf(r.cotizacionArchivo) === -1) {
+            otros[r.proyecto || r.cotizacionArchivo] = true;
+          }
+        });
+      }
+      h += '<div class="ficha-l"><span class="ficha-k">Ya ampara</span>' +
+        '<span>' + rems.length + (rems.length === 1 ? ' remisión' : ' remisiones') + ' · ' +
+        esc(rems.slice(0, 4).map(function (r) { return r.consecutivo || '(sin número)'; }).join(', ')) +
+        (rems.length > 4 ? ' +' + (rems.length - 4) : '') + '</span></div>';
+
+      var nombres = Object.keys(otros);
+      if (nombres.length) {
+        // Es el error que este bloque existe para atrapar: pegarle a una
+        // factura remisiones de un proyecto que no es el suyo. No se bloquea
+        // —una factura PUEDE cubrir varios proyectos— pero se dice fuerte.
+        h += '<div class="ficha-ojo">⚠ Esta factura ya ampara remisiones de <strong>' +
+          esc(nombres.slice(0, 3).join(', ')) + '</strong>, que no es ' +
+          (archivos.length === 1 ? 'el proyecto' : 'ninguno de los proyectos') +
+          ' de lo que estás registrando. Puede ser correcto —una factura cubre varios ' +
+          'proyectos— pero vale la pena mirarlo.</div>';
+      }
+    }
+    return h + '</div>';
+  }
+
   function abrirRegistrar(docs, numeroSugerido) {
     var lista = [].concat(docs);
     if (!lista.length) return;
     var varias = lista.length > 1;
     var cands = candidatasPara(lista);
+    // Contra qué proyectos van estas remisiones: es lo que deja comprobar que
+    // la factura que se teclea sea de lo mismo.
+    var archivos = [];
+    lista.forEach(function (d) {
+      if (d.archivo && archivos.indexOf(d.archivo) === -1) archivos.push(d.archivo);
+    });
 
     modal('<h4>Registrar factura</h4>' +
       '<p class="hint">' + (varias ? lista.length + ' remisiones — todas quedan con el mismo número'
@@ -1144,15 +1620,29 @@
             }).join('') + '</div>'
           : '') +
       '</div>' +
+      '<div id="fFicha">' + fichaFactura(numeroSugerido, archivos) + '</div>' +
       '<div id="fProgreso" class="ayuda" style="min-height:14px;"></div>' +
       '<div class="modal-acciones"><button class="btn btn-sm" id="fCancel">Cancelar</button>' +
       '<button class="btn btn-sm btn-primary" id="fOk">Registrar</button></div>');
 
     document.getElementById('fCancel').onclick = cerrarModal;
+
+    // La ficha se rehace con cada tecla. Es barato —sale de `_datos`, que ya
+    // está en memoria— y es lo que hace que sirva: si se espera a un botón,
+    // para cuando alguien lo oprima ya decidió.
+    var campo = document.getElementById('fNumero');
+    var refrescarFicha = function () {
+      var el = document.getElementById('fFicha');
+      if (el) el.innerHTML = fichaFactura(campo.value, archivos);
+    };
+    campo.addEventListener('input', refrescarFicha);
+    campo.focus();
+
     Array.prototype.forEach.call(document.querySelectorAll('[data-usarfact]'), function (b) {
       b.onclick = function () {
         var i = document.getElementById('fNumero');
         i.value = b.getAttribute('data-usarfact'); i.focus();
+        refrescarFicha();
       };
     });
 
@@ -1297,10 +1787,25 @@
     }
     if (b.classList.contains('fchip')) { filtro = b.getAttribute('data-f'); pintar(); return; }
     if (b.getAttribute('data-auto')) { abrirLoteAuto(); return; }
+    if (b.getAttribute('data-regauto')) { abrirRegistrarAuto(); return; }
+    if (b.getAttribute('data-regauto-ok')) { confirmarRegistrarAuto(b); return; }
+    if (b.getAttribute('data-regauto-no')) { planAuto = null; cerrarModal(); return; }
     if (b.getAttribute('data-auto-ok')) { confirmarLoteAuto(); return; }
     if (b.getAttribute('data-auto-no')) { loteAuto = null; cerrarModal(); return; }
     if ((n = b.getAttribute('data-rev-ok')) !== null && n !== '') {
       aceptarRevisable(parseInt(n, 10), b); return;
+    }
+    if ((n = b.getAttribute('data-grupo-m'))) {
+      grupoAbierto = (grupoAbierto === n) ? null : n;
+      modal(htmlLoteAuto(loteAuto)); return;
+    }
+    if ((n = b.getAttribute('data-rev-num'))) { aceptarPorNumero(n, b); return; }
+    if ((n = b.getAttribute('data-ver-fact'))) {
+      // Se cierra el modal y se abre esa factura en la lista, que es donde
+      // están todas las herramientas para repartirla a mano.
+      loteAuto = null; grupoAbierto = null; cerrarModal();
+      vista = 'facturas'; filtro = 'todas'; busca = n;
+      abrirFactura(n); return;
     }
     if (b.classList.contains('fila')) { abrirFactura(b.getAttribute('data-num')); return; }
 

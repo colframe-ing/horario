@@ -89,6 +89,63 @@
     .btn-mini.primario:hover { background:var(--cf-dark); border-color:var(--cf-dark); }
     .btn-mini:disabled { opacity:.5; cursor:default; }
     .lote-rnum { font-size:0.73rem; color:#92400E; margin-top:2px; font-variant-numeric:tabular-nums; }
+    /* ── La bandeja de frenadas ──
+       Cada motivo es un botón que se abre en el sitio. Que haya que abrirlo a
+       propósito es lo que hace seguro mostrar propuestas sin confirmar: se
+       entra a un motivo concreto, con su explicación encima, en vez de ver
+       treinta botones idénticos donde unos escriben algo verificado y otros
+       una suposición. */
+    .lote-grupos { margin-top:12px; }
+    .lote-grupos h5 { margin:0 0 7px; font-size:0.8rem; font-weight:800; color:var(--cf-gray-text); }
+    .lote-g { border:1px solid var(--cf-gray-mid); border-radius:9px; margin-bottom:6px;
+              overflow:hidden; background:#fff; }
+    .lote-g.abierto { border-color:var(--cf-dark); }
+    .lote-gt { display:flex; align-items:center; gap:8px; width:100%; padding:8px 11px;
+               background:#F8FAFC; border:none; cursor:pointer; font-family:inherit;
+               font-size:0.79rem; text-align:left; color:inherit; }
+    .lote-gt:hover { background:#F1F5F9; }
+    .lote-gflecha { color:var(--cf-gray-text); font-size:0.7rem; width:10px; flex-shrink:0; }
+    .lote-gt .lote-mt { flex:1; }
+    .lote-gn { font-weight:800; font-variant-numeric:tabular-nums; color:var(--cf-gray-text); }
+    .lote-gc { padding:4px 11px 10px; max-height:330px; overflow-y:auto; }
+    .lote-gc .hint { margin:7px 0 9px; font-size:0.75rem; }
+
+    .lote-f2 { padding:8px 0; border-top:1px solid var(--cf-gray-mid); }
+    .lote-f2top { display:flex; gap:8px; align-items:baseline; }
+    .lote-f2top .cli { margin-left:0; }
+    .lote-f2top .espacio { flex:1; }
+    .lote-f2top .plata { font-size:0.8rem; }
+    .lote-nota { font-size:0.73rem; color:var(--cf-gray-text); margin-top:2px;
+                 overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .lote-prop { margin-top:4px; font-size:0.78rem; }
+    .lote-nada { color:var(--cf-gray-text); font-style:italic; }
+    /* "sin confirmar" es el rótulo que impide que una suposición se lea como un
+       dato. Va pegado a la propuesta, no en la cabecera del grupo. */
+    .etq-parcial { background:#FEF3C7; color:#92400E; font-size:0.66rem; font-weight:800;
+                   padding:1px 6px; border-radius:99px; text-transform:uppercase;
+                   letter-spacing:.03em; }
+    .lote-f2acc { display:flex; gap:6px; justify-content:flex-end; margin-top:6px; }
+    /* ── La ficha de la factura, dentro del modal de registrar ──
+       Registrar CONGELA las remisiones, y hasta ahora el único dato para
+       decidir era el número tecleado. Va pegada al campo, debajo, para que se
+       lea sin mover los ojos del sitio donde se escribe. */
+    .ficha { margin-top:9px; padding:9px 11px; border:1px solid var(--cf-gray-mid);
+             border-left:3px solid var(--cf-blue); border-radius:8px; background:#F8FAFC; }
+    .ficha-top { display:flex; gap:8px; align-items:baseline; }
+    .ficha-top .cli { margin-left:0; }
+    .ficha-top .espacio { flex:1; }
+    .ficha-top .plata { font-size:0.82rem; }
+    .ficha-meta { font-size:0.7rem; color:var(--cf-gray-text); font-weight:600; margin-top:1px; }
+    .ficha-l { display:flex; gap:7px; align-items:baseline; flex-wrap:wrap;
+               font-size:0.76rem; margin-top:5px; }
+    .ficha-k { font-size:0.65rem; text-transform:uppercase; letter-spacing:.04em;
+               color:var(--cf-gray-text); font-weight:800; min-width:82px; }
+    /* El aviso de "esto ya ampara remisiones de otro proyecto": es el error que
+       toda esta ficha existe para atrapar, así que no se mezcla con el resto. */
+    .ficha-ojo { margin-top:8px; padding:7px 9px; background:#FFFBEB; border:1px solid #FCD34D;
+                 border-radius:7px; font-size:0.75rem; color:#92400E; }
+    .ficha-nd { margin-top:9px; padding:9px 11px; border-radius:8px; font-size:0.77rem;
+                background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; }
     .lote-fren { margin-top:10px; font-size:0.79rem; }
     .lote-fren summary { cursor:pointer; font-weight:700; color:var(--cf-gray-text); }
     .lote-m { margin:6px 0 0 4px; }
