@@ -146,6 +146,23 @@
                  border-radius:7px; font-size:0.75rem; color:#92400E; }
     .ficha-nd { margin-top:9px; padding:9px 11px; border-radius:8px; font-size:0.77rem;
                 background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; }
+    /* ── El buscador de proyecto, dentro del modal de asignar ──
+       El CÓDIGO va primero en cada opción porque es por donde se busca: se
+       copia de la nota de la factura y se pega. El "por cobrar" al final es lo
+       que deja elegir bien cuando dos proyectos se llaman parecido. */
+    .proy-lista { max-height:190px; overflow-y:auto; margin-top:5px;
+                  border:1px solid var(--cf-gray-mid); border-radius:8px; }
+    .proy-lista:empty { display:none; }
+    .proy-op { display:flex; align-items:baseline; gap:8px; width:100%; padding:6px 9px;
+               background:#fff; border:none; border-bottom:1px solid var(--cf-gray-mid);
+               cursor:pointer; font-family:inherit; font-size:0.79rem; text-align:left;
+               color:inherit; }
+    .proy-op:last-child { border-bottom:none; }
+    .proy-op:hover { background:#F1F5F9; }
+    .proy-nom { flex:1; font-weight:700; color:var(--cf-dark);
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .proy-falta { font-size:0.71rem; color:var(--cf-gray-text);
+                  font-variant-numeric:tabular-nums; white-space:nowrap; }
     .lote-fren { margin-top:10px; font-size:0.79rem; }
     .lote-fren summary { cursor:pointer; font-weight:700; color:var(--cf-gray-text); }
     .lote-m { margin:6px 0 0 4px; }

@@ -222,6 +222,10 @@
     var cands = (_datos && _datos.candidatasPorCotizacion) || {};
     var porNum = {};
     ((_datos && _datos.facturas) || []).forEach(function (f) { porNum[f.numero] = f; });
+    // En cuántas casas está partido cada proyecto. Ver el bloque de
+    // `VARIAS_CASAS` más abajo.
+    var porCotiz = {};
+    ((_datos && _datos.cotizaciones) || []).forEach(function (c) { porCotiz[c.archivo] = c; });
 
     // Las pendientes, agrupadas por proyecto. Solo las accionables: sin `docId`
     // no hay documento que facturar, y el consecutivo no sirve de llave porque
@@ -256,6 +260,54 @@
           utiles.map(function (c) { return c.numero; }).join(', ') + '.');
       }
 
+      // ══ CUANDO LA COTIZACIÓN SE REPITE N VECES ══════════════════════════
+      //
+      // Un proyecto de ocho casas sale de UNA cotización, y cada casa se
+      // factura cuando se envía. El índice de candidatas va por PROYECTO, así
+      // que la factura de la casa 1 se vuelve candidata de las ocho — y la
+      // condición "hay exactamente una candidata" se cumplía PRECISAMENTE
+      // PORQUE LAS OTRAS NO EXISTEN TODAVÍA. La señal de seguridad era la
+      // señal del problema.
+      //
+      // LA NOTA NO PUEDE DESEMPATAR: las ocho facturas dicen el mismo
+      // `620.1_BICENTENARIO`. Es información de proyecto por construcción, y
+      // ninguna regla sobre ese texto va a sacar de ahí cuál casa es.
+      //
+      // Lo único que distingue una casa de otra es el ENVÍO. Así que con más de
+      // una unidad solo se propone para las remisiones de un envío que ESA
+      // factura ya ampara: eso no es una pista, es el mismo despacho.
+      var cot = porCotiz[archivo];
+      if (!cot) {
+        // No poder medir no es lo mismo que medir y que dé bien. Mismo criterio
+        // que `SIN_APROBADO` en la compuerta de facturas.
+        return frenar('SIN_UNIDADES',
+          'No se sabe en cu\u00e1ntas casas est\u00e1 partido este proyecto, as\u00ed que no se puede ' +
+          'saber si esta factura es de todas o de una.');
+      }
+      var nUnidades = (cot.resumen && cot.resumen.unidades) || cot.cantidad || 1;
+      if (nUnidades > 1) {
+        var f0 = porNum[utiles[0].numero];
+        var enviosDeLaFactura = {};
+        ((f0 && f0.remisiones) || []).forEach(function (r) {
+          if (r.cotizacionArchivo === archivo && r.envioId) enviosDeLaFactura[r.envioId] = true;
+        });
+        var mismos = docs.filter(function (r) { return r.envioId && enviosDeLaFactura[r.envioId]; });
+        var otras  = docs.filter(function (r) { return mismos.indexOf(r) === -1; });
+        var porQue = 'Este proyecto sale de una sola cotizaci\u00f3n repetida ' + nUnidades +
+          ' veces, y cada una se factura aparte. ' + utiles[0].numero + ' es de otra casa ' +
+          '\u2014 o la de esta todav\u00eda no existe.';
+
+        // Las que quedan fuera se REPORTAN. Filtrarlas y seguir las har\u00eda
+        // desaparecer de la pantalla sin que nadie sepa que existen, y eso es
+        // peor que frenar el proyecto entero: al menos frenado se ve.
+        if (otras.length) {
+          frenadas.push({ archivo: archivo, proyecto: proyecto, motivo: 'VARIAS_CASAS',
+                          detalle: porQue, docs: otras });
+        }
+        if (!mismos.length) return;
+        docs = mismos;   // solo las del mismo despacho
+      }
+
       var f = porNum[utiles[0].numero];
       if (!f || !f.enMaestro) {
         return frenar('FUERA_DEL_MAESTRO',
@@ -279,7 +331,7 @@
       listas.push({ numero: f.numero, factura: f, archivo: archivo, proyecto: proyecto,
                     docs: docs.map(function (r) {
                       return { docId: r.docId, rotulo: r.consecutivo || '(sin consecutivo)',
-                               archivo: archivo, dias: r.dias };
+                               archivo: archivo, dias: r.dias, envioId: r.envioId || '' };
                     }) });
     });
 
@@ -1280,6 +1332,8 @@
     VARIAS_CANDIDATAS: 'hay m\u00e1s de una factura posible \u2014 hay que elegir',
     FUERA_DEL_MAESTRO: 'la factura no est\u00e1 en el maestro todav\u00eda',
     REPARTO_DE_OTRO:   'esa factura ya se reparti\u00f3 a otro proyecto',
+    VARIAS_CASAS:      'el proyecto son varias casas y cada una se factura aparte',
+    SIN_UNIDADES:      'no se sabe en cu\u00e1ntas casas est\u00e1 partido el proyecto',
   };
 
   /**
@@ -1706,19 +1760,152 @@
 
   /** El formulario de asignar. `previo` prellena desde una propuesta; se rellena
    *  y NO se envía: quien cobra tiene que ver el monto y decidir el AIU. */
+  /**
+   * Las cotizaciones que calzan con lo que se escribe, por CÓDIGO o por nombre.
+   *
+   * El código es lo que está en el papel y en la nota de la factura, así que se
+   * acepta tal como viene de ahí: `699`, `CB699`, `699.2` y `00699.2` son la
+   * misma. Los ceros a la izquierda y el punto de la versión se ignoran al
+   * comparar — la nota real dice `COT_00699.2_95_PORTERIA` y ese texto se copia
+   * y se pega tal cual.
+   *
+   * Por NOMBRE también, sin tildes y sin mayúsculas, porque es como se habla del
+   * proyecto cuando no se tiene el papel delante.
+   *
+   * FUNCIÓN PURA sobre `_datos`.
+   */
+  function buscarProyectos(texto) {
+    var lista = (_datos && _datos.cotizaciones) || [];
+    // El `CB` de delante se ignora: es el prefijo de TODOS, así que teclearlo no
+    // acota nada y dejar la lista vacía al escribir la primera letra se lee como
+    // que el buscador no encuentra.
+    var t = String(texto == null ? '' : texto).trim().replace(/^CB[\s-]*/i, '');
+    if (!t) return lista.slice(0, 40);
+
+    // Para el código: solo dígitos, sin ceros a la izquierda. `CB00699.2` y
+    // `699.2` colapsan los dos en `6992`.
+    var sinCeros = function (x) {
+      return String(x).replace(/[^0-9]/g, '').replace(/^0+/, '');
+    };
+    // Para el nombre: sin tildes, sin mayúsculas.
+    var plano = function (x) {
+      return String(x == null ? '' : x).toUpperCase()
+        .replace(/[\u00c1\u00c0\u00c4\u00c2]/g, 'A').replace(/[\u00c9\u00c8\u00cb\u00ca]/g, 'E')
+        .replace(/[\u00cd\u00cc\u00cf\u00ce]/g, 'I').replace(/[\u00d3\u00d2\u00d6\u00d4]/g, 'O')
+        .replace(/[\u00da\u00d9\u00dc\u00db]/g, 'U').replace(/\u00d1/g, 'N');
+    };
+
+    var codigo = sinCeros(t), nombre = plano(t);
+    return lista.filter(function (c) {
+      // POR PREFIJO, no por igualdad: se escribe de a poco, y exigir el
+      // código completo dejaba la lista vacía hasta la última tecla — que es
+      // como se aprende que el buscador no sirve.
+      if (codigo) {
+        var suyo = sinCeros(String(c.cb || '') + String(c.version || ''));
+        var soloCb = sinCeros(c.cb);
+        if (suyo.indexOf(codigo) === 0 || soloCb.indexOf(codigo) === 0) return true;
+      }
+      return nombre.length >= 2 && plano(c.proyecto).indexOf(nombre) !== -1;
+    });
+  }
+
+  /**
+   * CUÁNTO proponerle a este proyecto de esta factura, y DE DÓNDE SALE.
+   *
+   * Este módulo se niega en todas partes a producir cifras que nadie escribió:
+   * no prorratea por kg, no estima el AIU que falta, no reparte en partes
+   * iguales. Esto no rompe esa regla, y lo que lo mantiene honesto son dos
+   * cosas: que SIEMPRE devuelve la razón junto al número —una cifra sin
+   * procedencia es lo que alguien termina cuadrando contra el PDF sin que le
+   * dé— y que el número cae en un campo EDITABLE. Se propone, no se escribe.
+   *
+   * Las fuentes van de la más firme a la más floja:
+   *
+   *   1. UNA LÍNEA DE LA FACTURA. Es el reparto que hizo quien facturó, no una
+   *      estimación nuestra. Manda sobre todo lo demás.
+   *   2. EL SUBTOTAL COMPLETO, cuando la nota menciona un solo proyecto.
+   *   3. LO QUE FALTA, por los dos lados: el mínimo entre lo que le queda a la
+   *      factura por repartir y lo que le falta al proyecto por cobrar. Es
+   *      aritmética sobre dos hechos, no una suposición sobre el reparto.
+   *
+   * FUNCIÓN PURA.
+   */
+  function sugerirMonto(factura, cotiz, sug) {
+    if (!cotiz) return { monto: null, razon: '' };
+    if (!factura) {
+      return { monto: null, razon: 'La factura no est\u00e1 en el maestro: no hay subtotal ' +
+                                   'contra el cual medir, as\u00ed que el monto lo escribes t\u00fa.' };
+    }
+    var r2 = function (n) { return Math.round(n * 100) / 100; };
+
+    // 1 y 2 — lo que el backend ya resolvió para ESTE proyecto.
+    var p = ((sug && sug.propuestas) || []).filter(function (x) {
+      return x.cotizacionArchivo === cotiz.archivo && Number(x.monto) > 0;
+    })[0];
+    if (p && p.montoOrigen === 'LINEA') {
+      return { monto: r2(Number(p.monto)),
+               razon: 'Sale de la l\u00ednea ' + (p.linea || '') + ' de la factura \u2014 es el reparto ' +
+                      'que hizo quien factur\u00f3, no una estimaci\u00f3n.' };
+    }
+    if (p && p.montoOrigen === 'SUBTOTAL_COMPLETO') {
+      return { monto: r2(Number(p.monto)),
+               razon: 'Es el subtotal completo: la nota de la factura menciona este proyecto ' +
+                      'y ning\u00fan otro.' };
+    }
+
+    // 3 — lo que falta por los dos lados.
+    var resto = r2(Number(factura.sinAsignar) || 0);
+    if (resto <= 0) {
+      return { monto: 0, razon: 'Esta factura ya est\u00e1 repartida del todo. Si igual hay que ' +
+                                'asignarle algo, el monto lo escribes t\u00fa.' };
+    }
+    var falta = r2(Number((cotiz.resumen || {}).pendiente) || 0);
+    if (falta <= 0) {
+      // El mínimo daría CERO, y un cero silencioso parecería un error de la
+      // pantalla. Se propone lo que le queda a la factura y se avisa: puede ser
+      // correcto, porque la factura final no siempre cuadra al peso con la
+      // cotización.
+      return { monto: resto,
+               razon: 'Es lo que le queda a la factura por repartir. OJO: este proyecto ya ' +
+                      'est\u00e1 cobrado al tope de lo aprobado.' };
+    }
+    if (falta < resto) {
+      return { monto: falta,
+               razon: 'Es lo que le falta por cobrar al proyecto. A la factura a\u00fan le sobran ' +
+                      money(r2(resto - falta)) + ' para otro.' };
+    }
+    return { monto: resto,
+             razon: 'Es lo que le queda a la factura por repartir, y le cabe al proyecto.' };
+  }
+
   function abrirAsignar(archivo, proyecto, previo) {
     // Lo que la nota sugiere, si la factura abierta trae una referencia Q. La
     // referencia NO elige el proyecto —eso sería emparejar por nombre— pero sí
     // dice de qué es el cobro.
     var pre = (sugAbierta && sugAbierta.sugiereProveeduria) ? 'PROVEEDURIA' : 'CONTRATO';
-    modal('<h4>Asignar factura</h4><p class="hint">' + esc(proyecto) + '</p>' +
+    // EL PROYECTO ES UN CAMPO, no un rótulo.
+    //
+    // Antes venía fijo desde quien abriera el modal, y el camino "asignar a otro
+    // proyecto" lo abría VACÍO — así que ese botón no podía funcionar nunca: el
+    // backend rechaza con "Falta la cotización" y no había dónde escribirla.
+    //
+    // Se busca por CÓDIGO, que es lo que está en el papel y en la nota de la
+    // factura: `COT_00699.2_95_PORTERIA` se copia y se pega tal cual.
+    var elegido = archivo || '';
+    modal('<h4>Asignar factura</h4>' +
       '<div class="campo"><label>Factura</label>' +
         '<input id="aNumero" placeholder="FE322" autocomplete="off" value="' +
           esc((previo && previo.factura) || '') + '">' +
         '<div class="ayuda">Si todavía no está en el maestro se registra igual, pero el saldo no se puede verificar.</div></div>' +
+      '<div class="campo"><label>Proyecto</label>' +
+        '<input id="aProy" placeholder="699.2, CB699 o PORTERIA" autocomplete="off" value="' +
+          esc(proyecto || '') + '">' +
+        '<div id="aProyLista" class="proy-lista"></div>' +
+        '<div id="aProyOk" class="ayuda"></div></div>' +
       '<div class="campo"><label>Monto sin AIU</label>' +
         '<input id="aMonto" type="number" step="0.01" min="0" placeholder="0" value="' +
-          ((previo && previo.monto) || '') + '"></div>' +
+          ((previo && previo.monto) || '') + '">' +
+        '<div id="aMontoPor" class="ayuda"></div></div>' +
       '<div class="campo"><label>AIU</label>' +
         '<input id="aAiu" type="number" step="0.01" min="0" placeholder="0">' +
         '<div class="ayuda">Déjalo en cero si esta factura no cobró AIU. Se compara contra el aprobado sumando ' +
@@ -1747,7 +1934,98 @@
       '<button class="btn btn-sm btn-primary" id="aOk">Asignar</button></div>');
 
     document.getElementById('aCancel').onclick = cerrarModal;
-    document.getElementById(previo && previo.monto ? 'aAiu' : 'aMonto').focus();
+
+    var campoProy  = document.getElementById('aProy');
+    var lista      = document.getElementById('aProyLista');
+    var okProy     = document.getElementById('aProyOk');
+    var campoMonto = document.getElementById('aMonto');
+    var porQue     = document.getElementById('aMontoPor');
+    var campoNum   = document.getElementById('aNumero');
+
+    /** La factura que se está tecleando, del maestro que ya está en memoria. */
+    var facturaActual = function () {
+      var n = campoNum.value.trim().toUpperCase();
+      return (_datos.facturas || []).filter(function (x) {
+        return String(x.numero).toUpperCase() === n;
+      })[0] || null;
+    };
+
+    /** Rellena el monto SOLO si el campo está vacío o trae una sugerencia
+     *  anterior: lo que alguien escribió a mano no se pisa. */
+    var sugerido = null;
+    var refrescarMonto = function () {
+      var cot = (_datos.cotizaciones || []).filter(function (c) {
+        return c.archivo === elegido;
+      })[0];
+      var r = sugerirMonto(facturaActual(), cot, sugAbierta);
+      porQue.textContent = r.razon || '';
+      if (r.monto == null) return;
+      var actual = campoMonto.value.trim();
+      if (actual === '' || (sugerido != null && actual === String(sugerido))) {
+        campoMonto.value = r.monto;
+        sugerido = r.monto;
+      }
+    };
+
+    /** `CB699.2 · PORTERIA` — el código primero, que es por donde se busca. */
+    var nombreDe = function (a) {
+      var c = (_datos.cotizaciones || []).filter(function (x) { return x.archivo === a; })[0];
+      if (!c) return a;
+      return 'CB' + c.cb + (c.version ? '.' + c.version : '') + ' · ' + (c.proyecto || a);
+    };
+
+    var marcarProy = function () {
+      okProy.textContent = elegido ? '✓ ' + nombreDe(elegido)
+                                   : 'Busca el proyecto por su código o por su nombre.';
+    };
+
+    var pintarLista = function () {
+      // Con un proyecto ya elegido y el texto sin tocar, no se despliega nada.
+      if (elegido && campoProy.value === nombreDe(elegido)) { lista.innerHTML = ''; return; }
+      var hits = buscarProyectos(campoProy.value).slice(0, 8);
+      lista.innerHTML = hits.map(function (c) {
+        return '<button type="button" class="proy-op" data-proy-pick="' + esc(c.archivo) + '">' +
+          '<span class="gcb-ref">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') + '</span>' +
+          '<span class="proy-nom">' + esc(c.proyecto || c.archivo) + '</span>' +
+          '<span class="proy-falta">' + money((c.resumen || {}).pendiente) + ' por cobrar</span>' +
+          '</button>';
+      }).join('');
+      Array.prototype.forEach.call(lista.querySelectorAll('[data-proy-pick]'), function (b) {
+        b.onclick = function () {
+          elegido = b.getAttribute('data-proy-pick');
+          campoProy.value = nombreDe(elegido);
+          lista.innerHTML = '';
+          marcarProy();
+          refrescarMonto();
+        };
+      });
+    };
+
+
+    // Escribir en el campo INVALIDA la elección: si se teclea encima, lo que
+    // vale es lo que se escriba, no lo que estaba elegido antes.
+    campoProy.addEventListener('input', function () {
+      var hits = buscarProyectos(campoProy.value);
+      elegido = (hits.length === 1 && campoProy.value.trim()) ? hits[0].archivo : '';
+      marcarProy();
+      pintarLista();
+      if (elegido) { refrescarMonto(); return; }
+      // Sin proyecto elegido, la razón del anterior queda MINTIENDO: explicaría
+      // una cifra que ya no corresponde a nada. Y si el monto era una
+      // sugerencia —no algo tecleado a mano— se borra con ella.
+      porQue.textContent = '';
+      if (sugerido != null && campoMonto.value.trim() === String(sugerido)) {
+        campoMonto.value = '';
+        sugerido = null;
+      }
+    });
+    campoProy.addEventListener('focus', pintarLista);
+    campoNum.addEventListener('input', refrescarMonto);
+
+    if (elegido) campoProy.value = nombreDe(elegido);
+    marcarProy();
+    refrescarMonto();
+    document.getElementById(elegido ? 'aNumero' : 'aProy').focus();
     document.getElementById('aOk').onclick = function () {
       var numero = document.getElementById('aNumero').value.trim();
       var monto  = parseFloat(document.getElementById('aMonto').value) || 0;
@@ -1756,10 +2034,11 @@
       var nota   = document.getElementById('aNota').value.trim();
       var concepto = document.getElementById('aConcepto').value;
       if (!numero) { toast('Escribe el número de factura', 'error'); return; }
+      if (!elegido) { toast('Elige el proyecto de la lista', 'error'); return; }
       if (monto + aiu <= 0) { toast('El monto tiene que ser mayor a cero (el AIU cuenta)', 'error'); return; }
       var btn = this;
       btn.disabled = true;
-      apiFacturaAsignar(token, numero, archivo, monto, aiu, kg, 'MANUAL', nota, concepto)
+      apiFacturaAsignar(token, numero, elegido, monto, aiu, kg, 'MANUAL', nota, concepto)
         .then(function (r) {
           cerrarModal();
           if (r.facturaConocida === false) {
