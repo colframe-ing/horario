@@ -337,6 +337,11 @@
     .mal { color:#DC2626; font-weight:800; }
     .ok  { color:#065F46; }
     .leyenda { font-size:0.75rem; color:var(--cf-gray-text); margin:12px 2px 0; max-width:74ch; }
+    /* El nombre del proyecto lleva a su hoja de vida. Se ve como el texto que
+       era —no como un enlace azul en medio de una tabla de plata— y se delata
+       al pasar el mouse. */
+    a.a-proy { color:inherit; text-decoration:none; }
+    a.a-proy:hover { color:var(--cf-blue); text-decoration:underline; }
     .sin-rep { font-size:0.66rem; font-weight:800; color:#B45309; white-space:normal; margin-top:2px; }
     /* MÁS ANCHO QUE EL RESTO DEL PANEL. `.admin-main` tope en 900px, y la tabla
        por proyecto tiene ocho columnas de plata con `white-space:nowrap`: no
@@ -369,6 +374,12 @@
                    border-radius:8px; font-family:inherit; font-size:0.85rem; color:var(--cf-dark); background:#fff; }
     .campo input:focus { outline:none; border-color:var(--cf-blue); }
     .campo .ayuda { font-size:0.68rem; color:var(--cf-gray-text); margin-top:3px; }
+    /* Qué es asignar, arriba del formulario, y el tope de la factura en vivo. */
+    .explica { font-size:0.74rem; line-height:1.45; background:#EFF6FF; color:#1E3A8A;
+               border:1px solid #BFDBFE; border-radius:8px; padding:9px 11px; margin:4px 0 12px; }
+    .tope { font-size:0.7rem; font-weight:700; color:#065F46; margin-top:4px; }
+    .tope.excede { color:#B91C1C; }
+    .tope.desconocido { color:var(--cf-gray-text); font-weight:600; }
     .modal-acciones { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
     .lote-fila { display:flex; justify-content:space-between; gap:10px; font-size:0.76rem;
                  padding:3px 0; border-bottom:1px solid var(--cf-gray-mid); }

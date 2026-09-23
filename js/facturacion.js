@@ -44,6 +44,25 @@
   var marcadas = {};          // docId → true, en la vista Por cobrar
 
   // ── Utilidades ───────────────────────────────────────────────────────────
+  /**
+   * El nombre de un proyecto, como enlace a su hoja de vida.
+   *
+   * En PESTAÑA NUEVA a propósito: aquí se trabaja una lista —filtros, una
+   * factura abierta, casillas marcadas— y salir de la página para mirar un
+   * proyecto obligaba a rearmarla al volver. Es el mismo criterio de los
+   * enlaces a la hoja de vida desde Programación.
+   *
+   * Sin CB no hay a dónde ir, y se pinta el texto solo: un enlace roto a un
+   * "proyecto" que no existe es peor que ningún enlace.
+   */
+  function linkProyecto(cb, archivo, texto, clase) {
+    var t = esc(texto);
+    if (!cb) return '<span class="' + (clase || '') + '">' + t + '</span>';
+    return '<a class="' + (clase ? clase + ' ' : '') + 'a-proy" target="_blank" rel="noopener" ' +
+      'title="Abrir la hoja de vida del proyecto" href="proyecto.html?cb=' + encodeURIComponent(cb) +
+      (archivo ? '&archivo=' + encodeURIComponent(archivo) : '') + '">' + t + '</a>';
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -436,7 +455,7 @@
                 (g.todas ? ' checked' : '') + (g.algunas && !g.todas ? ' data-medias="1"' : '') +
                 ' aria-label="Marcar todas las de ' + esc(g.proyecto || g.archivo) + '">'
             : '<span class="sin-casilla" aria-hidden="true"></span>') +
-          '<span class="gn">' + esc(g.proyecto || g.archivo || '(sin proyecto)') + '</span>' +
+          linkProyecto(g.cb, g.archivo, g.proyecto || g.archivo || '(sin proyecto)', 'gn') +
           // El código de la cotización: es lo que está escrito en el papel, y dos
           // obras pueden llamarse igual.
           (g.cb ? '<span class="gcb-ref">CB' + esc(g.cb) +
@@ -801,7 +820,7 @@
     h += (f.remisiones || []).slice().sort(porRef('consecutivo')).map(function (r) {
       return '<div class="item hecho"><span class="ico">✓</span>' +
         '<span class="cuerpo"><span class="t">' + esc(r.consecutivo || '(sin consecutivo)') + '</span>' +
-          '<span class="d">' + esc(r.proyecto || '') + ' · ' + esc(r.estado || '') + '</span></span>' +
+          '<span class="d">' + linkProyecto(r.cb, r.cotizacionArchivo, r.proyecto || '') + ' · ' + esc(r.estado || '') + '</span></span>' +
         '<button class="btn-mini quitar" data-desfact="' + esc(r.docId) + '" ' +
           'data-rot="' + esc(r.consecutivo || '') + '" data-fact="' + esc(f.numero) + '">Quitar</button></div>';
     }).join('');
@@ -817,10 +836,11 @@
 
     // ── Mitad 2 · reparto ──
     h += '<div class="mitad"><h4>Reparto entre proyectos</h4>' +
-      '<p class="h4sub">Contra el subtotal. El AIU cuenta.</p>';
+      '<p class="h4sub">Cuánto de esta factura le toca a cada proyecto. Suma como máximo el ' +
+        'subtotal sin IVA; el AIU cuenta.</p>';
     h += (f.reparto || []).map(function (a) {
       return '<div class="item hecho"><span class="ico">✓</span>' +
-        '<span class="cuerpo"><span class="t">' + esc(a.proyecto || a.cotizacionArchivo) +
+        '<span class="cuerpo"><span class="t">' + linkProyecto(a.cb, a.cotizacionArchivo, a.proyecto || a.cotizacionArchivo) +
           (a.concepto === 'PROVEEDURIA'
             ? ' <span class="estado prov">proveeduría</span>' : '') + '</span>' +
           '<span class="d">CB' + esc(a.cb) + (a.version ? '.' + esc(a.version) : '') +
@@ -885,13 +905,7 @@
             tot.facturadoDeMas > 0 ? '⚠ ' + money(tot.facturadoDeMas) + ' cobrado de más' : 'lo que falta cobrar') +
       '</div>';
 
-    var filas = lista.slice().sort(function (a, b) {
-      var ra = refCotiz(a), rb = refCotiz(b);
-      if (!ra && !rb) return String(a.proyecto || '').localeCompare(String(b.proyecto || ''));
-      if (!ra) return -1;
-      if (!rb) return 1;
-      return cmpRef(ra, rb);
-    }).map(function (c) {
+    var filas = lista.slice().sort(ordenPorProyecto).map(function (c) {
       var r = c.resumen;
       var chips = '';
       // El AIU mixto se marca, no se corrige: si en la misma cotización unas
@@ -919,7 +933,7 @@
             ' · falta el monto</div>'
         : '';
       return '<tr>' +
-        '<td><span class="proy">' + esc(c.proyecto || c.archivo) + '</span>' + chips +
+        '<td>' + linkProyecto(c.cb, c.archivo, c.proyecto || c.archivo, 'proy') + chips +
           '<div class="cbv">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') + ' · ' + esc(c.estado) + '</div></td>' +
         '<td class="n">' + money(r.valorAprobado) + '</td>' +
         '<td class="n">' + money(r.facturado) + (r.aiu > 0 ? '<div class="cbv">AIU ' + money(r.aiu) + '</div>' : '') + repTxt + '</td>' +
@@ -998,6 +1012,34 @@
       'Editar el código no basta: sin versión nueva, la Web App sigue sirviendo la anterior.<br>' +
       '<br>Mientras tanto, <strong>Por cobrar</strong> y <strong>Por proyecto</strong> sí funcionan: ' +
       'salen de datos que el backend viejo también manda.</div>';
+  }
+
+  /**
+   * El orden de la vista Por proyecto: LOS MÁS NUEVOS ARRIBA.
+   *
+   * "Nuevo" es el código CB, de mayor a menor. El CB es un consecutivo que se
+   * asigna al crear la cotización, así que es el orden en que entraron los
+   * proyectos, y es el número que la fila muestra: ordenar por otra cosa haría
+   * que la columna de códigos pareciera desordenada. Dentro del mismo CB, la
+   * versión más reciente primero.
+   *
+   * NO la fecha de la cotización: una versión nueva de un proyecto viejo tiene
+   * fecha nueva, y por fecha el CB263.3 saltaría por encima de proyectos que
+   * entraron después. Lo que se busca arriba son las obras recientes, no las
+   * re-cotizaciones.
+   *
+   * Hasta el 22-sep era al revés —del CB más viejo al más nuevo— y lo que se
+   * está cobrando hoy quedaba al fondo.
+   *
+   * Las filas SIN código siguen PRIMERO, como en `porRef`: una cotización
+   * aprobada sin consecutivo es en sí misma algo que hay que mirar.
+   */
+  function ordenPorProyecto(a, b) {
+    var ra = refCotiz(a), rb = refCotiz(b);
+    if (!ra && !rb) return String(a.proyecto || '').localeCompare(String(b.proyecto || ''));
+    if (!ra) return -1;
+    if (!rb) return 1;
+    return cmpRef(rb, ra);
   }
 
   function refCotiz(c) {
@@ -1866,6 +1908,36 @@
     return out;
   }
 
+  /**
+   * Cuánto le cabe todavía a la factura, y si lo que se está escribiendo se pasa.
+   *
+   * El espejo en pantalla de la regla del backend (`_factAsignarFila`): no se
+   * asigna más de lo que la factura tiene por repartir. El backend es el que
+   * decide —esto solo avisa antes y apaga el botón—, pero sin el aviso la
+   * persona se enteraba del tope cuando el servidor la rechazaba.
+   *
+   * Sin la factura en el maestro no hay subtotal contra el cual medir: se dice,
+   * y no se bloquea nada. FUNCIÓN PURA.
+   */
+  function topeAsignacion(factura, monto, aiu) {
+    var total = (Number(monto) || 0) + (Number(aiu) || 0);
+    if (!factura || !(Number(factura.subtotal) > 0)) {
+      return { conocido: false, excede: false,
+               texto: 'Esta factura no está en el maestro: no se puede verificar cuánto le queda.' };
+    }
+    var r2 = function (n) { return Math.round(n * 100) / 100; };
+    var sub = r2(Number(factura.subtotal));
+    var disp = r2(Number(factura.sinAsignar));
+    var excede = total - disp >= 0.5;
+    var texto = factura.numero + ' vale ' + money(sub) + ' sin IVA' +
+      (disp < sub ? ' · ya tiene ' + money(r2(sub - disp)) + ' asignados' : '') +
+      ' · le quedan ' + money(Math.max(0, disp)) + ' por repartir.';
+    if (excede) {
+      texto += ' Te pasas por ' + money(r2(total - disp)) + ': no se puede asignar más de lo que queda.';
+    }
+    return { conocido: true, excede: excede, disponible: disp, subtotal: sub, texto: texto };
+  }
+
   function sugerirMonto(factura, cotiz, sug) {
     if (!cotiz) return { monto: null, razon: '' };
     if (!factura) {
@@ -1929,6 +2001,14 @@
     // factura: `COT_00699.2_95_PORTERIA` se copia y se pega tal cual.
     var elegido = archivo || '';
     modal('<h4>Asignar factura</h4>' +
+      // QUÉ ES ASIGNAR, dicho donde se hace. La palabra sola no lo explica, y
+      // se confunde con dos cosas que no es: facturar (esto no emite nada ante
+      // la DIAN) y registrar la factura en una remisión (eso dice con qué
+      // factura salió el material, no cuánto le toca a cada obra).
+      '<div class="explica"><strong>Asignar</strong> es decir <strong>cuánto de esta factura le ' +
+        'corresponde a un proyecto</strong>. Una factura puede repartirse entre varios proyectos, ' +
+        'pero la suma nunca pasa de su subtotal (sin IVA, con el AIU adentro). ' +
+        'No emite nada ante la DIAN: la factura ya existe.</div>' +
       '<div class="campo"><label>Factura</label>' +
         '<input id="aNumero" placeholder="FE322" autocomplete="off" value="' +
           esc((previo && previo.factura) || '') + '">' +
@@ -1941,7 +2021,8 @@
       '<div class="campo"><label>Monto sin AIU</label>' +
         '<input id="aMonto" type="number" step="0.01" min="0" placeholder="0" value="' +
           ((previo && previo.monto) || '') + '">' +
-        '<div id="aMontoPor" class="ayuda"></div></div>' +
+        '<div id="aMontoPor" class="ayuda"></div>' +
+        '<div id="aTope" class="tope"></div></div>' +
       '<div class="campo"><label>AIU</label>' +
         '<input id="aAiu" type="number" step="0.01" min="0" placeholder="0">' +
         '<div class="ayuda">Déjalo en cero si esta factura no cobró AIU. Se compara contra el aprobado sumando ' +
@@ -2006,6 +2087,8 @@
         campoMonto.value = r.monto;
         sugerido = r.monto;
       }
+      // El monto puede haber cambiado sin que nadie teclee: el tope lo sigue.
+      if (typeof refrescarTope === 'function') refrescarTope();
     };
 
     /** `CB699.2 · PORTERIA` — el código primero, que es por donde se busca. */
@@ -2063,9 +2146,23 @@
     campoProy.addEventListener('focus', pintarLista);
     campoNum.addEventListener('input', refrescarMonto);
 
+    var campoAiu = document.getElementById('aAiu');
+    var cajaTope = document.getElementById('aTope');
+    var btnOk = document.getElementById('aOk');
+    var refrescarTope = function () {
+      var t = topeAsignacion(facturaActual(), campoMonto.value, campoAiu.value);
+      cajaTope.textContent = t.texto;
+      cajaTope.className = 'tope' + (t.excede ? ' excede' : (t.conocido ? '' : ' desconocido'));
+      btnOk.disabled = t.excede;
+    };
+    campoNum.addEventListener('input', refrescarTope);
+    campoMonto.addEventListener('input', refrescarTope);
+    campoAiu.addEventListener('input', refrescarTope);
+
     if (elegido) campoProy.value = nombreDe(elegido);
     marcarProy();
     refrescarMonto();
+    refrescarTope();
     document.getElementById(elegido ? 'aNumero' : 'aProy').focus();
     document.getElementById('aOk').onclick = function () {
       var numero = document.getElementById('aNumero').value.trim();

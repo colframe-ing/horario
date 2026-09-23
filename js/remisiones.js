@@ -235,6 +235,13 @@
     // veía una sola espera larga donde había dos, una de ellas innecesaria.
     maestrosEnVuelo = cargarMaestros();
     cargarLista();
+    // `?doc=<docId>` abre ese documento directo. Lo usa la hoja de vida del
+    // proyecto, que lista sus remisiones: sin esto, cada enlace dejaba a la
+    // persona en la lista del mes buscando el consecutivo a mano. Los permisos
+    // no cambian — `remDetalle` decide qué se puede ver y editar, igual que
+    // al abrirlo desde la lista.
+    const docQS = new URLSearchParams(location.search).get('doc');
+    if (docQS) abrirRemision(docQS);
     // El error del catálogo se reporta una vez, acá; `catalogoListo()` no lo
     // vuelve a mostrar como error de red, solo dice qué hacer.
     maestrosEnVuelo.catch((e) => manejarError(e, 'maestros'));

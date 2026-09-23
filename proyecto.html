@@ -73,6 +73,28 @@
     .pill-aprob { font-size:0.63rem; font-weight:800; padding:1px 7px; border-radius:999px; background:#D1FAE5; color:#065F46; }
     .pill-noaprob { font-size:0.63rem; font-weight:800; padding:1px 7px; border-radius:999px; background:#F1F5F9; color:#64748B; }
     .badge.pau  { background:#FFEDD5; color:#9A3412; }
+    .badge.anu  { background:#FEE2E2; color:#991B1B; }
+    .cmp-tabla tr.anulada td { opacity:0.55; }
+    .aviso-rep { font-size:0.7rem; font-weight:800; color:#B45309; }
+    .prov { color:#B45309; font-weight:700; }
+    .prov-tag { font-size:0.62rem; font-weight:800; padding:1px 7px; border-radius:999px; background:#FEF3C7; color:#92400E; }
+    /* Tiempos del ciclo: cinco hitos en fila, con los días entre uno y otro. */
+    .ciclo { display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
+    .ciclo-hito { flex:1; min-width:110px; border:1.5px dashed var(--cf-gray-mid); border-radius:8px; padding:8px 10px; font-size:0.72rem; }
+    .ciclo-hito.hecho { border-style:solid; border-color:#16A34A; background:#F0FDF4; }
+    .ciclo-hito .t { font-weight:800; color:var(--cf-dark); }
+    .ciclo-hito .v { margin-top:2px; }
+    .ciclo-flecha { align-self:center; font-size:0.72rem; font-weight:800; color:var(--cf-blue); white-space:nowrap; }
+    .ciclo-total { font-weight:700; color:var(--cf-gray-text); text-transform:none; letter-spacing:0; }
+    /* La historia: fecha a la izquierda, qué pasó a la derecha. */
+    .hist { border-left:2px solid var(--cf-gray-mid); margin-left:4px; }
+    .hist-ev { display:flex; gap:12px; padding:6px 0 6px 12px; position:relative; font-size:0.8rem; }
+    .hist-ev::before { content:''; position:absolute; left:-5px; top:11px; width:8px; height:8px; border-radius:50%; background:var(--cf-blue); }
+    .hist-cuando { flex:0 0 150px; color:var(--cf-gray-text); font-size:0.74rem; }
+    .hist-que { flex:1; color:var(--cf-dark); font-weight:600; }
+    @media (max-width:600px) { .hist-ev { flex-direction:column; gap:0; } .hist-cuando { flex-basis:auto; } }
+    a.a-doc { font-weight:700; color:var(--cf-blue); text-decoration:none; }
+    a.a-doc:hover { text-decoration:underline; }
     .f { color:var(--cf-gray-text); font-size:0.75rem; }
 
     /* ── Lo que era el detalle de Cotizaciones ─────────────────────────────

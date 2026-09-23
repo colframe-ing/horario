@@ -124,7 +124,11 @@
       (u.atrasado ? ' <span class="badge atr">Atrasado</span>' : '') +
       (u.fechaEntrega ? '<div class="f">entrega ' + esc(fechaCorta(u.fechaEntrega)) + '</div>' : '') +
       (u.mlAvance && u.seccion !== 'finalizada'
-        ? '<div class="f">' + fmtNum(u.mlAvance, 0) + ' ML de avance</div>' : '');
+        ? '<div class="f">' + fmtNum(u.mlAvance, 0) + ' ML de avance</div>' : '') +
+      // El HISTORIAL, no solo si está pausada ahora: una unidad que se pausó
+      // dos veces y ya terminó no decía nada de eso.
+      ((u.historialPausas || []).length
+        ? '<div class="f">⏸ ' + esc(pausasTxt(u.historialPausas, hoyBogota())) + '</div>' : '');
   }
 
   /** Qué salió de la planta para esta unidad, y bajo qué factura. En kg: la
@@ -139,6 +143,167 @@
     }
     if (u.borradores) return '<span class="f">remisión en borrador</span>';
     return '<span class="f">sin despachar</span>';
+  }
+
+  /** Hoy en Bogotá, YYYY-MM-DD. Para las pausas abiertas: "sigue (N d)". */
+  function hoyBogota() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
+
+  /** Días de calendario entre dos fechas ISO (solo la parte YYYY-MM-DD). null
+   *  si falta alguna. Mismo cálculo que `_factDiasEntre` en el backend. */
+  function diasEntre(desde, hasta) {
+    var a = String(desde || '').substring(0, 10).split('-');
+    var b = String(hasta || '').substring(0, 10).split('-');
+    if (a.length !== 3 || b.length !== 3) return null;
+    var ta = Date.UTC(+a[0], +a[1] - 1, +a[2]), tb = Date.UTC(+b[0], +b[1] - 1, +b[2]);
+    if (isNaN(ta) || isNaN(tb)) return null;
+    return Math.round((tb - ta) / 86400000);
+  }
+
+  /** Las pausas de una unidad, en una línea: "2 pausas: 3 ago → 5 ago (2 d) ·
+   *  20 ago → sigue". El motivo no se guarda al pausar, así que no se muestra. */
+  function pausasTxt(lista, hoy) {
+    var ps = (lista || []).filter(function (p) { return p && p.desde; });
+    if (!ps.length) return '';
+    return ps.length + (ps.length === 1 ? ' pausa: ' : ' pausas: ') + ps.map(function (p) {
+      var d = diasEntre(p.desde, p.hasta || hoy);
+      return fechaCorta(p.desde) + ' → ' + (p.hasta ? fechaCorta(p.hasta) : 'sigue') +
+             (d != null ? ' (' + d + ' d)' : '');
+    }).join(' · ');
+  }
+
+  /**
+   * LOS TIEMPOS DEL CICLO: cuánto tardó el proyecto entre cada paso.
+   *
+   * Cinco hitos, cada uno con la fecha que ya existe en alguna parte:
+   *
+   *   Aprobada          la última vez que se marcó aprobada (auditoría)
+   *   Arranca producción la primera unidad iniciada
+   *   Termina producción la última unidad terminada — solo si terminaron TODAS
+   *   Primer despacho   la primera remisión firme
+   *   Primera factura   la factura más vieja que se le relaciona
+   *
+   * Un hito sin fecha se dice como tal (`pendiente` o `sin registro`) y NO corta
+   * la cadena: el tramo siguiente se mide desde el último hito que sí tiene
+   * fecha. Y la factura puede ir ANTES del despacho —un anticipo—; en ese caso
+   * los días salen negativos, y es información, no un error.
+   *
+   * FUNCIÓN PURA.
+   */
+  function cicloDelProyecto(d) {
+    var cots = (d && d.cotizaciones) || [];
+    var unidades = [];
+    cots.forEach(function (c) { unidades = unidades.concat(c.unidades || []); });
+    var min = function (xs) { xs = xs.filter(Boolean).sort(); return xs.length ? xs[0] : null; };
+    var max = function (xs) { xs = xs.filter(Boolean).sort(); return xs.length ? xs[xs.length - 1] : null; };
+    var solo = function (v) { return v ? String(v).substring(0, 10) : null; };
+
+    var aprob = min(cots.filter(function (c) { return c.aprobada; })
+                        .map(function (c) { return solo(c.aprobadaTs); }));
+    var inicio = min(unidades.map(function (u) { return solo(u.fechaRealInicio); }));
+    var todas = unidades.length > 0 && unidades.every(function (u) { return u.seccion === 'finalizada'; });
+    var fin = todas ? max(unidades.map(function (u) { return solo(u.fechaReal); })) : null;
+    var FIRMES = { DESPACHADA: 1, ENTREGADA: 1, FACTURADA: 1 };
+    var desp = min(((d && d.remisiones) || []).filter(function (r) { return FIRMES[r.estado]; })
+                                              .map(function (r) { return solo(r.fecha); }));
+    var facts = (d && d.facturas) || {};
+    var fact = min(Object.keys(facts).map(function (n) { return solo((facts[n] || {}).fecha); }));
+
+    var hitos = [
+      { t: 'Aprobada',           fecha: aprob,  falta: 'sin registro' },
+      { t: 'Arranca producción', fecha: inicio, falta: 'pendiente' },
+      { t: 'Termina producción', fecha: fin,    falta: inicio ? 'en curso' : 'pendiente' },
+      { t: 'Primer despacho',    fecha: desp,   falta: 'pendiente' },
+      { t: 'Primera factura',    fecha: fact,   falta: 'pendiente' },
+    ];
+    var ultima = null;
+    hitos.forEach(function (h) {
+      h.dias = (h.fecha && ultima) ? diasEntre(ultima, h.fecha) : null;
+      if (h.fecha) ultima = h.fecha;
+    });
+    var fechas = hitos.map(function (h) { return h.fecha; }).filter(Boolean);
+    return { hitos: hitos,
+             total: fechas.length > 1 ? diasEntre(min(fechas), max(fechas)) : null };
+  }
+
+  /** Lo que dice un evento de la historia, en palabras de la operación. */
+  function textoEvento(ev) {
+    var d = (ev && ev.d) || {};
+    var rm = ev.ref ? ev.ref + ': ' : '';
+    switch (ev.accion) {
+      case 'COTIZ_MARCAR':
+        return (d.aprobada === true || d.aprobada === 'true')
+          ? 'Cotización aprobada' + (d.cantidad > 1 ? ' (' + d.cantidad + ' unidades)' : '')
+          : 'Se retiró la aprobación';
+      case 'COTIZ_VINCULAR':       return d.accion === 'unlink' ? 'Carpeta de producción desvinculada' : 'Carpeta de producción vinculada';
+      case 'PROD_COLA_TOGGLE':     return d.enCola === false ? 'Salió de la cola' : 'Entró a la cola';
+      case 'PROD_COLA_INICIAR':    return 'Arrancó la producción' + (d.fechaRealInicio ? ' (' + fechaCorta(d.fechaRealInicio) + ')' : '');
+      case 'PROD_COLA_PAUSAR':     return 'Pausada' + (d.avanceMl ? ' con ' + fmtNum(d.avanceMl, 0) + ' ML de avance' : '');
+      case 'PROD_COLA_REANUDAR':   return 'Reanudada';
+      case 'PROD_COLA_FINALIZAR':  return 'Producción terminada' + (d.fechaReal ? ' (' + fechaCorta(d.fechaReal) + ')' : '');
+      case 'PROD_COLA_REABRIR':    return 'Se reabrió la producción';
+      case 'PROD_ENTREGA':         return d.fecha ? 'Fecha de entrega: ' + fechaCorta(d.fecha) : 'Se quitó la fecha de entrega';
+      case 'PROD_ENVIOS_SET':      return d.n ? 'Partida en ' + d.n + ' envíos' : 'Se quitaron los envíos';
+      case 'PROD_ENVIO_PARTIR':    return 'Envío partido en ' + (d.partes || '?');
+      case 'PROD_COLA_NOTA':       return 'Nota: ' + (d.notaEnvio || d.nota || '(borrada)');
+      case 'FACTURA_ASIGNAR':      return (d.factura || 'Factura') + ' asignada: ' +
+                                          fmtMoney((Number(d.monto) || 0) + (Number(d.aiu) || 0)) + (d.lote ? ' (en lote)' : '');
+      case 'FACTURA_ASIGNACION_ANULAR': return 'Se anuló la asignación de ' + (d.factura || 'una factura');
+      case 'REMISION_CONCILIADA':  return rm + 'conciliada y despachada' + (d.pesoTotalKg ? ' · ' + fmtNum(d.pesoTotalKg, 0) + ' kg' : '');
+      case 'REMISION_ESTADO':      return rm + String(d.de || '').toLowerCase().replace('_', ' ') + ' → ' +
+                                          String(d.a || '').toLowerCase().replace('_', ' ') + (d.motivo ? ' — ' + d.motivo : '');
+      case 'REMISION_FACTURADA':   return rm + 'registrada con ' + (d.factura || 'factura');
+      case 'REMISION_DESFACTURADA': return rm + 'se le quitó ' + (d.facturaPrevia || 'la factura') + (d.motivo ? ' — ' + d.motivo : '');
+      case 'REMISION_ITEMS_AJUSTADOS': return rm + 'se ajustaron ítems' + (d.motivo ? ' — ' + d.motivo : '');
+      default: return String(ev.accion || '');
+    }
+  }
+
+  var ESTADO_REM = {
+    BORRADOR:      { txt: 'Borrador',      cls: 'back' },
+    POR_CONCILIAR: { txt: 'Por conciliar', cls: 'pau'  },
+    DESPACHADA:    { txt: 'Despachada',    cls: 'cola' },
+    ENTREGADA:     { txt: 'Entregada',     cls: 'prod' },
+    FACTURADA:     { txt: 'Facturada',     cls: 'fin'  },
+    ANULADA:       { txt: 'Anulada',       cls: 'anu'  },
+  };
+
+  /** Una remisión del proyecto. El consecutivo lleva al documento en
+   *  Remisiones; un borrador todavía no tiene consecutivo —se asigna al
+   *  conciliar— y se nombra por lo que es. */
+  function filaRemision(rm) {
+    var e = ESTADO_REM[rm.estado] || { txt: rm.estado, cls: 'back' };
+    var nombre = rm.consecutivo || (rm.estado === 'ANULADA' ? 'Anulada sin número' : 'Borrador');
+    var link = rm.docId
+      ? '<a class="a-doc" target="_blank" rel="noopener" href="remisiones.html?doc=' +
+          encodeURIComponent(rm.docId) + '">' + esc(nombre) + '</a>'
+      : esc(nombre);
+    var cotiz = esc(rm.proyecto || '') + (rm.version ? ' <span class="f">v' + esc(rm.version) + '</span>' : '') +
+      (rm.envioIdx ? '<div class="f">Envío ' + rm.envioIdx + ' de ' + rm.enviosTotal + '</div>' : '');
+    var destino = [rm.municipio, rm.destinatario].filter(Boolean).map(esc).join(' · ') || '<span class="f">—</span>';
+    if (rm.ordenCompra) destino += '<div class="f">OC ' + esc(rm.ordenCompra) + '</div>';
+    var factura;
+    if (rm.facturaNumero) {
+      // REGISTRADA NO ES REPARTIDA: la remisión dice bajo qué factura salió,
+      // pero si esa factura no le asignó monto a este proyecto, el proyecto
+      // sigue "por facturar". Es lo que se leía como "no tiene factura".
+      factura = esc(rm.facturaNumero) + (rm.facturaRepartida ? ''
+        : '<div class="aviso-rep">falta asignar el monto</div>');
+    } else if (rm.diasSinFacturar > 0 || rm.estado === 'DESPACHADA' || rm.estado === 'ENTREGADA') {
+      factura = '<span class="aviso-rep">sin facturar' +
+        (rm.diasSinFacturar ? ' · ' + rm.diasSinFacturar + ' d' : '') + '</span>';
+    } else {
+      factura = '<span class="f">—</span>';
+    }
+    return '<tr' + (rm.estado === 'ANULADA' ? ' class="anulada"' : '') + '>' +
+      '<td>' + link + '</td>' +
+      '<td>' + esc(fechaCorta(rm.fecha)) + '</td>' +
+      '<td><span class="badge ' + e.cls + '">' + esc(e.txt) + '</span></td>' +
+      '<td>' + cotiz + '</td>' +
+      '<td>' + destino + '</td>' +
+      '<td style="text-align:right;">' + (rm.pesoKg ? fmtNum(rm.pesoKg, 0) + ' kg' : '<span class="f">—</span>') + '</td>' +
+      '<td>' + factura + '</td></tr>';
   }
 
   function filaUnidad(u) {
@@ -192,7 +357,9 @@
             '<div class="hv-title">'+esc(titulo)+
               '<span class="hv-estado '+esc(d.estadoGlobal)+'">'+esc(ESTADO_TXT[d.estadoGlobal]||d.estadoGlobal)+'</span>'+
             '</div>'+
-            '<div class="hv-sub">'+(d.cliente?'Cliente '+esc(d.cliente)+' · ':'')+
+            '<div class="hv-sub">'+(d.clienteNombre
+                ? '<strong>'+esc(d.clienteNombre)+'</strong>'+(d.cliente?' ('+esc(d.cliente)+')':'')+' · '
+                : (d.cliente?'Cliente '+esc(d.cliente)+' · ':''))+
               t.cotizaciones+(t.cotizaciones===1?' cotización':' cotizaciones')+' · '+
               d.carpetas.length+(d.carpetas.length===1?' carpeta':' carpetas')+' de producción</div>'+
           '</div>'+
@@ -223,7 +390,89 @@
           '<div class="value" style="font-size:1.1rem;">'+
             fmtMoney(t.facturadoDeMas || t.porFacturar)+'</div>'+
           '<div class="sub">'+(t.expuesto?fmtMoney(t.expuesto)+' cobrado sin salir':'del valor aprobado')+'</div></div>'+
+        // PROVEEDURÍA — las Q. Aparte y nunca sumada al Facturado: no tiene
+        // valor aprobado contra el cual medirse. Solo si hay: una tarjeta en
+        // cero en cada proyecto sin Q sería ruido.
+        (t.adicional > 0
+          ? '<div class="hv-card" style="border-left-color:#B45309;"><div class="label">Proveeduría</div>'+
+              '<div class="value" style="font-size:1.1rem;">'+fmtMoney(t.adicional)+'</div>'+
+              '<div class="sub">'+t.adicionalN+(t.adicionalN===1?' cobro':' cobros')+' aparte del contrato</div></div>'
+          : '')+
       '</div>';
+  }
+
+  // Cuánto tardó el proyecto entre cada paso. Ver `cicloDelProyecto`.
+  function cicloHtml(d) {
+    var cy = cicloDelProyecto(d);
+    var hitos = cy.hitos.map(function (h, i) {
+      var entre = '';
+      if (i > 0) {
+        entre = '<div class="ciclo-flecha">' + (h.dias == null ? '→'
+          : (h.dias < 0 ? Math.abs(h.dias) + ' d antes' : h.dias + ' d') + ' →') + '</div>';
+      }
+      return entre + '<div class="ciclo-hito' + (h.fecha ? ' hecho' : '') + '">' +
+        '<div class="t">' + esc(h.t) + '</div>' +
+        '<div class="v">' + (h.fecha ? esc(fechaCorta(h.fecha)) : '<span class="f">' + esc(h.falta) + '</span>') + '</div></div>';
+    }).join('');
+    return '<div class="card-sec"><h3>Tiempos del ciclo' +
+        (cy.total != null ? ' <span class="ciclo-total">· ' + cy.total + ' días de punta a punta</span>' : '') + '</h3>' +
+      '<div class="ciclo">' + hitos + '</div>' +
+      '<p class="nota-pie">Días de calendario. La fecha de aprobación sale de la auditoría: las cotizaciones ' +
+      'aprobadas antes de que existiera dicen "sin registro". Una factura antes del despacho es un anticipo.</p></div>';
+  }
+
+  // La historia del proyecto, de las dos auditorías.
+  var HIST_CORTA = 25;
+  var _histTodo = false;
+  function historiaHtml(d) {
+    var ev = d.lineaDeTiempo || [];
+    var cuerpo;
+    if (!ev.length) {
+      cuerpo = '<div style="font-size:0.8rem;color:var(--cf-gray-text);">No hay eventos registrados para este proyecto.</div>';
+    } else {
+      var vis = _histTodo ? ev : ev.slice(0, HIST_CORTA);
+      cuerpo = '<div class="hist">' + vis.map(function (e) {
+        return '<div class="hist-ev"><div class="hist-cuando">' + esc(fmtTs(e.ts)) + '</div>' +
+          '<div class="hist-que">' + esc(textoEvento(e)) +
+            '<div class="f">' + esc([e.proyecto, e.envio, e.quien].filter(Boolean).join(' · ')) + '</div></div></div>';
+      }).join('') + '</div>' +
+      (ev.length > HIST_CORTA
+        ? '<button class="det-toggle" data-acc="hist" aria-expanded="' + _histTodo + '">' +
+            (_histTodo ? 'Ver solo los últimos ' + HIST_CORTA + ' ▴' : 'Ver los ' + ev.length + ' eventos ▾') + '</button>'
+        : '');
+    }
+    return '<div class="card-sec" id="hv-hist"><h3>Historia del proyecto (' + ev.length + (d.lineaTruncada ? '+' : '') + ')</h3>' +
+      cuerpo +
+      '<p class="nota-pie">Sale de la auditoría. Lo que pasó antes de que se registrara no aparece' +
+      (d.lineaTruncada ? ', y se muestran solo los más recientes' : '') + '.</p></div>';
+  }
+
+  /** Un timestamp de auditoría, en hora de Bogotá: "12 ago 2026 · 10:05". */
+  function fmtTs(ts) {
+    var dt = new Date(ts);
+    if (isNaN(dt.getTime())) return String(ts || '');
+    var f = dt.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    var h = dt.toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false });
+    return fechaCorta(f) + ' · ' + h;
+  }
+
+  // Todas las remisiones del proyecto. Hasta el 22-sep solo aparecían de pasada
+  // —el consecutivo de las firmes en la columna de despacho— y no había dónde
+  // ver qué papeles tiene la obra, a dónde fueron ni con qué factura.
+  function remisionesHtml(d) {
+    var lista = d.remisiones || [];
+    if (!lista.length) {
+      return '<div class="card-sec"><h3>Remisiones (0)</h3>' +
+        '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Este proyecto todavía no tiene remisiones.</div></div>';
+    }
+    var vivas = lista.filter(function (r) { return r.estado !== 'ANULADA'; }).length;
+    return '<div class="card-sec"><h3>Remisiones (' + vivas +
+        (vivas !== lista.length ? ' · ' + (lista.length - vivas) + ' anulada' + (lista.length - vivas > 1 ? 's' : '') : '') +
+      ')</h3>' +
+      '<div style="overflow-x:auto;"><table class="cmp-tabla"><thead><tr>' +
+        '<th>Remisión</th><th>Fecha</th><th>Estado</th><th>Cotización</th><th>Destino</th>' +
+        '<th style="text-align:right;">Peso</th><th>Factura</th>' +
+      '</tr></thead><tbody>' + lista.map(filaRemision).join('') + '</tbody></table></div></div>';
   }
 
   // Las facturas del proyecto, con lo que se le asignó a cada cotización.
@@ -236,7 +485,7 @@
                      monto: (Number(a.monto)||0) + (Number(a.montoAiu)||0),
                      aiu: Number(a.montoAiu)||0, kg: Number(a.kgFacturado)||0,
                      fecha: f.fecha || '', dianStatus: f.dianStatus || '',
-                     pdfUrl: f.pdfUrl || '' });
+                     pdfUrl: f.pdfUrl || '', concepto: a.concepto || 'CONTRATO' });
       });
     });
     filas.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
@@ -244,7 +493,8 @@
       (filas.length
         ? filas.map(function (f) {
             return '<div class="fld-row"><div class="fld-info">'+
-                '<div class="fld-nombre">'+esc(f.numero)+' · '+esc(f.proyecto||'')+'</div>'+
+                '<div class="fld-nombre">'+esc(f.numero)+' · '+esc(f.proyecto||'')+
+                  (f.concepto==='PROVEEDURIA'?' <span class="prov-tag">proveeduría</span>':'')+'</div>'+
                 '<div class="fld-meta">'+esc(fechaCorta(f.fecha))+
                   (f.dianStatus==='DIAN_ACEPTADO'?' · aceptada DIAN':(f.dianStatus?' · '+esc(f.dianStatus):''))+
                   (f.kg?' · '+fmtNum(f.kg,0)+' kg':'')+'</div></div>'+
@@ -277,6 +527,8 @@
             ? ' · <span style="color:#B45309;">'+fmtMoney(c.facturacion.expuesto)+' cobrado sin salir</span>' : '')+
           (c.facturacion.aiuMixto
             ? ' · <span style="color:#92400E;" title="Unas facturas cobran AIU y otras no">AIU mixto</span>' : '')+
+          (c.facturacion.adicional > 0
+            ? ' · <span class="prov">+ '+fmtMoney(c.facturacion.adicional)+' de proveeduría</span>' : '')+
         '</div>'
       : '';
 
@@ -402,9 +654,12 @@
     document.getElementById('hvBody').innerHTML =
       cabeceraHtml(d) +
       tarjetasHtml(d.totales) +
+      cicloHtml(d) +
       '<h3 class="sec-h">Cotizaciones del proyecto (' + d.totales.cotizaciones + ')</h3>' +
       _orden.map(cotizacionHtml).join('') +
-      facturasHtml(d);
+      remisionesHtml(d) +
+      facturasHtml(d) +
+      historiaHtml(d);
   }
 
   /** Repinta solo el bloque de una cotización. El buscador vive adentro, así que
@@ -506,6 +761,12 @@
       var el = e.target.closest('[data-acc]');
       if (!el || !body.contains(el)) return;
       var i = parseInt(el.dataset.i, 10);
+      if (el.dataset.acc === 'hist') {
+        _histTodo = !_histTodo;
+        var sec = document.getElementById('hv-hist');
+        if (sec) { var tmp = document.createElement('div'); tmp.innerHTML = historiaHtml(_datos); sec.parentNode.replaceChild(tmp.firstChild, sec); }
+        return;
+      }
       if (el.dataset.acc === 'toggle') toggle(i);
       else if (el.dataset.acc === 'link' || el.dataset.acc === 'unlink') vincular(i, el.dataset.carpeta, el.dataset.acc, el);
     });
