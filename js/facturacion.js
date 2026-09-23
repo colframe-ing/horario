@@ -647,11 +647,46 @@
     return out;
   }
 
+  // ── NOTAS CRÉDITO en la lista ───────────────────────────────────────────
+  //
+  // Una NC no es plata por cobrar: es plata que se DESCUENTA de los proyectos
+  // de la factura que corrige. Y una factura anulada entera por una NC no tiene
+  // nada que repartir. Sin esto las dos se verían como pendientes — NC31 como
+  // "11 millones sin repartir", que se lee como plata por cobrar, y es lo
+  // contrario.
+
+  function facturaPorNumero(n) {
+    return ((_datos && _datos.facturas) || []).filter(function (x) { return x.numero === n; })[0] || null;
+  }
+
+  /** ¿Las notas crédito que la corrigen suman su subtotal entero? FUNCIÓN PURA. */
+  function anuladaEntera(f) {
+    var t = 0;
+    (f.corregidaPor || []).forEach(function (n) { t += Number(n.subtotal) || 0; });
+    return t > 0 && (Number(f.subtotal) || 0) - t < 0.5;
+  }
+
+  /**
+   * ¿Esta NC tiene algo que descontar? Solo si le queda saldo Y la factura que
+   * corrige sí se repartió a algún proyecto: si nadie asignó FE201, NC31 no
+   * tiene de dónde descontar y las dos, juntas, ya dan cero. Sin referencia sí
+   * queda pendiente: alguien tiene que decir de qué proyecto sale.
+   * FUNCIÓN PURA.
+   */
+  function ncPorAplicar(f, fe) {
+    if (!f.notaCredito || !(f.sinAsignar > 0.5)) return false;
+    if (!f.corrigeA || !fe) return true;
+    return (Number(fe.asignado) || 0) > 0.5;
+  }
+
   function estadoFactura(f) {
     var rTot = (f.remisiones || []).length;
+    var repartoOk = f.notaCredito
+      ? !ncPorAplicar(f, facturaPorNumero(f.corrigeA))
+      : (Math.abs(f.sinAsignar) < 0.5 || (anuladaEntera(f) && !((Number(f.asignado) || 0) > 0.5)));
     return {
       rTot: rTot,
-      repartoOk: Math.abs(f.sinAsignar) < 0.5,
+      repartoOk: repartoOk,
       // Sin remisiones y sin poder saber si le faltan: no se puede afirmar que
       // esté completa por ese eje, pero tampoco que le falte. Lo decide quien
       // mira si hay remisiones pendientes que la sugieran.
@@ -680,7 +715,9 @@
     var facturas = _datos.facturas || [];
     var sinRep = 0, nPend = 0;
     facturas.forEach(function (f) {
-      if (f.sinAsignar > 0.5) sinRep += f.sinAsignar;
+      // Las NC no suman aquí —no son plata por cobrar— ni las facturas anuladas
+      // enteras, que no tienen nada que repartir.
+      if (!f.notaCredito && !anuladaEntera(f) && f.sinAsignar > 0.5) sinRep += f.sinAsignar;
       var e = estadoFactura(f);
       if (!e.repartoOk || e.sugeridas) nPend++;
     });
@@ -751,25 +788,41 @@
         ejeR = '<span class="barrita full"><i style="width:100%"></i></span><span>' + e.rTot + '</span>';
       }
       // Eje 2 — plata.
-      var ejeP = e.repartoOk ? '<span class="estado ok">repartida</span>'
-        : (f.sinAsignar < 0 ? '<span class="estado bad">' + money(f.sinAsignar) + ' de más</span>'
-          : '<span class="estado warn">' + money(f.sinAsignar) + '</span>');
+      var ejeP;
+      if (f.notaCredito) {
+        ejeP = e.repartoOk
+          ? '<span class="estado ok">' + (f.asignado > 0.5 ? 'descontada' : 'nada que descontar') + '</span>'
+          : '<span class="estado warn">' + money(f.sinAsignar) + ' por descontar</span>';
+      } else if (anuladaEntera(f) && !(f.asignado > 0.5)) {
+        ejeP = '<span class="estado na">anulada</span>';
+      } else {
+        ejeP = e.repartoOk ? '<span class="estado ok">repartida</span>'
+          : (f.sinAsignar < 0 ? '<span class="estado bad">' + money(f.sinAsignar) + ' de más</span>'
+            : '<span class="estado warn">' + money(f.sinAsignar) + '</span>');
+      }
 
       var cli = clienteDe(f), dian = dianAnormal(f);
       var proy = rotuloProyectos(proyectosDe(f, ctxProy));
 
       return '<button class="fila" data-num="' + esc(f.numero) + '" aria-expanded="' + ab + '">' +
           '<div><div class="num"><span class="n">' + esc(f.numero) + '</span>' +
+            (f.notaCredito ? '<span class="nc-tag">nota crédito</span>' : '') +
             (cli ? '<span class="cli">' + esc(cli) + '</span>' : '') + '</div>' +
           '<div class="meta">' +
             esc(f.fecha || 'sin fecha') +
+            (f.notaCredito ? ' · ' + (f.corrigeA ? 'corrige ' + esc(f.corrigeA) : 'sin la factura que corrige') : '') +
+            ((f.corregidaPor || []).length
+              ? ' · ' + (anuladaEntera(f) ? 'anulada por ' : 'corregida por ') +
+                esc(f.corregidaPor.map(function (n) { return n.numero; }).join(', '))
+              : '') +
             (proy ? ' · ' + esc(proy) : '') +
             (dian ? ' · DIAN ' + esc(dian) : '') +
             (f.enMaestro ? '' : ' · fuera del maestro') +
           '</div></div>' +
-          '<div class="plata">' + money(f.subtotal) + '</div>' +
+          '<div class="plata">' + (f.notaCredito ? '−' : '') + money(f.subtotal) + '</div>' +
           '<div class="eje"><span class="eje-lbl">Remisiones</span><span class="eje-val">' + ejeR + '</span></div>' +
-          '<div class="eje"><span class="eje-lbl">Sin repartir</span><span class="eje-val">' + ejeP + '</span></div>' +
+          '<div class="eje"><span class="eje-lbl">' + (f.notaCredito ? 'Por descontar' : 'Sin repartir') +
+            '</span><span class="eje-val">' + ejeP + '</span></div>' +
         '</button>' + (ab ? panelFactura(f) : '');
     }).join('') + '</div>';
     return h;
@@ -792,6 +845,22 @@
       '</div>';
 
     if (f.notas) h += '<p class="nota-f">notas: “' + esc(f.notas) + '”</p>';
+    if (f.notaCredito) {
+      h += f.corrigeA
+        ? '<div class="aviso info"><strong>Nota crédito que corrige a ' + esc(f.corrigeA) + '.</strong> ' +
+          'Resta: lo que se asigne aquí se <strong>descuenta</strong> del proyecto. Se asigna con el monto ' +
+          'en positivo; el signo lo pone el documento.</div>'
+        : '<div class="aviso warn"><strong>Nota crédito sin la factura que corrige.</strong> El sync no ' +
+          'encontró la referencia: hay que decidir a mano de qué proyecto descontarla.</div>';
+    }
+    if ((f.corregidaPor || []).length) {
+      h += '<div class="aviso ' + (anuladaEntera(f) ? 'warn' : 'info') + '">' +
+        (anuladaEntera(f) ? '<strong>Anulada</strong> por ' : 'Corregida por ') +
+        esc(f.corregidaPor.map(function (n) { return n.numero + ' (' + money(n.subtotal) + ')'; }).join(', ')) +
+        (anuladaEntera(f) && (f.asignado > 0.5)
+          ? '. Su reparto sigue vivo: la nota crédito tiene que descontarse de los mismos proyectos.'
+          : '.') + '</div>';
+    }
     if (!f.enMaestro) {
       h += '<div class="aviso warn">Esta factura está registrada en una remisión pero <strong>no está ' +
            'en el maestro</strong>: el sync todavía no la trajo. El saldo no se puede verificar.</div>';
@@ -835,9 +904,13 @@
     h += '</div>';
 
     // ── Mitad 2 · reparto ──
-    h += '<div class="mitad"><h4>Reparto entre proyectos</h4>' +
-      '<p class="h4sub">Cuánto de esta factura le toca a cada proyecto. Suma como máximo el ' +
-        'subtotal sin IVA; el AIU cuenta.</p>';
+    h += f.notaCredito
+      ? '<div class="mitad"><h4>De qué proyectos se descuenta</h4>' +
+        '<p class="h4sub">Normalmente, de los mismos que la factura que corrige. Suma como máximo el ' +
+          'valor de la nota crédito.</p>'
+      : '<div class="mitad"><h4>Reparto entre proyectos</h4>' +
+        '<p class="h4sub">Cuánto de esta factura le toca a cada proyecto. Suma como máximo el ' +
+          'subtotal sin IVA; el AIU cuenta.</p>';
     h += (f.reparto || []).map(function (a) {
       return '<div class="item hecho"><span class="ico">✓</span>' +
         '<span class="cuerpo"><span class="t">' + linkProyecto(a.cb, a.cotizacionArchivo, a.proyecto || a.cotizacionArchivo) +
@@ -856,7 +929,8 @@
     } else {
       var props = (sug.propuestas || []);
       h += props.map(function (p, i) {
-        var fuente = p.confianza === 'AMBAS' ? 'nota + remisión'
+        var fuente = p.confianza === 'NOTA_CREDITO' ? 'como en ' + ((p.ref && p.ref.texto) || 'la factura corregida')
+          : p.confianza === 'AMBAS' ? 'nota + remisión'
           : (p.confianza === 'REMISION' ? 'desde la remisión'
             : (p.confianza === 'OTRA_VERSION' ? 'la nota cita otra versión' : 'desde la nota'));
         return '<div class="item sug"><span class="ico">+</span>' +
@@ -871,7 +945,12 @@
           '<button class="btn-mini" data-aplicar="' + i + '">Asignar</button></div>';
       }).join('');
       if (!props.length && !(f.reparto || []).length) {
-        h += '<div class="aviso info">Ni la nota menciona una cotización, ni esta factura está en ' +
+        h += f.notaCredito
+          ? '<div class="aviso info">' + (f.corrigeA
+              ? esc(f.corrigeA) + ' no tiene reparto, así que no hay de qué proyecto descontarla. Si ' +
+                esc(f.corrigeA) + ' tampoco se va a asignar, las dos juntas ya dan cero.'
+              : 'Sin la factura que corrige no hay propuesta: asígnala a mano.') + '</div>'
+          : '<div class="aviso info">Ni la nota menciona una cotización, ni esta factura está en ' +
              'ninguna remisión. Hay que asignarla a mano — es lo normal en anticipos.</div>';
       }
       (sug.sinResolver || []).forEach(function (s) {
@@ -881,7 +960,7 @@
       });
     }
 
-    h += '<div class="saldo"><span>Sin repartir</span><span class="' +
+    h += '<div class="saldo"><span>' + (f.notaCredito ? 'Por descontar' : 'Sin repartir') + '</span><span class="' +
       (Math.abs(f.sinAsignar) < 0.5 ? 'cero' : 'queda') + '">' + money(f.sinAsignar) + '</span></div>';
     h += '<div style="margin-top:9px;"><button class="btn-mini" data-manual="' + esc(f.numero) + '">' +
          'Asignar a otro proyecto…</button></div>';
@@ -1718,6 +1797,11 @@
     PASA_DEL_APROBADO:      'dejaría el proyecto cobrado de más',
     NO_EN_MAESTRO:          'no está en el maestro de facturas',
     RECHAZADA_AL_ESCRIBIR:  'la escritura la rechazó',
+    NOTA_CREDITO:           'es una nota crédito: descuenta, y lo confirma una persona',
+    NC_SIN_REFERENCIA:      'nota crédito sin la factura que corrige',
+    NC_SIN_REPARTO:         'corrige una factura que no se repartió',
+    NC_A_MANO:              'nota crédito parcial sobre varios proyectos',
+    ANULADA_POR_NC:         'la anuló una nota crédito',
   };
 
   function htmlLoteAuto(r) {
@@ -1765,12 +1849,17 @@
                 return '<span class="lote-p">' + esc(p.proyecto || p.cotizacionArchivo) +
                        ' <b>' + money(p.monto + p.montoAiu) + '</b></span>';
               }).join('') +
-              '<button class="btn-mini primario" data-rev-ok="' + i + '">Asignar igual</button>' +
+              '<button class="btn-mini primario" data-rev-ok="' + i + '">' +
+                (f.motivo === 'NOTA_CREDITO' ? 'Descontar' : 'Asignar igual') + '</button>' +
             '</div>' +
-            '<div class="lote-rnum">Dejaría el proyecto en <b>' + money(f.quedaria) +
-              '</b> contra <b>' + money(f.aprobado) + '</b> aprobado' +
-              (f.aprobado > 0 ? ' · ' + money(f.quedaria - f.aprobado) + ' de más' : '') +
-            '</div></div>';
+            // Una NC no "deja el proyecto en" nada contra el aprobado: resta. Se
+            // dice de dónde sale la propuesta, que es lo que hay que confirmar.
+            (f.motivo === 'NOTA_CREDITO'
+              ? '<div class="lote-rnum">' + esc(f.detalle || '') + '</div></div>'
+              : '<div class="lote-rnum">Dejaría el proyecto en <b>' + money(f.quedaria) +
+                  '</b> contra <b>' + money(f.aprobado) + '</b> aprobado' +
+                  (f.aprobado > 0 ? ' · ' + money(f.quedaria - f.aprobado) + ' de más' : '') +
+                '</div></div>');
         }).join('') + '</div>';
     }
 

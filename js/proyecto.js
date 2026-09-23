@@ -629,7 +629,10 @@
                      monto: (Number(a.monto)||0) + (Number(a.montoAiu)||0),
                      aiu: Number(a.montoAiu)||0, kg: Number(a.kgFacturado)||0,
                      fecha: f.fecha || '', dianStatus: f.dianStatus || '',
-                     pdfUrl: f.pdfUrl || '', concepto: a.concepto || 'CONTRATO' });
+                     pdfUrl: f.pdfUrl || '', concepto: a.concepto || 'CONTRATO',
+                     // Una nota crédito se descuenta: se pinta con signo menos,
+                     // igual que ya resta en los totales de arriba.
+                     notaCredito: !!a.notaCredito });
       });
     });
     filas.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
@@ -638,11 +641,12 @@
         ? filas.map(function (f) {
             return '<div class="fld-row"><div class="fld-info">'+
                 '<div class="fld-nombre">'+esc(f.numero)+' · '+esc(f.proyecto||'')+
-                  (f.concepto==='PROVEEDURIA'?' <span class="prov-tag">proveeduría</span>':'')+'</div>'+
+                  (f.concepto==='PROVEEDURIA'?' <span class="prov-tag">proveeduría</span>':'')+
+                  (f.notaCredito?' <span class="prov-tag" style="background:#EDE9FE;color:#5B21B6;">nota crédito</span>':'')+'</div>'+
                 '<div class="fld-meta">'+esc(fechaCorta(f.fecha))+
                   (f.dianStatus==='DIAN_ACEPTADO'?' · aceptada DIAN':(f.dianStatus?' · '+esc(f.dianStatus):''))+
                   (f.kg?' · '+fmtNum(f.kg,0)+' kg':'')+'</div></div>'+
-              '<div style="text-align:right;font-weight:700;font-size:0.82rem;">'+fmtMoney(f.monto)+
+              '<div style="text-align:right;font-weight:700;font-size:0.82rem;">'+(f.notaCredito?'−':'')+fmtMoney(f.monto)+
                 (f.aiu?'<div class="fld-meta">AIU '+fmtMoney(f.aiu)+'</div>':'')+'</div>'+
               (f.pdfUrl
                 ? '<a class="fld-btn link" target="_blank" rel="noopener" href="'+esc(f.pdfUrl)+'">PDF</a>' : '')+
