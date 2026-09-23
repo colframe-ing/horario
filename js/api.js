@@ -220,6 +220,11 @@ async function apiCotizVincular(token, archivo, carpetaId, accion) {
 async function apiProdColaGet(token) {
   return apiCall('prod_cola_get', { token });
 }
+// Los accesorios que pide lo que se produce en [desde, hasta] (YYYY-MM-DD).
+// Materiales, unidades y cobertura en una sola respuesta. PLAN_MATERIALES.md §4.
+async function apiProdMaterialesVentana(token, desde, hasta) {
+  return apiCall('prod_materiales_ventana', { token, desde, hasta });
+}
 async function apiProdColaReordenar(token, orden) {
   return apiCall('prod_cola_reordenar', { token, orden });
 }

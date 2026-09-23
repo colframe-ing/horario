@@ -37,7 +37,7 @@ const TIMEOUT_MS = 4000;
 const STATIC = [
   './', './index.html', './app.html', './admin.html', './produccion.html', './cotizaciones.html', './programacion.html', './proyecto.html', './remisiones.html', './facturacion.html',
   './css/styles.css',
-  './js/config.js', './js/api.js', './js/geo.js', './js/app.js', './js/admin.js', './js/produccion.js', './js/cotizaciones.js', './js/programacion.js', './js/proyecto.js', './js/remisiones.js', './js/facturacion.js',
+  './js/config.js', './js/api.js', './js/geo.js', './js/app.js', './js/admin.js', './js/produccion.js', './js/cotizaciones.js', './js/programacion.js', './js/materiales.js', './js/proyecto.js', './js/remisiones.js', './js/facturacion.js',
   './manifest.json',
 ];
 // Los recursos externos van aparte: cache.addAll es todo-o-nada, así que si

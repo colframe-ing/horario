@@ -127,6 +127,39 @@
     .cola-card[open] > summary { margin-bottom:4px; }
     .cola-card > summary::before { content:'▸'; margin-right:6px; color:var(--cf-gray-text); font-size:0.7rem; }
     .cola-card[open] > summary::before { content:'▾'; }
+
+    /* ── Materiales para producir ── */
+    .mat-intro { font-size:0.72rem; color:var(--cf-gray-text); margin:6px 0 10px; line-height:1.4; }
+    .mat-barra { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:12px; }
+    .mat-chip { border:1.5px solid var(--cf-gray-mid); background:#fff; border-radius:999px; padding:5px 11px;
+      font-size:0.74rem; font-weight:700; color:var(--cf-gray-text); cursor:pointer; font-family:inherit; }
+    .mat-chip[aria-pressed="true"] { border-color:var(--cf-blue); color:var(--cf-blue); background:#EFF6FF; }
+    .mat-rango { display:flex; gap:6px; align-items:center; font-size:0.74rem; color:var(--cf-gray-text); }
+    .mat-rango input { padding:4px 6px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.74rem; font-family:inherit; }
+    .mat-cob { font-size:0.8rem; line-height:1.45; padding:9px 12px; border-radius:8px; margin-bottom:8px; }
+    .mat-cob.ok { background:#ECFDF5; color:#065F46; }
+    .mat-cob.mal { background:#FEF2F2; color:#991B1B; }
+    .mat-cob.aviso { background:#FFFBEB; color:#92400E; }
+    .mat-cob.vacio { background:var(--cf-gray); color:var(--cf-gray-text); }
+    .mat-tabla-wrap { overflow-x:auto; }
+    .mat-tabla { width:100%; border-collapse:collapse; font-size:0.8rem; }
+    .mat-tabla th { text-align:left; font-size:0.66rem; text-transform:uppercase; letter-spacing:0.03em;
+      color:var(--cf-gray-text); padding:6px 8px; border-bottom:2px solid var(--cf-gray-mid); }
+    .mat-tabla td { padding:7px 8px; border-bottom:1px solid var(--cf-gray-mid); vertical-align:top; }
+    .mat-tabla .n { text-align:right; white-space:nowrap; }
+    .mat-tabla .cod { font-weight:700; white-space:nowrap; }
+    .mat-tabla tr.cero td { color:var(--cf-gray-text); }
+    .mat-tabla .und { font-size:0.7rem; color:var(--cf-gray-text); font-weight:400; }
+    .mat-frec { color:#D97706; }
+    .mat-alerta { font-size:0.7rem; color:#B45309; font-weight:700; }
+    .mat-sinmap { font-size:0.62rem; font-weight:800; color:#fff; background:#DC2626; padding:1px 6px; border-radius:999px; }
+    .mat-avance { font-size:0.62rem; font-weight:800; color:#fff; background:#0891B2; padding:1px 6px; border-radius:999px; }
+    .mat-tabla td.fuente { font-size:0.72rem; }
+    .mat-tabla td.fuente.accesorios { color:#B45309; }
+    .mat-tabla td.fuente.rota, .mat-tabla td.fuente.ninguna, .mat-tabla td.fuente.sin_maestro { color:#DC2626; font-weight:700; }
+    .mat-unidades { margin-top:12px; }
+    .mat-unidades > summary { cursor:pointer; font-size:0.76rem; font-weight:700; color:var(--cf-blue); margin-bottom:6px; }
+    .mat-notas { font-size:0.7rem; color:var(--cf-gray-text); margin:12px 0 0; padding-left:18px; line-height:1.5; }
   </style>
 </head>
 <body>
@@ -215,6 +248,28 @@
         <div style="text-align:center;padding:20px;color:var(--cf-gray-text);font-size:0.85rem;">Cargando…</div>
       </div>
     </div>
+
+    <!-- Materiales para producir (PLAN_MATERIALES.md). Cerrada de entrada: lee el
+         maestro de cotizaciones entero, y se calcula solo al abrirla. -->
+    <details class="cola-card" id="materialesCard">
+      <summary style="justify-content:flex-start;font-size:0.82rem;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;color:var(--cf-dark);">
+        <span>Materiales para producir <span id="matResumen" class="sec-resumen"></span></span>
+      </summary>
+      <p class="mat-intro">Los accesorios —remaches, holddowns, anclajes, tornillos— que pide lo que el cronograma
+        produce en la ventana. Sale de las cotizaciones de la cola.</p>
+      <div class="mat-barra">
+        <button class="mat-chip" data-mat="mes_siguiente" aria-pressed="true">Mes siguiente</button>
+        <button class="mat-chip" data-mat="este_mes" aria-pressed="false">Este mes</button>
+        <button class="mat-chip" data-mat="prox30" aria-pressed="false">Próximos 30 días</button>
+        <span class="mat-rango">
+          <input id="matDesde" type="date" aria-label="Desde"> →
+          <input id="matHasta" type="date" aria-label="Hasta">
+          <button id="matConsultar" class="btn btn-dark btn-sm">Calcular</button>
+        </span>
+        <button id="matCsv" class="btn btn-ghost btn-sm" disabled title="Para quien compra">⬇ CSV</button>
+      </div>
+      <div id="matCuerpo"></div>
+    </details>
 
     <!-- Aprobados sin cola (backlog) -->
     <div class="cola-card backlog" id="backlogCard" style="display:none;">
@@ -437,5 +492,6 @@
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/programacion.js"></script>
+  <script src="js/materiales.js"></script>
 </body>
 </html>
