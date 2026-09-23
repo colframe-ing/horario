@@ -893,33 +893,156 @@
   //
   // Un REPORTE, no una tarea: se mira, no se opera. Por eso es una tabla densa
   // con totales y no una lista de tarjetas con botones.
+  // ── El cierre de cobro, en pantalla ─────────────────────────────────────
+  //
+  // Cerrar es decir "este proyecto ya terminó de cobrarse, y la diferencia fue
+  // por esto". Lo cerrado sale de las ALERTAS de esta vista pero no se pierde:
+  // la pestaña "Cerrados" es el lugar donde queda anotado cuánto se facturó
+  // distinto a la cotización, y por qué.
+
+  /** Abiertos, cerrados o todos. FUNCIÓN PURA. */
+  function filtrarPorCierre(lista, f) {
+    return (lista || []).filter(function (c) {
+      if (f === 'cerrados') return !!c.cierre;
+      if (f === 'abiertos') return !c.cierre;
+      return true;
+    });
+  }
+
+  /**
+   * El resumen de las diferencias cerradas: cuántas, cuánto de más, cuánto de
+   * menos, y por motivo. Es la respuesta a "¿cuánto se desvía la facturación
+   * final de lo cotizado, y por qué?". FUNCIÓN PURA.
+   */
+  function resumenCierres(lista, motivos) {
+    var out = { n: 0, deMas: 0, deMenos: 0, porMotivo: [] };
+    var idx = {};
+    (lista || []).forEach(function (c) {
+      if (!c.cierre) return;
+      var d = Number(c.cierre.diferencia) || 0;
+      out.n++;
+      if (d > 0) out.deMas += d; else out.deMenos += -d;
+      var m = c.cierre.motivo || 'OTRO';
+      if (!idx[m]) {
+        idx[m] = { motivo: m, etiqueta: (motivos || {})[m] || m, n: 0, suma: 0 };
+        out.porMotivo.push(idx[m]);
+      }
+      idx[m].n++;
+      idx[m].suma += d;
+    });
+    var r2 = function (n) { return Math.round(n * 100) / 100; };
+    out.deMas = r2(out.deMas); out.deMenos = r2(out.deMenos);
+    out.porMotivo.forEach(function (x) { x.suma = r2(x.suma); });
+    out.porMotivo.sort(function (a, b) { return b.n - a.n || a.etiqueta.localeCompare(b.etiqueta); });
+    return out;
+  }
+
+  /**
+   * El espejo en pantalla de `_factValidarCierre`: las mismas cuatro reglas, para
+   * decirlas ANTES de enviar. Quien decide sigue siendo el servidor. FUNCIÓN PURA.
+   */
+  function validarCierreLocal(ev, motivo, nota, motivos, umbral) {
+    if (!motivo || !(motivos || {})[motivo]) return 'Elige el motivo de la diferencia.';
+    if ((motivo === 'OTRO' || motivo === 'REDUCIDO') && !String(nota || '').trim()) {
+      return 'Con este motivo hay que escribir una nota.';
+    }
+    if (!ev.todoDespachado && motivo !== 'REDUCIDO') {
+      return 'Todavía hay material sin despachar: lo cobrado puede ser un anticipo. ' +
+             'Solo se puede cerrar como "' + (motivos.REDUCIDO || 'reducido o cancelado') + '".';
+    }
+    if (motivo === 'AJUSTE_PESO' && !ev.cuadra) {
+      return 'La diferencia pasa del ' + String((umbral || 0.005) * 100).replace('.', ',') +
+             ' %: no es un ajuste al peso.';
+    }
+    return null;
+  }
+
+  /** La diferencia con signo y su porcentaje: "+$1.970.401 (2,2 %)". */
+  function difTxt(dif, pct) {
+    var d = Number(dif) || 0;
+    if (Math.abs(d) < 0.5) return 'sin diferencia';
+    // Un porcentaje que redondea a cero con una diferencia real no es "0 %":
+    // $861 sobre 39,6 millones es 0,002 %, y decir 0 % sonaría a que cuadra exacto.
+    var pctTxt = pct == null ? ''
+      : (Math.abs(pct) < 0.01 ? ' (menos de 0,01 %)' : ' (' + String(Math.abs(pct)).replace('.', ',') + ' %)');
+    return (d > 0 ? '+' : '−') + money(Math.abs(d)) + pctTxt;
+  }
+
+  var filtroProy = 'abiertos';
+
   function vistaProyecto() {
-    var lista = (_datos.cotizaciones || []), tot = _datos.totales || {};
-    if (!lista.length) return '<div class="vacio">No hay cotizaciones aprobadas con movimiento.</div>';
+    var todas = (_datos.cotizaciones || []), tot = _datos.totales || {};
+    if (!todas.length) return '<div class="vacio">No hay cotizaciones aprobadas con movimiento.</div>';
+    var motivos = _datos.motivosCierre || {};
+    var nCerr = todas.filter(function (c) { return !!c.cierre; }).length;
 
     var h = '<div class="fact-cortes">' +
       corte('a', 'Aprobado', money(tot.valorAprobado), 'de las cotizaciones aprobadas') +
       corte('b', 'Facturado', money(tot.facturado),
             tot.aiu > 0 ? 'incluye ' + money(tot.aiu) + ' de AIU' : 'sin AIU registrado') +
+      // "Por facturar" es de los ABIERTOS. Lo cerrado con faltante ya está
+      // explicado y no es plata por cobrar; se nombra para que no desaparezca.
       corte('c', 'Por facturar', money(tot.pendiente),
-            tot.facturadoDeMas > 0 ? '⚠ ' + money(tot.facturadoDeMas) + ' cobrado de más' : 'lo que falta cobrar') +
+            tot.facturadoDeMas > 0 ? '⚠ ' + money(tot.facturadoDeMas) + ' cobrado de más'
+              : (tot.faltanteCerrado > 0 ? 'sin contar ' + money(tot.faltanteCerrado) + ' de cobros cerrados'
+                                         : 'lo que falta cobrar')) +
       '</div>';
 
+    h += '<div class="barra-f">' +
+      [['abiertos', 'Abiertos', todas.length - nCerr], ['cerrados', 'Cerrados', nCerr], ['todos', 'Todos', todas.length]]
+        .map(function (x) {
+          return '<button class="fchip" data-fp="' + x[0] + '" aria-pressed="' + (filtroProy === x[0]) + '">' +
+                 x[1] + ' <span class="n-chip">' + x[2] + '</span></button>';
+        }).join('') +
+      // Un clic muestra el plan; el segundo lo escribe. Igual que las otras dos.
+      '<button class="btn-auto" data-cerrarlote="1">Cerrar las que cuadran…</button>' +
+      '</div>';
+
+    var lista = filtrarPorCierre(todas, filtroProy);
+
+    // LO QUE QUEDA ANOTADO. En "Cerrados", arriba de la tabla, cuánto se
+    // facturó distinto a lo cotizado y por qué — que es para lo que existe.
+    if (filtroProy === 'cerrados') {
+      var rc = resumenCierres(lista, motivos);
+      h += '<div class="resumen-cierres">' +
+        (rc.n
+          ? '<strong>' + rc.n + (rc.n === 1 ? ' cobro cerrado' : ' cobros cerrados') + '</strong>' +
+            (rc.deMas ? ' · <span class="mal">+' + money(rc.deMas) + '</span> facturado de más' : '') +
+            (rc.deMenos ? ' · <span class="neg">−' + money(rc.deMenos) + '</span> de menos' : '') +
+            ' respecto a la cotización.' +
+            '<div class="por-motivo">' + rc.porMotivo.map(function (m) {
+              return '<span class="pm">' + esc(m.etiqueta) + ' <b>' + m.n + '</b>' +
+                (Math.abs(m.suma) >= 0.5 ? ' · ' + difTxt(m.suma, null) : '') + '</span>';
+            }).join('') + '</div>'
+          : 'Todavía no hay cobros cerrados. Se cierran desde la pestaña <em>Abiertos</em>.') +
+        '</div>';
+    }
+    if (!lista.length) {
+      return h + '<div class="vacio">' + (filtroProy === 'abiertos'
+        ? 'No queda ningún cobro abierto.' : 'Nada con este filtro.') + '</div>';
+    }
+
     var filas = lista.slice().sort(ordenPorProyecto).map(function (c) {
-      var r = c.resumen;
+      var r = c.resumen, ci = c.cierre;
       var chips = '';
       // El AIU mixto se marca, no se corrige: si en la misma cotización unas
       // facturas lo cobran y otras no, la comparación deja de ser limpia.
       // Estimar el faltante sería inventar un cobro.
       if (r.aiuMixto) chips += ' <span class="estado warn" title="Unas facturas de esta cotización cobran AIU y otras no">AIU mixto</span>';
-      var pend = r.facturadoDeMas > 0
-        ? '<span class="mal">+' + money(r.facturadoDeMas) + '</span>'
-        : (r.pendiente > 0 ? '<span class="neg">' + money(r.pendiente) + '</span>' : '<span class="ok">—</span>');
       // La proveeduría se marca en la fila: que un proyecto tenga cobros que no
       // salen de su cotización es justo lo que antes no se veía.
       if (r.adicional > 0) {
         chips += ' <span class="estado prov" title="Cobros que no salen de la cotización de acero">' +
                  'con proveeduría</span>';
+      }
+      var pend;
+      if (ci) {
+        // Cerrado: la diferencia ya está explicada. Se muestra en gris, no como alerta.
+        pend = '<span class="cerr-dif">' + esc(difTxt(ci.diferencia, null)) + '</span>';
+      } else {
+        pend = r.facturadoDeMas > 0
+          ? '<span class="mal">+' + money(r.facturadoDeMas) + '</span>'
+          : (r.pendiente > 0 ? '<span class="neg">' + money(r.pendiente) + '</span>' : '<span class="ok">—</span>');
       }
       // REGISTRADA NO ES REPARTIDA. La remisión ya dice bajo qué factura salió,
       // pero "Facturado" solo cuenta la plata asignada — una factura puede cubrir
@@ -927,14 +1050,33 @@
       // la fila decía $0 como si nadie la hubiera facturado, y lo que faltaba
       // era solo el monto (SALON CESAR, 22-sep). Ver `_factFacturasDeRemisiones`.
       var porRep = c.porRepartir || [];
-      var repTxt = porRep.length
+      var repTxt = (porRep.length && !ci)
         ? '<div class="sin-rep" title="Registrada en una remisión de este proyecto, pero sin monto asignado a él">' +
             esc(porRep.join(', ')) + (porRep.length === 1 ? ' registrada' : ' registradas') +
             ' · falta el monto</div>'
         : '';
-      return '<tr>' +
+      var lineaCierre = ci
+        ? '<div class="cerr-linea" title="' + esc(ci.nota || '') + '">✓ Cobro cerrado · ' +
+            esc(motivos[ci.motivo] || ci.motivo) + ' · ' + esc(fecha10(ci.cerradoTs)) +
+            (ci.cerradoPorNombre ? ' · ' + esc(ci.cerradoPorNombre) : '') +
+            (ci.nota ? '<div class="cerr-nota">' + esc(ci.nota) + '</div>' : '') +
+            (ci.cambioDespues ? '<div class="sin-rep">⚠ lo facturado cambió después del cierre: revísalo</div>' : '') +
+          '</div>'
+        : '';
+      var acciones = ci
+        ? '<button class="btn-mini" data-reabrir="' + esc(ci.cierreId) + '" ' +
+            'data-proy="' + esc(c.proyecto || c.archivo) + '">Reabrir</button>'
+        // Con una factura por repartir, el botón ya la trae: el modal abre con el
+        // número puesto y el monto sugerido con su razón al lado.
+        : '<button class="btn-mini' + (porRep.length ? ' primario' : '') + '" data-asignar="' + esc(c.archivo) + '" ' +
+            'data-proy="' + esc(c.proyecto || c.archivo) + '"' +
+            (porRep.length ? ' data-factura="' + esc(porRep[0]) + '"' : '') + '>' +
+            (porRep.length ? 'Asignar ' + esc(porRep[0]) : 'Asignar') + '</button>' +
+          '<button class="btn-mini" data-cerrar="' + esc(c.archivo) + '">Cerrar cobro</button>';
+      return '<tr' + (ci ? ' class="cerrada"' : '') + '>' +
         '<td>' + linkProyecto(c.cb, c.archivo, c.proyecto || c.archivo, 'proy') + chips +
-          '<div class="cbv">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') + ' · ' + esc(c.estado) + '</div></td>' +
+          '<div class="cbv">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') + ' · ' + esc(c.estado) + '</div>' +
+          lineaCierre + '</td>' +
         '<td class="n">' + money(r.valorAprobado) + '</td>' +
         '<td class="n">' + money(r.facturado) + (r.aiu > 0 ? '<div class="cbv">AIU ' + money(r.aiu) + '</div>' : '') + repTxt + '</td>' +
         '<td class="n">' + pend + '</td>' +
@@ -947,12 +1089,7 @@
           : '—') + '</td>' +
         '<td class="n">' + (r.expuesto > 0 ? '<span class="neg">' + money(r.expuesto) + '</span>' : '—') + '</td>' +
         '<td class="n">' + num(r.unidadesDespachadas) + '/' + num(r.unidades) + '</td>' +
-        // Con una factura por repartir, el botón ya la trae: el modal abre con el
-        // número puesto y el monto sugerido con su razón al lado.
-        '<td><button class="btn-mini' + (porRep.length ? ' primario' : '') + '" data-asignar="' + esc(c.archivo) + '" ' +
-          'data-proy="' + esc(c.proyecto || c.archivo) + '"' +
-          (porRep.length ? ' data-factura="' + esc(porRep[0]) + '"' : '') + '>' +
-          (porRep.length ? 'Asignar ' + esc(porRep[0]) : 'Asignar') + '</button></td></tr>';
+        '<td class="acc">' + acciones + '</td></tr>';
     }).join('');
 
     // LAS CABECERAS AGRUPADAS EN DOS BLOQUES, y esa raya es el punto entero de
@@ -964,15 +1101,17 @@
         '<th></th><th class="g1" colspan="3">Del contrato</th>' +
         '<th class="g2">Adicional</th><th colspan="3"></th></tr>' +
       '<tr><th>Proyecto</th><th class="g1">Aprobado</th><th class="g1">Facturado</th>' +
-      '<th class="g1">Por facturar</th><th class="g2">Proveeduría</th>' +
+      '<th class="g1">' + (filtroProy === 'cerrados' ? 'Diferencia' : 'Por facturar') + '</th>' +
+      '<th class="g2">Proveeduría</th>' +
       '<th>Cobrado sin salir</th><th>Despachado</th><th></th></tr></thead>' +
       '<tbody>' + filas + '</tbody>' +
-      '<tfoot><tr><td>Total</td><td class="n">' + money(tot.valorAprobado) + '</td>' +
-      '<td class="n">' + money(tot.facturado) + '</td>' +
-      '<td class="n">' + (tot.facturadoDeMas > 0 ? '<span class="mal">+' + money(tot.facturadoDeMas) + '</span> / ' : '') +
-        money(tot.pendiente) + '</td>' +
-      '<td class="n">' + (tot.adicional > 0 ? money(tot.adicional) : '—') + '</td>' +
-      '<td class="n">' + money(tot.expuesto) + '</td><td></td><td></td></tr></tfoot>' +
+      (filtroProy === 'cerrados' ? '' :
+        '<tfoot><tr><td>Total</td><td class="n">' + money(tot.valorAprobado) + '</td>' +
+        '<td class="n">' + money(tot.facturado) + '</td>' +
+        '<td class="n">' + (tot.facturadoDeMas > 0 ? '<span class="mal">+' + money(tot.facturadoDeMas) + '</span> / ' : '') +
+          money(tot.pendiente) + '</td>' +
+        '<td class="n">' + (tot.adicional > 0 ? money(tot.adicional) : '—') + '</td>' +
+        '<td class="n">' + money(tot.expuesto) + '</td><td></td><td></td></tr></tfoot>') +
       '</table></div>';
 
     if (tot.adicional > 0) {
@@ -982,11 +1121,125 @@
         'peor que dejarlo sin comparar. Se muestra junto al contrato y nunca sumado con él.</p>';
     }
     h += '<p class="leyenda"><strong>Cobrado sin salir</strong> es plata que ya se facturó y cuyo material ' +
-      'todavía no ha salido de la planta: anticipos y actas de obra. No es un error — es lo que la empresa ' +
-      'debe entregar. Vive aquí, junto al proyecto que le da contexto, y no en los cortes generales.</p>' +
+      'todavía no ha salido de la planta: anticipos y actas de obra. Solo cuenta hasta el valor aprobado: ' +
+      'lo facturado por encima de la cotización es <em>de más</em>, no un anticipo.</p>' +
+      '<p class="leyenda"><strong>Cerrar el cobro</strong> es decir que el proyecto ya terminó de cobrarse y ' +
+      'por qué la factura final no coincidió con la cotización. Sale de las alertas y queda anotado en ' +
+      '<em>Cerrados</em>. Una diferencia de hasta el ' +
+      String((_datos.umbralCierre || 0.005) * 100).replace('.', ',') + ' % se considera ajuste al peso.</p>' +
       (tot.conAiuMixto ? '<p class="leyenda">⚠ ' + tot.conAiuMixto +
         ' cotización(es) con AIU mixto: unas facturas lo cobran y otras no.</p>' : '');
     return h;
+  }
+
+  /** YYYY-MM-DD de un timestamp, sin hora. */
+  function fecha10(ts) { return String(ts || '').substring(0, 10); }
+
+  /** El formulario de cerrar el cobro de UNA cotización. */
+  function abrirCerrar(archivo) {
+    if (_datos.cierresHojaFalta) {
+      toast('Falta la hoja de cierres: corre setupRemisiones() en Apps Script.', 'error'); return;
+    }
+    var c = (_datos.cotizaciones || []).filter(function (x) { return x.archivo === archivo; })[0];
+    if (!c) return;
+    var r = c.resumen, ev = c.evaluacion || {};
+    var motivos = _datos.motivosCierre || {};
+    var umbral = _datos.umbralCierre || 0.005;
+    modal('<h4>Cerrar el cobro</h4>' +
+      '<div class="explica"><strong>Cerrar</strong> es decir que <strong>' + esc(c.proyecto || c.archivo) +
+        '</strong> ya terminó de cobrarse, y por qué la factura final no coincidió con la cotización. ' +
+        'Sale de las alertas y queda anotado en <em>Cerrados</em>. Se puede reabrir: queda el rastro.</div>' +
+      '<table class="cierre-num">' +
+        '<tr><td>Aprobado</td><td>' + money(r.valorAprobado) + '</td></tr>' +
+        '<tr><td>Facturado</td><td>' + money(r.facturado) + '</td></tr>' +
+        '<tr class="dif"><td>Diferencia</td><td>' + esc(difTxt(ev.diferencia, ev.pct)) + '</td></tr>' +
+        '<tr><td>Despachado</td><td>' + num(r.unidadesDespachadas) + '/' + num(r.unidades) +
+          (ev.todoDespachado ? '' : ' <span class="neg">— falta material</span>') + '</td></tr>' +
+      '</table>' +
+      (ev.cuadra ? '<div class="ayuda ok">Cabe en el ' + String(umbral * 100).replace('.', ',') +
+                   ' %: es un ajuste al peso.</div>' : '') +
+      '<div class="campo"><label>Motivo de la diferencia</label><select id="cMotivo">' +
+        '<option value="">— elige —</option>' +
+        Object.keys(motivos).map(function (k) {
+          var bloqueado = !ev.todoDespachado && k !== 'REDUCIDO';
+          return '<option value="' + esc(k) + '"' + (ev.sugerido === k ? ' selected' : '') +
+                 (bloqueado ? ' disabled' : '') + '>' + esc(motivos[k]) + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="campo"><label>Nota</label>' +
+        '<textarea id="cNota" maxlength="500" rows="3" placeholder="qué adicional, qué acordó el cliente, qué cambió…"></textarea>' +
+        '<div class="ayuda">Obligatoria con "Otro" y con "Proyecto reducido o cancelado".</div></div>' +
+      '<div id="cErr" class="tope excede"></div>' +
+      '<div class="modal-acciones"><button class="btn btn-sm" id="cCancel">Cancelar</button>' +
+      '<button class="btn btn-sm btn-primary" id="cOk">Cerrar el cobro</button></div>');
+
+    var selM = document.getElementById('cMotivo'), txN = document.getElementById('cNota');
+    var err = document.getElementById('cErr'), btn = document.getElementById('cOk');
+    var revisar = function () {
+      var e = validarCierreLocal(ev, selM.value, txN.value, motivos, umbral);
+      // Solo se muestra el error cuando ya se eligió algo: un formulario que
+      // regaña antes de que lo toquen se aprende a ignorar.
+      err.textContent = selM.value ? (e || '') : '';
+      btn.disabled = !!e;
+    };
+    selM.addEventListener('change', revisar);
+    txN.addEventListener('input', revisar);
+    revisar();
+    document.getElementById('cCancel').onclick = cerrarModal;
+    btn.onclick = function () {
+      btn.disabled = true;
+      apiFacturaCerrar(token, archivo, selM.value, txN.value.trim())
+        .then(function () { cerrarModal(); toast('Cobro cerrado', 'ok'); return refrescar(); })
+        .catch(function (e) { manejarError(e); btn.disabled = false; });
+    };
+  }
+
+  function reabrirCierre(cierreId, proyecto) {
+    pedirMotivo('Reabrir el cobro de ' + proyecto,
+                'El cierre no se borra: queda marcado como reabierto, con el motivo.', 'Reabrir')
+      .then(function (motivo) {
+        if (!motivo) return;
+        return apiFacturaCierreAnular(token, cierreId, motivo)
+          .then(function () { toast('Cobro reabierto', 'ok'); return refrescar(); });
+      })
+      .catch(manejarError);
+  }
+
+  /** "Cerrar las que cuadran": primero el plan, después, si se aprueba, se escribe. */
+  function abrirCerrarLote() {
+    if (_datos.cierresHojaFalta) {
+      toast('Falta la hoja de cierres: corre setupRemisiones() en Apps Script.', 'error'); return;
+    }
+    toast('Buscando las que cuadran…', 'info');
+    apiFacturaCerrarLote(token, false).then(function (r) {
+      var cs = r.candidatas || [];
+      if (!cs.length) {
+        toast('Ninguna cotización despachada y facturada cabe hoy en el ' +
+              String((_datos.umbralCierre || 0.005) * 100).replace('.', ',') + ' %.', 'info');
+        return;
+      }
+      modal('<h4>Cerrar las que cuadran</h4>' +
+        '<p class="hint">Despachadas del todo, con algo facturado, y cuya diferencia con la cotización ' +
+          'cabe en el ' + String((_datos.umbralCierre || 0.005) * 100).replace('.', ',') + ' %. Se cierran ' +
+          'como <strong>ajuste al peso</strong>. Revísalas: cada una se puede reabrir después.</p>' +
+        '<div class="lote-lista">' + cs.map(function (x) {
+          return '<div class="lote-r"><span class="gcb-ref">CB' + esc(x.cb) + (x.version ? '.' + esc(x.version) : '') + '</span> ' +
+            '<strong>' + esc(x.proyecto) + '</strong><div class="cbv">' + money(x.aprobado) + ' aprobado · ' +
+            money(x.facturado) + ' facturado · ' + esc(difTxt(x.diferencia, x.pct)) + '</div></div>';
+        }).join('') + '</div>' +
+        '<div class="modal-acciones"><button class="btn btn-sm" id="lcNo">Cancelar</button>' +
+        '<button class="btn btn-sm btn-primary" id="lcOk">Cerrar ' + cs.length +
+          (cs.length === 1 ? ' cobro' : ' cobros') + '</button></div>');
+      document.getElementById('lcNo').onclick = cerrarModal;
+      document.getElementById('lcOk').onclick = function () {
+        var b = this; b.disabled = true;
+        // El servidor vuelve a medir dentro del lock: la lista no viaja.
+        apiFacturaCerrarLote(token, true).then(function (w) {
+          cerrarModal();
+          toast((w.cerradas || 0) + ((w.cerradas === 1) ? ' cobro cerrado' : ' cobros cerrados'), 'ok');
+          return refrescar();
+        }).catch(function (e) { manejarError(e); b.disabled = false; });
+      };
+    }).catch(manejarError);
   }
 
   /** El backend desplegado es anterior a esta pantalla.
@@ -2202,7 +2455,11 @@
     if ((v = b.getAttribute('data-v'))) {
       vista = v; abierta = null; sugAbierta = null; pintar(); return;
     }
+    if ((n = b.getAttribute('data-fp'))) { filtroProy = n; pintar(); return; }
     if (b.classList.contains('fchip')) { filtro = b.getAttribute('data-f'); pintar(); return; }
+    if ((n = b.getAttribute('data-cerrar'))) { abrirCerrar(n); return; }
+    if ((n = b.getAttribute('data-reabrir'))) { reabrirCierre(n, b.getAttribute('data-proy') || ''); return; }
+    if (b.getAttribute('data-cerrarlote')) { abrirCerrarLote(); return; }
     if (b.getAttribute('data-auto')) { abrirLoteAuto(); return; }
     if (b.getAttribute('data-regauto')) { abrirRegistrarAuto(); return; }
     if (b.getAttribute('data-regauto-ok')) { confirmarRegistrarAuto(b); return; }

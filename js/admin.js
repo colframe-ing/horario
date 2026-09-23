@@ -1691,6 +1691,8 @@
     // que diga "se asignaron ocho" no sirve para deshacer una.
     FACTURA_ASIGNAR_LOTE:       { txt: 'Asignación en lote',         color: '#16A34A', g: 'Facturación' },
     FACTURA_ASIGNACION_ANULAR:  { txt: 'Asignación anulada',         color: '#DC2626', g: 'Facturación' },
+    FACTURA_CIERRE:             { txt: 'Cobro cerrado',              color: '#0E7490', g: 'Facturación' },
+    FACTURA_CIERRE_ANULAR:      { txt: 'Cobro reabierto',            color: '#DC2626', g: 'Facturación' },
     // — Remisiones (hoja AuditoriaRemisiones) —
     REMISION_CREADA:            { txt: 'Remisión creada',            color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_EDITADA:           { txt: 'Remisión editada',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
@@ -1707,6 +1709,8 @@
     REMISION_LIBRO_PENDIENTE:   { txt: 'Libro SIN corregir',          color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_FACTURADA:         { txt: 'Remisión facturada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_DESFACTURADA:      { txt: 'Factura quitada',           color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_ANTIGUA_AGREGADA:  { txt: 'Remisión antigua registrada', color: '#475569', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_ANTIGUA_ANULADA:   { txt: 'Remisión antigua quitada',  color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEMS_AJUSTADOS:   { txt: 'Ítems ajustados',            color: '#D97706', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEM_DIVIDIDO:     { txt: 'Ítem dividido en cajas',     color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEM_CAJAS:        { txt: 'Caja de ítems',              color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },

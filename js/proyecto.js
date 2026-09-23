@@ -250,6 +250,13 @@
       case 'FACTURA_ASIGNAR':      return (d.factura || 'Factura') + ' asignada: ' +
                                           fmtMoney((Number(d.monto) || 0) + (Number(d.aiu) || 0)) + (d.lote ? ' (en lote)' : '');
       case 'FACTURA_ASIGNACION_ANULAR': return 'Se anuló la asignación de ' + (d.factura || 'una factura');
+      case 'FACTURA_CIERRE':       return 'Cobro cerrado' + (d.diferencia ? ' con ' + (d.diferencia > 0 ? '+' : '−') +
+                                          fmtMoney(Math.abs(d.diferencia)) + ' frente a la cotización' : '') +
+                                          (d.nota ? ' — ' + d.nota : '') + (d.lote ? ' (en lote)' : '');
+      case 'FACTURA_CIERRE_ANULAR': return 'Cobro reabierto' + (d.motivo ? ' — ' + d.motivo : '');
+      case 'REMISION_ANTIGUA_AGREGADA': return rm + 'registrada del sistema anterior' +
+                                          (d.fecha ? ' (' + fechaCorta(d.fecha) + ')' : '');
+      case 'REMISION_ANTIGUA_ANULADA':  return rm + 'quitada' + (d.motivo ? ' — ' + d.motivo : '');
       case 'REMISION_CONCILIADA':  return rm + 'conciliada y despachada' + (d.pesoTotalKg ? ' · ' + fmtNum(d.pesoTotalKg, 0) + ' kg' : '');
       case 'REMISION_ESTADO':      return rm + String(d.de || '').toLowerCase().replace('_', ' ') + ' → ' +
                                           String(d.a || '').toLowerCase().replace('_', ' ') + (d.motivo ? ' — ' + d.motivo : '');
@@ -267,6 +274,8 @@
     ENTREGADA:     { txt: 'Entregada',     cls: 'prod' },
     FACTURADA:     { txt: 'Facturada',     cls: 'fin'  },
     ANULADA:       { txt: 'Anulada',       cls: 'anu'  },
+    // Del sistema anterior: solo el número, no hay documento que abrir.
+    ANTIGUA:       { txt: 'Sistema anterior', cls: 'ant' },
   };
 
   /** Una remisión del proyecto. El consecutivo lleva al documento en
@@ -275,13 +284,20 @@
   function filaRemision(rm) {
     var e = ESTADO_REM[rm.estado] || { txt: rm.estado, cls: 'back' };
     var nombre = rm.consecutivo || (rm.estado === 'ANULADA' ? 'Anulada sin número' : 'Borrador');
-    var link = rm.docId
-      ? '<a class="a-doc" target="_blank" rel="noopener" href="remisiones.html?doc=' +
-          encodeURIComponent(rm.docId) + '">' + esc(nombre) + '</a>'
-      : esc(nombre);
+    // Una remisión del sistema anterior no tiene documento aquí: el número va
+    // sin enlace, y en su lugar se puede quitar si se registró mal.
+    var link = rm.antigua
+      ? '<span class="n-ant">' + esc(nombre) + '</span>' +
+        '<div><button class="btn-quitar" data-acc="ant-quitar" data-id="' + esc(rm.antId) + '" ' +
+          'data-num="' + esc(rm.consecutivo) + '">Quitar</button></div>'
+      : (rm.docId
+        ? '<a class="a-doc" target="_blank" rel="noopener" href="remisiones.html?doc=' +
+            encodeURIComponent(rm.docId) + '">' + esc(nombre) + '</a>'
+        : esc(nombre));
     var cotiz = esc(rm.proyecto || '') + (rm.version ? ' <span class="f">v' + esc(rm.version) + '</span>' : '') +
       (rm.envioIdx ? '<div class="f">Envío ' + rm.envioIdx + ' de ' + rm.enviosTotal + '</div>' : '');
-    var destino = [rm.municipio, rm.destinatario].filter(Boolean).map(esc).join(' · ') || '<span class="f">—</span>';
+    var destino = [rm.municipio, rm.destinatario].filter(Boolean).map(esc).join(' · ') ||
+      (rm.antigua && rm.nota ? '<span class="f">' + esc(rm.nota) + '</span>' : '<span class="f">—</span>');
     if (rm.ordenCompra) destino += '<div class="f">OC ' + esc(rm.ordenCompra) + '</div>';
     var factura;
     if (rm.facturaNumero) {
@@ -329,6 +345,9 @@
     // Cobrado del todo: no queda nada por facturar y algo se facturó. El
     // `facturadoDeMas` NO cuenta como completo — es un descuadre, no un logro.
     var todoFact = t.facturado > 0 && t.porFacturar === 0 && !t.facturadoDeMas;
+    // Con el cobro CERRADO en todas las aprobadas, la etapa terminó aunque la
+    // factura final no haya cuadrado al peso: la diferencia ya tiene motivo.
+    var todoCerr = t.aprobadas > 0 && t.cerradas === t.aprobadas;
     var et = [
       { t:'Cotización',  v: t.cotizaciones + (t.cotizaciones===1?' cotización':' cotizaciones'), cls: 'ok' },
       { t:'Aprobación',  v: hayAprob ? t.aprobadas+' aprobada'+(t.aprobadas>1?'s':'') : 'pendiente', cls: hayAprob?'ok':'' },
@@ -337,10 +356,11 @@
       { t:'Despacho',    v: hayDesp ? (t.unidadesDespachadas+'/'+t.unidades+' · '+fmtNum(t.kgDespachado,0)+' kg')
                                     : 'sin despachar',
                          cls: todoDesp?'ok':(hayDesp?'act':'') },
-      { t:'Facturación', v: t.facturado ? (fmtMoney(t.facturado) +
+      { t:'Facturación', v: todoCerr ? fmtMoney(t.facturado) + ' · cobro cerrado'
+                          : (t.facturado ? (fmtMoney(t.facturado) +
                               (t.porFacturar ? ' · faltan '+fmtMoney(t.porFacturar) : ''))
-                            : 'sin facturar',
-                         cls: todoFact?'ok':(t.facturado?'act':'') },
+                            : 'sin facturar'),
+                         cls: (todoFact||todoCerr)?'ok':(t.facturado?'act':'') },
     ];
     return '<div class="hv-etapas">'+et.map(function(e){
       return '<div class="hv-etapa '+e.cls+'"><div class="t">'+esc(e.t)+'</div><div class="v">'+esc(e.v)+'</div></div>';
@@ -399,6 +419,127 @@
               '<div class="sub">'+t.adicionalN+(t.adicionalN===1?' cobro':' cobros')+' aparte del contrato</div></div>'
           : '')+
       '</div>';
+  }
+
+  /** Los envíos de una cotización, para elegir a cuál pertenece la remisión.
+   *  Vacío si la cotización no está partida: la remisión es del proyecto
+   *  completo. FUNCIÓN PURA. */
+  function enviosDeCotizacion(c) {
+    return ((c && c.unidades) || []).filter(function (u) { return u.esEnvio; }).map(function (u) {
+      var s = String(u.uid || ''), k = s.indexOf('#');
+      return { envioId: k < 0 ? '' : s.substring(k + 1),
+               label: 'Envío ' + u.envioIdx + ' de ' + u.enviosTotal + ' · ' + fmtNum(u.mlTotal, 0) + ' ML' };
+    }).filter(function (e) { return e.envioId; });
+  }
+
+  /** El espejo de las reglas de `remAntiguaAgregar`, para decirlas antes de
+   *  enviar. Quien decide sigue siendo el servidor. FUNCIÓN PURA. */
+  function validarAntiguaLocal(v, primera, hoy) {
+    if (!String(v.numero || '').trim()) return 'Escribe el número de la remisión.';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v.fecha || ''))) return 'Pon la fecha de la remisión.';
+    if (hoy && v.fecha > hoy) return 'La fecha no puede ser en el futuro.';
+    if (primera && v.fecha > primera) {
+      return 'Es posterior a la primera remisión de este sistema (' + fechaCorta(primera) +
+             '): esa se hace en Remisiones, con su documento.';
+    }
+    if (!v.cotizacionArchivo) return 'Elige la cotización.';
+    if (v.pesoKg !== '' && v.pesoKg != null && (isNaN(Number(v.pesoKg)) || Number(v.pesoKg) < 0)) {
+      return 'El peso tiene que ser un número positivo.';
+    }
+    return null;
+  }
+
+  // ── El formulario: una capa sencilla, con los estilos de modal del panel ──
+  function abrirCapa(html) {
+    cerrarCapa();
+    var capa = document.createElement('div');
+    capa.id = 'hvCapa';
+    capa.className = 'modal-overlay';
+    capa.innerHTML = '<div class="modal">' + html + '</div>';
+    capa.addEventListener('click', function (e) { if (e.target === capa) cerrarCapa(); });
+    document.body.appendChild(capa);
+    return capa;
+  }
+  function cerrarCapa() { var c = document.getElementById('hvCapa'); if (c) c.remove(); }
+
+  function abrirAntigua() {
+    var cots = (_datos.cotizaciones || []).filter(function (c) { return c.aprobada; });
+    if (!cots.length) { toast('Este proyecto no tiene cotizaciones aprobadas.', 'error'); return; }
+    var primera = _datos.primeraRemisionSistema || '';
+    var hoy = hoyBogota();
+    var tope = primera && primera < hoy ? primera : hoy;
+    var capa = abrirCapa(
+      '<h3 class="capa-t">Remisión del sistema anterior</h3>' +
+      '<p class="capa-x">Para los despachos que se hicieron antes de este sistema. Se registra <strong>solo el ' +
+        'número</strong>, no un documento: cuenta como despacho del proyecto, pero no tiene detalle ni mueve ' +
+        'inventario.' + (primera ? ' Solo fechas hasta el <strong>' + esc(fechaCorta(primera)) +
+        '</strong>, cuando empezó este sistema.' : '') + '</p>' +
+      '<label class="capa-l">Número<input id="aNum" placeholder="RM-0118" autocomplete="off"></label>' +
+      '<label class="capa-l">Fecha<input id="aFec" type="date" max="' + esc(tope) + '"></label>' +
+      '<label class="capa-l">Cotización<select id="aCot">' + cots.map(function (c) {
+        return '<option value="' + esc(c.archivo) + '">' + esc(c.proyecto || c.archivo) +
+               (c.version ? ' (v' + esc(c.version) + ')' : '') + '</option>';
+      }).join('') + '</select></label>' +
+      '<label class="capa-l" id="aEnvL">Envío<select id="aEnv"></select></label>' +
+      '<div class="capa-2"><label class="capa-l">Kg de acero <span class="f">(opcional)</span><input id="aKg" type="number" min="0" step="0.1"></label>' +
+      '<label class="capa-l">Factura <span class="f">(opcional)</span><input id="aFac" placeholder="FE120" autocomplete="off"></label></div>' +
+      '<label class="capa-l">Nota <span class="f">(opcional)</span><input id="aNota" maxlength="300" placeholder="de dónde sale, quién la tiene…"></label>' +
+      '<div id="aErr" class="aviso-rep" style="min-height:1em;"></div>' +
+      '<div class="modal-actions"><button class="btn btn-ghost btn-sm" id="aNo">Cancelar</button>' +
+      '<button class="btn btn-primary btn-sm" id="aSi">Registrar</button></div>');
+
+    var selCot = capa.querySelector('#aCot'), selEnv = capa.querySelector('#aEnv');
+    var pintarEnvios = function () {
+      var c = cots.filter(function (x) { return x.archivo === selCot.value; })[0];
+      var es = enviosDeCotizacion(c);
+      capa.querySelector('#aEnvL').style.display = es.length ? '' : 'none';
+      selEnv.innerHTML = es.map(function (e) {
+        return '<option value="' + esc(e.envioId) + '">' + esc(e.label) + '</option>';
+      }).join('');
+    };
+    selCot.addEventListener('change', pintarEnvios);
+    pintarEnvios();
+    capa.querySelector('#aNum').focus();
+    capa.querySelector('#aNo').onclick = cerrarCapa;
+    capa.querySelector('#aSi').onclick = function () {
+      var btn = this;
+      var v = {
+        numero: capa.querySelector('#aNum').value.trim(), fecha: capa.querySelector('#aFec').value,
+        cotizacionArchivo: selCot.value, envioId: selEnv.value || '',
+        pesoKg: capa.querySelector('#aKg').value, facturaNumero: capa.querySelector('#aFac').value.trim(),
+        nota: capa.querySelector('#aNota').value.trim(),
+      };
+      var e = validarAntiguaLocal(v, primera, hoy);
+      if (e) { capa.querySelector('#aErr').textContent = e; return; }
+      btn.disabled = true;
+      apiRemAntiguaAgregar(token, v).then(function () {
+        cerrarCapa(); toast('Remisión ' + v.numero + ' registrada', 'ok'); return cargar();
+      }).catch(function (err) {
+        btn.disabled = false;
+        if (err && err.tipo === 'auth') { manejarError(err); return; }
+        capa.querySelector('#aErr').textContent = (err && err.message) || 'No se pudo registrar';
+      });
+    };
+  }
+
+  function quitarAntigua(antId, numero) {
+    var capa = abrirCapa(
+      '<h3 class="capa-t">Quitar ' + esc(numero) + '</h3>' +
+      '<p class="capa-x">No se borra: queda marcada como quitada, con el motivo, y deja de contar como despacho.</p>' +
+      '<label class="capa-l">Motivo<input id="qMot" maxlength="300" placeholder="era de otro proyecto, número mal escrito…"></label>' +
+      '<div id="qErr" class="aviso-rep" style="min-height:1em;"></div>' +
+      '<div class="modal-actions"><button class="btn btn-ghost btn-sm" id="qNo">Cancelar</button>' +
+      '<button class="btn btn-primary btn-sm" id="qSi">Quitar</button></div>');
+    capa.querySelector('#qMot').focus();
+    capa.querySelector('#qNo').onclick = cerrarCapa;
+    capa.querySelector('#qSi').onclick = function () {
+      var m = capa.querySelector('#qMot').value.trim();
+      if (!m) { capa.querySelector('#qErr').textContent = 'Escribe por qué se quita.'; return; }
+      var btn = this; btn.disabled = true;
+      apiRemAntiguaAnular(token, antId, m).then(function () {
+        cerrarCapa(); toast(numero + ' quitada', 'ok'); return cargar();
+      }).catch(function (err) { btn.disabled = false; manejarError(err); });
+    };
   }
 
   // Cuánto tardó el proyecto entre cada paso. Ver `cicloDelProyecto`.
@@ -461,14 +602,17 @@
   // ver qué papeles tiene la obra, a dónde fueron ni con qué factura.
   function remisionesHtml(d) {
     var lista = d.remisiones || [];
+    // Para los proyectos despachados ANTES de este sistema: el número de su
+    // remisión vieja, sin crear un documento (ver `remAntiguaAgregar`).
+    var botonAnt = '<button class="btn-ant" data-acc="ant-nueva">+ Remisión del sistema anterior</button>';
     if (!lista.length) {
-      return '<div class="card-sec"><h3>Remisiones (0)</h3>' +
+      return '<div class="card-sec"><div class="sec-top"><h3>Remisiones (0)</h3>' + botonAnt + '</div>' +
         '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Este proyecto todavía no tiene remisiones.</div></div>';
     }
     var vivas = lista.filter(function (r) { return r.estado !== 'ANULADA'; }).length;
-    return '<div class="card-sec"><h3>Remisiones (' + vivas +
+    return '<div class="card-sec"><div class="sec-top"><h3>Remisiones (' + vivas +
         (vivas !== lista.length ? ' · ' + (lista.length - vivas) + ' anulada' + (lista.length - vivas > 1 ? 's' : '') : '') +
-      ')</h3>' +
+      ')</h3>' + botonAnt + '</div>' +
       '<div style="overflow-x:auto;"><table class="cmp-tabla"><thead><tr>' +
         '<th>Remisión</th><th>Fecha</th><th>Estado</th><th>Cotización</th><th>Destino</th>' +
         '<th style="text-align:right;">Peso</th><th>Factura</th>' +
@@ -531,6 +675,17 @@
             ? ' · <span class="prov">+ '+fmtMoney(c.facturacion.adicional)+' de proveeduría</span>' : '')+
         '</div>'
       : '';
+    // El cierre de cobro, si lo tiene: la diferencia con la cotización ya está
+    // explicada, y aquí se dice con qué motivo.
+    if (c.cierre) {
+      var dCi = Number(c.cierre.diferencia) || 0;
+      fact += '<div class="hv-cierre">✓ Cobro cerrado · ' +
+        esc((_datos.motivosCierre || {})[c.cierre.motivo] || c.cierre.motivo) +
+        (Math.abs(dCi) >= 0.5 ? ' · ' + (dCi > 0 ? '+' : '−') + fmtMoney(Math.abs(dCi)) + ' frente a la cotización' : '') +
+        ' · ' + esc(fechaCorta(c.cierre.cerradoTs)) +
+        (c.cierre.nota ? '<div class="hv-nota" style="color:#0E7490;">' + esc(c.cierre.nota) + '</div>' : '') +
+        '</div>';
+    }
 
     var unidades = (c.unidades || []).length
       ? '<h4 class="sub-h">Producción y despacho</h4>'+
@@ -767,6 +922,8 @@
         if (sec) { var tmp = document.createElement('div'); tmp.innerHTML = historiaHtml(_datos); sec.parentNode.replaceChild(tmp.firstChild, sec); }
         return;
       }
+      if (el.dataset.acc === 'ant-nueva') { abrirAntigua(); return; }
+      if (el.dataset.acc === 'ant-quitar') { quitarAntigua(el.dataset.id, el.dataset.num || ''); return; }
       if (el.dataset.acc === 'toggle') toggle(i);
       else if (el.dataset.acc === 'link' || el.dataset.acc === 'unlink') vincular(i, el.dataset.carpeta, el.dataset.acc, el);
     });

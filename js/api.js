@@ -272,6 +272,15 @@ async function apiProdAnomaliasList(token) {
 }
 
 // ── Hoja de vida del proyecto (agrupado por consecutivo CB) ──────────────────
+// Remisiones del sistema anterior: solo el número, sin documento (ver
+// remAntiguaAgregar). `datos` = { numero, fecha, cotizacionArchivo, envioId,
+// pesoKg, facturaNumero, nota }.
+async function apiRemAntiguaAgregar(token, datos) {
+  return apiCall('remision_antigua_agregar', Object.assign({ token }, datos));
+}
+async function apiRemAntiguaAnular(token, antId, motivo) {
+  return apiCall('remision_antigua_anular', { token, antId, motivo });
+}
 async function apiProyectoHojaVida(token, cb) {
   return apiCall('proyecto_hoja_vida', { token, cb });
 }
@@ -444,4 +453,18 @@ async function apiFacturaSugerencias(token, facturaNumero) {
 // desde acá sería dejar que el navegador decida contra qué proyecto se cobra.
 async function apiFacturaAsignarLote(token, numeros, confirmar) {
   return apiCall('factura_asignar_lote', { token, numeros, confirmar: !!confirmar });
+}
+// Cierre de cobro de una cotización: "ya terminó de cobrarse, y la diferencia
+// fue por esto". El servidor recalcula los números; del cliente solo viajan el
+// archivo, el motivo y la nota.
+async function apiFacturaCerrar(token, cotizacionArchivo, motivo, nota) {
+  return apiCall('factura_cerrar', { token, cotizacionArchivo, motivo, nota });
+}
+async function apiFacturaCierreAnular(token, cierreId, motivo) {
+  return apiCall('factura_cierre_anular', { token, cierreId, motivo });
+}
+// "Cerrar las que cuadran". Sin `confirmar` es un simulacro, igual que el lote
+// de asignar: el servidor vuelve a medir al escribir.
+async function apiFacturaCerrarLote(token, confirmar) {
+  return apiCall('factura_cerrar_lote', { token, confirmar: !!confirmar });
 }
