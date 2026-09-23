@@ -741,8 +741,22 @@
     }).slice(0, 8);
   }
 
+  /**
+   * El número de una factura en su forma única: `fe 350`, `FE-0350` → `FE350`.
+   * Es el espejo EXACTO de `_factNormNumero` del backend (R9-01): lo que el
+   * servidor ya encuentra, la pantalla lo tiene que encontrar igual, o el tope
+   * en vivo diría "no está en el maestro" de una factura que sí está.
+   * FUNCIÓN PURA.
+   */
+  function normNumero(n) {
+    var s = String(n == null ? '' : n).toUpperCase().replace(/\s+/g, '');
+    var m = /^([A-Z]+)-?0*(\d+)$/.exec(s);
+    return m ? m[1] + String(parseInt(m[2], 10)) : s;
+  }
+
   function facturaPorNumero(n) {
-    return ((_datos && _datos.facturas) || []).filter(function (x) { return x.numero === n; })[0] || null;
+    var k = normNumero(n);
+    return ((_datos && _datos.facturas) || []).filter(function (x) { return normNumero(x.numero) === k; })[0] || null;
   }
 
   /** ¿Las notas crédito que la corrigen suman su subtotal entero? FUNCIÓN PURA. */
@@ -2141,12 +2155,10 @@
    * remisiones de otro proyecto, eso se dice antes y no después.
    */
   function fichaFactura(numero, archivos) {
-    var n = String(numero || '').trim().toUpperCase();
+    var n = normNumero(numero);
     if (!n) return '';
 
-    var f = (_datos.facturas || []).filter(function (x) {
-      return String(x.numero).toUpperCase() === n;
-    })[0];
+    var f = facturaPorNumero(n);
 
     if (!f) {
       // No es un error: una factura recién emitida puede no estar en el maestro
@@ -2587,12 +2599,7 @@
     var campoNum   = document.getElementById('aNumero');
 
     /** La factura que se está tecleando, del maestro que ya está en memoria. */
-    var facturaActual = function () {
-      var n = campoNum.value.trim().toUpperCase();
-      return (_datos.facturas || []).filter(function (x) {
-        return String(x.numero).toUpperCase() === n;
-      })[0] || null;
-    };
+    var facturaActual = function () { return facturaPorNumero(campoNum.value); };
 
     /** Rellena el monto SOLO si el campo está vacío o trae una sugerencia
      *  anterior: lo que alguien escribió a mano no se pisa. */
