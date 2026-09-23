@@ -653,7 +653,13 @@
             (x.totalUnidades>1 ? ' ('+x.unidades+' de '+x.totalUnidades+' envíos)' : '')+
             (x.finalizadas ? ' · '+x.finalizadas+' ya finalizado(s)' : '')+ sug +'</div>'+
         '</div>'+
-        '<a class="cola-toggle-btn" href="cotizaciones.html?archivo='+encodeURIComponent(x.archivo)+'" target="_blank" rel="noopener" title="Abrir esta cotización para vincular su carpeta de producción">Vincular →</a>'+
+        // Directo a la hoja de vida con la cotización abierta, que es donde se
+        // vincula desde el 22-sep. `cotizaciones.html?archivo=` sigue sirviendo
+        // —rebota hasta aquí— pero con el CB a mano no hace falta el rebote.
+        '<a class="cola-toggle-btn" href="'+(x.consecutivo
+            ? 'proyecto.html?cb='+encodeURIComponent(x.consecutivo)+'&archivo='+encodeURIComponent(x.archivo)
+            : 'cotizaciones.html?archivo='+encodeURIComponent(x.archivo))+
+          '" target="_blank" rel="noopener" title="Abrir esta cotización para vincular su carpeta de producción">Vincular →</a>'+
         '</div>';
       }).join('');
 

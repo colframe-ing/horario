@@ -161,10 +161,7 @@
     }
     registrosRender = rowsFil;
     bodyRegistros.innerHTML = rowsFil.map((r, i) => {
-      const porAdmin = r.marcadoPor && r.marcadoPor !== 'OPERARIO';
-      const adminBadge = porAdmin
-        ? '<span style="font-size:0.65rem;background:#EDE9FE;color:#7C3AED;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:700;">ADMIN</span>'
-        : '';
+      const adminBadge = badgeOrigen(origenMarcacion(r.marcadoPor));
       return `
       <tr>
         <td><strong>${esc(r.nombre)}</strong>${adminBadge}</td>
@@ -1993,6 +1990,53 @@
   // esc: escapar HTML antes de insertar en innerHTML.
   // SIEMPRE usar para datos que vienen del backend (nombres, cédulas, etc.)
   // para prevenir XSS si algún dato contiene < > & "
+  /**
+   * R8-04 — QUIÉN REGISTRÓ ESTA MARCACIÓN. Tres casos, no dos.
+   *
+   * `Registros.marcadoPor` guarda exactamente tres valores (Code.gs,
+   * `_marcarRegistrar`):
+   *
+   *   OPERARIO         marcó él, en el momento, desde su celular
+   *   OPERARIO:AJUSTE  ÉL MISMO corrigió una salida que se le olvidó
+   *   ADMIN:<cédula>   un admin marcó por él desde este panel
+   *
+   * Esta pantalla pintaba `!== 'OPERARIO'`, así que rotulaba **ADMIN** la
+   * autocorrección del operario: acusaba al panel de una marcación que nadie
+   * del panel tocó. La pantalla del operario ya lo hacía bien —`handleHistorial`
+   * usa `.startsWith('ADMIN')`— o sea que los dos lectores de la misma columna
+   * no estaban de acuerdo, y el que se equivocaba era el que ve el admin.
+   *
+   * Se separan en vez de solo arreglar el `startsWith` porque las dos cosas SÍ
+   * valen la pena verse, y no son la misma: una dice "otra persona registró
+   * esto" y la otra "él lo registró tarde". Para revisar asistencia esa
+   * diferencia es justo la que importa.
+   *
+   * La única fuente de verdad de si fue un admin es la auditoría: marcar por
+   * otro escribe `MARCACION_ADMIN`, y autocorregirse no escribe nada ahí.
+   */
+  function origenMarcacion(marcadoPor) {
+    const v = String(marcadoPor == null ? '' : marcadoPor);
+    if (v.indexOf('ADMIN') === 0) return 'ADMIN';
+    if (v === 'OPERARIO:AJUSTE')  return 'AJUSTE';
+    return 'OPERARIO';            // incluye '' — las filas anteriores a la columna
+  }
+
+  /** La tabla va DENTRO y no en un `const` del IIFE a propósito: estas utils
+   *  viven al final del archivo y `renderRegistros` está en la línea 149, así
+   *  que un `const` de módulo dependería de que nada la use antes de que el
+   *  cuerpo del IIFE llegue hasta acá. Una función declarada se iza; un `const`
+   *  no. */
+  function badgeOrigen(origen) {
+    const b = {
+      ADMIN:  { txt: 'ADMIN',  bg: '#EDE9FE', color: '#7C3AED', tit: 'La registró un administrador desde el panel' },
+      AJUSTE: { txt: 'AJUSTE', bg: '#FEF3C7', color: '#B45309', tit: 'El operario corrigió una salida que olvidó marcar' },
+    }[origen];
+    if (!b) return '';
+    return '<span title="' + esc(b.tit) + '" style="font-size:0.65rem;background:' + b.bg +
+           ';color:' + b.color + ';border-radius:4px;padding:1px 5px;margin-left:4px;' +
+           'font-weight:700;">' + b.txt + '</span>';
+  }
+
   function esc(str) {
     // `str == null ? '' : str` y NO `str || ''` (hallazgo R6-07): con el `||`,
     // un 0 se convertía en cadena vacía, y donde este panel pinta un cero
@@ -2012,10 +2056,28 @@
       String(d.getDate()).padStart(2,'0');
   }
 
+  /**
+   * R8-01 — UNA CELDA DEL CSV, Y EL CERO SOBREVIVE.
+   *
+   * Era `String(r[c] || '')`: exactamente el `||` que R6-07 sacó de `esc()`
+   * veinte líneas más abajo, por exactamente la misma razón, y que acá se
+   * quedó. Las columnas que exporta este panel incluyen `tardanzaMin`,
+   * `horas`, `diasTrabajados`, `horasTotales`, `tardanzas` y `porcentaje`:
+   * con el `||`, **quien llegó a tiempo exportaba la celda de tardanza en
+   * blanco**, no en cero.
+   *
+   * En una planilla que va a nómina "vacío" y "cero" son lecturas opuestas —
+   * una dice "no hay dato", la otra "llegó puntual"— y quien recibe el CSV no
+   * tiene cómo saber cuál de las dos le están diciendo.
+   */
+  function celdaCsv(v) {
+    return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  }
+
   function exportCSV(data, cols, nombre) {
     if (!data.length) { toast('No hay datos para exportar', 'warning'); return; }
     const header = cols.join(',');
-    const rows   = data.map(r => cols.map(c => '"' + String(r[c] || '').replace(/"/g,'""') + '"').join(','));
+    const rows   = data.map(r => cols.map(c => celdaCsv(r[c])).join(','));
     const blob   = new Blob(['﻿' + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url    = URL.createObjectURL(blob);
     const a      = document.createElement('a');

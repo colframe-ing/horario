@@ -171,7 +171,7 @@
     body.querySelectorAll('.cot-card').forEach(function (card) {
       card.addEventListener('click', function (e) {
         if (e.target.closest('.btn-aprobar, input, label')) return;
-        abrirDetalle(card.getAttribute('data-detalle'));
+        abrirProyecto(card.getAttribute('data-detalle'));
       });
     });
 
@@ -211,7 +211,7 @@
   function poblarAnios(anios) {
     if (_aniosPoblados || !anios.length) return;
     var sel = document.getElementById('filtroAnio');
-    var actual = sel.value;
+    var actual = sel.value || _anioGuardado;
     sel.innerHTML = '<option value="">Todos</option>' +
       anios.map(function (a) { return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('');
     sel.value = actual;
@@ -265,203 +265,52 @@
     });
   }
 
-  // ── Detalle: comparativo cotizado vs planeado + vínculos ─────────────────
-  var _detalleArchivo = null;
-  var _proyectosCache = null;   // para búsqueda manual de carpetas
-
-  function abrirDetalle(archivo) {
-    if (!archivo) return;
-    _detalleArchivo = archivo;
-    document.getElementById('vistaLista').classList.add('hidden');
-    document.getElementById('vistaDetalle').classList.remove('hidden');
-    document.getElementById('detNombre').textContent = 'Cargando…';
-    document.getElementById('detBody').innerHTML =
-      '<div style="text-align:center;padding:40px;"><span class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:var(--cf-blue);"></span></div>';
-    window.scrollTo(0, 0);
-    apiCotizDetalle(token, archivo).then(renderDetalle).catch(function (e) {
-      manejarError(e); cerrarDetalle();
-    });
+  // ── Abrir un proyecto ───────────────────────────────────────────────────
+  //
+  // Hasta el 22-sep la tarjeta abría aquí mismo un "detalle" —cotizado vs
+  // planeado, producción y despacho, carpetas— y ese detalle tenía un botón
+  // para ir a la hoja de vida, que mostraba buena parte de lo mismo de otra
+  // forma. Ahora son una sola pantalla: el detalle vive en `proyecto.html`,
+  // dentro del bloque de cada cotización, y la tarjeta lleva ahí con ESA
+  // cotización primera y abierta.
+  function urlProyecto(cb, archivo) {
+    return 'proyecto.html?cb=' + encodeURIComponent(cb) +
+           (archivo ? '&archivo=' + encodeURIComponent(archivo) : '');
   }
 
-  function cerrarDetalle() {
-    _detalleArchivo = null;
-    document.getElementById('vistaDetalle').classList.add('hidden');
-    document.getElementById('vistaLista').classList.remove('hidden');
-    cargar(); // refresca contadores de vínculos
+  function abrirProyecto(archivo) {
+    var c = _cache.filter(function (x) { return x.archivo === archivo; })[0];
+    if (!c || !c.consecutivo) { toast('Esta cotización no tiene consecutivo CB', 'error'); return; }
+    guardarFiltros();
+    location.href = urlProyecto(c.consecutivo, archivo);
   }
 
-  function filaCmp(label, cot, plan) {
-    var dif = cot - plan;
-    var cls = dif > 1 ? 'cmp-dif-pos' : 'cmp-dif-ok';
-    var txt = Math.abs(dif) < 0.05 ? '—' : (dif > 0 ? fmtNum(dif, 1) : '+' + fmtNum(-dif, 1));
-    return '<tr><td>' + esc(label) + '</td><td>' + fmtNum(cot, 1) + '</td><td>' + fmtNum(plan, 1) + '</td><td class="' + cls + '">' + txt + '</td></tr>';
+  // Los filtros sobreviven a la ida y vuelta. Antes el detalle se abría en la
+  // misma página y la lista seguía debajo; ahora se sale a otra, y volver sin
+  // esto dejaba a quien buscaba otra vez en "Todos". Por pestaña, y nunca
+  // necesario: sin almacenamiento la lista arranca como siempre.
+  var CLAVE_FILTROS = 'cf_cotiz_filtros';
+  var _anioGuardado = '';
+  function guardarFiltros() {
+    try {
+      sessionStorage.setItem(CLAVE_FILTROS, JSON.stringify({
+        anio: document.getElementById('filtroAnio').value,
+        mes: document.getElementById('filtroMes').value,
+        buscar: document.getElementById('filtroBuscar').value,
+        aprobadas: document.getElementById('filtroAprobadas').value,
+      }));
+    } catch (e) { /* sin almacenamiento: no pasa nada */ }
   }
-
-  function renderDetalle(resp) {
-    var c = resp.cotizacion, q = resp.cotizadoPorCasa, plan = resp.planeado;
-    var cant = c.cantidad || 1;
-
-    document.getElementById('detNombre').innerHTML = esc(c.proyecto || '(sin nombre)') +
-      ' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.85rem;">CB' + esc(c.consecutivo) +
-      (c.version ? '.' + esc(c.version) : '') + ' · ' + cant + (cant > 1 ? ' unidades' : ' unidad') + '</span>' +
-      ' <a href="proyecto.html?cb=' + encodeURIComponent(c.consecutivo) + '" target="_blank" rel="noopener"' +
-      ' class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:3px 9px;min-height:0;vertical-align:middle;"' +
-      ' title="Ver todo el proyecto CB' + esc(c.consecutivo) + '">📋 Hoja de vida</a>';
-
-    // Comparativo POR UNIDAD. La carpeta de producción contiene los archivos de
-    // UNA unidad y esos mismos archivos se reutilizan para las demás unidades
-    // iguales del proyecto. Por eso NO se multiplica por la cantidad: hacerlo
-    // compararía N unidades cotizadas contra 1 unidad de archivos → diferencia falsa.
-    var nCarpetas = (resp.vinculadas || []).length;
-    var rows = '', totCot = 0, sumPlanShown = 0;
-    ['0.75', '0.95', '1.15'].forEach(function (cal) {
-      var cot = q.c90[cal] || 0;
-      var pl  = plan.c90[cal] || 0;
-      totCot += cot; sumPlanShown += pl;
-      rows += filaCmp('C90-37 · ' + cal, cot, pl);
-    });
-    var c140cot = (q.c140['0.75'] || 0) + (q.c140['0.95'] || 0) + (q.c140['1.15'] || 0);
-    if (c140cot === 0 && q.c140.total_old) c140cot = q.c140.total_old;
-    var c140plan = plan.c140.total || 0;
-    if (c140cot > 0 || c140plan > 0) {
-      totCot += c140cot; sumPlanShown += c140plan;
-      rows += filaCmp('C140-46', c140cot, c140plan);
-    }
-    var otros = Math.round((plan.total - sumPlanShown) * 100) / 100;
-    if (otros > 0.05) rows += filaCmp('Otros / sin clasificar', 0, otros);
-
-    // Alcance explícito + el total del proyecto cuando se reutilizan los archivos.
-    var alcance;
-    if (nCarpetas === 0) {
-      alcance = '<span style="color:#92400E;">Sin carpetas vinculadas — se muestra lo cotizado por 1 unidad. Vincula una carpeta abajo para comparar.</span>';
-    } else {
-      alcance = 'Comparación <strong>por unidad</strong>' +
-        (cant > 1
-          ? ' — los archivos de la carpeta se reutilizan para las ' + cant + ' unidades del proyecto (total a producir: ' +
-            fmtNum((plan.total || 0) * cant, 1) + ' ML).'
-          : '.');
-    }
-
-    var comparativo =
-      '<div class="card-sec"><h3>Cotizado vs Planeado (metros lineales)</h3>' +
-      '<p style="font-size:0.75rem;font-weight:600;margin:0 0 10px;">' + alcance + '</p>' +
-      '<div style="overflow-x:auto;"><table class="cmp-table">' +
-      '<thead><tr><th>Perfil · calibre</th><th>Cotizado (1 unidad)</th><th>Planeado</th><th>Diferencia</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-      '<tfoot>' + filaCmp('TOTAL', totCot, plan.total || 0) + '</tfoot>' +
-      '</table></div>' +
-      '<p style="font-size:0.7rem;color:var(--cf-gray-text);margin:10px 0 0;">"Planeado" = suma de EP2 exportados en las carpetas vinculadas (lo que se enviará a producir, aún no lo fabricado). "Diferencia" = cotizado − planeado; en verde cuando el plan cubre lo cotizado. El avance real de fabricación llegará con el checklist de paneles.</p>' +
-      '</div>';
-
-    // Vinculadas
-    var vinc = (resp.vinculadas || []).map(function (f) {
-      return '<div class="fld-row"><div class="fld-info"><div class="fld-nombre">' + esc(f.nombre) + '</div>' +
-        '<div class="fld-meta">' + fechaES(f.fecha) + ' · ' + fmtNum(f.metrosTotal, 1) + ' ML · ' + esc(f.estado) + '</div></div>' +
-        '<button class="fld-btn unlink" data-unlink="' + esc(f.carpetaId) + '">Quitar</button></div>';
-    }).join('');
-    var vincSec = '<div class="card-sec"><h3>Carpetas vinculadas (' + (resp.vinculadas || []).length + ')</h3>' +
-      (vinc || '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Aún no hay carpetas de producción vinculadas.</div>') + '</div>';
-
-    // Producción y despacho por unidad. El despacho va en kg y por número de
-    // factura porque es lo que existe: producción se mide en ML y la remisión
-    // en peso, y convertir uno en otro seria inventarlo (PLAN_ESTADOS §6).
-    var ESTADO_UNIDAD = {
-      FINALIZADA: 'Producida', PAUSADA: 'Pausada', SIN_COLA: 'Sin programar', '': 'En cola',
-    };
-    var unSec = '';
-    if ((resp.unidades || []).length) {
-      var filas = resp.unidades.map(function (u) {
-        var nombre = u.esEnvio ? ('Envío ' + u.envioIdx + ' de ' + u.enviosTotal) : 'Proyecto completo';
-        var tam = (u.tipoEnvio === 'metros' || !u.esEnvio)
-          ? fmtNum(u.mlUnidad, 0) + ' ML'
-          : u.valorEnvio + (u.valorEnvio > 1 ? ' casas' : ' casa') + ' · ' + fmtNum(u.mlUnidad, 0) + ' ML';
-        var est = ESTADO_UNIDAD[String(u.estado || '').toUpperCase()] || esc(u.estado);
-        if (u.mlAvance > 0 && String(u.estado).toUpperCase() !== 'FINALIZADA') {
-          est += ' · ' + fmtNum(u.mlAvance, 0) + ' ML de avance';
-        }
-        var desp;
-        if (u.despachado) {
-          desp = '<strong>' + fmtNum(u.kgDespachado, 0) + ' kg</strong> · ' + esc(u.remisiones.join(', '));
-          if (u.facturas.length) desp += ' · ' + esc(u.facturas.join(', '));
-          if (u.sinFacturar)    desp += ' · <span style="color:#92400E;">' + u.sinFacturar + ' sin facturar</span>';
-        } else if (u.borradores) {
-          desp = '<span style="color:var(--cf-gray-text);">remisión en borrador</span>';
-        } else {
-          desp = '<span style="color:var(--cf-gray-text);">sin despachar</span>';
-        }
-        return '<tr><td>' + esc(nombre) + '</td><td>' + esc(tam) + '</td><td>' + est + '</td><td>' + desp + '</td></tr>';
-      }).join('');
-      unSec = '<div class="card-sec"><h3>Producción y despacho</h3>' +
-        '<div style="overflow-x:auto;"><table class="cmp-tabla"><thead><tr>' +
-        '<th>Unidad</th><th>Tamaño</th><th>Producción</th><th>Despachado (kg)</th>' +
-        '</tr></thead><tbody>' + filas + '</tbody></table></div>' +
-        '<p style="font-size:0.7rem;color:var(--cf-gray-text);margin:10px 0 0;">El despacho se mide en <strong>kg de acero</strong>, no en ML: la remisión registra peso. La conciliación con facturación usará el número de factura de cada remisión.</p></div>';
-    }
-
-    // Sugerencias por CB
-    var sugSec = '';
-    if ((resp.sugerencias || []).length) {
-      var sug = resp.sugerencias.map(function (f) {
-        return '<div class="fld-row"><div class="fld-info"><div class="fld-nombre">' + esc(f.nombre) + '</div>' +
-          '<div class="fld-meta">' + fechaES(f.fecha) + ' · ' + fmtNum(f.metrosTotal, 1) + ' ML</div></div>' +
-          '<button class="fld-btn link" data-link="' + esc(f.carpetaId) + '">Vincular</button></div>';
-      }).join('');
-      sugSec = '<div class="card-sec"><h3>Sugerencias (código CB' + esc(c.consecutivo) + ')</h3>' + sug + '</div>';
-    }
-
-    // Búsqueda manual
-    var manualSec = '<div class="card-sec"><h3>Vincular otra carpeta</h3>' +
-      '<input id="detBuscarCarpeta" type="text" placeholder="Buscar carpeta por nombre…" style="width:100%;margin-bottom:8px;">' +
-      '<div id="detResultados"></div></div>';
-
-    // Producción y despacho va justo después del comparativo: responde "¿y esto
-    // en qué va?", que es la pregunta que sigue a "¿cuánto se cotizó?".
-    document.getElementById('detBody').innerHTML = comparativo + unSec + vincSec + sugSec + manualSec;
-    bindDetalle();
-  }
-
-  function bindDetalle() {
-    var body = document.getElementById('detBody');
-    body.querySelectorAll('[data-link]').forEach(function (b) {
-      b.addEventListener('click', function () { vincular(b.getAttribute('data-link'), 'link', b); });
-    });
-    body.querySelectorAll('[data-unlink]').forEach(function (b) {
-      b.addEventListener('click', function () { vincular(b.getAttribute('data-unlink'), 'unlink', b); });
-    });
-    var buscar = document.getElementById('detBuscarCarpeta');
-    if (buscar) buscar.addEventListener('input', function () { buscarCarpetas(buscar.value); });
-  }
-
-  function vincular(carpetaId, accion, btn) {
-    btn.disabled = true;
-    apiCotizVincular(token, _detalleArchivo, carpetaId, accion).then(function () {
-      toast(accion === 'link' ? 'Carpeta vinculada' : 'Carpeta quitada', 'ok');
-      abrirDetalle(_detalleArchivo); // recarga el detalle (comparativo + listas)
-    }).catch(function (e) { btn.disabled = false; manejarError(e); });
-  }
-
-  function buscarCarpetas(q) {
-    var cont = document.getElementById('detResultados');
-    q = String(q || '').trim().toLowerCase();
-    if (q.length < 2) { cont.innerHTML = '<div style="font-size:0.75rem;color:var(--cf-gray-text);">Escribe al menos 2 letras…</div>'; return; }
-    var pintar = function (lista) {
-      var res = lista.filter(function (p) { return String(p.nombre || '').toLowerCase().indexOf(q) > -1; }).slice(0, 12);
-      if (!res.length) { cont.innerHTML = '<div style="font-size:0.75rem;color:var(--cf-gray-text);">Sin coincidencias.</div>'; return; }
-      cont.innerHTML = res.map(function (p) {
-        return '<div class="fld-row"><div class="fld-info"><div class="fld-nombre">' + esc(p.nombre) + '</div>' +
-          '<div class="fld-meta">' + fechaES(p.fecha) + ' · ' + fmtNum(p.metrosTotal, 1) + ' ML</div></div>' +
-          '<button class="fld-btn link" data-link="' + esc(p.carpetaId) + '">Vincular</button></div>';
-      }).join('');
-      cont.querySelectorAll('[data-link]').forEach(function (b) {
-        b.addEventListener('click', function () { vincular(b.getAttribute('data-link'), 'link', b); });
-      });
-    };
-    if (_proyectosCache) { pintar(_proyectosCache); return; }
-    cont.innerHTML = '<div style="font-size:0.75rem;color:var(--cf-gray-text);">Cargando carpetas…</div>';
-    apiProdProyectosList(token, {}).then(function (r) {
-      _proyectosCache = r.proyectos || [];
-      pintar(_proyectosCache);
-    }).catch(manejarError);
+  function restaurarFiltros() {
+    var f = null;
+    try { f = JSON.parse(sessionStorage.getItem(CLAVE_FILTROS) || 'null'); } catch (e) { f = null; }
+    if (!f) return;
+    // El año se aplica cuando llegan las opciones (`poblarAnios`): antes de eso
+    // el <select> no tiene ese valor y lo descartaría en silencio.
+    _anioGuardado = f.anio || '';
+    document.getElementById('filtroMes').value = f.mes || '';
+    document.getElementById('filtroBuscar').value = f.buscar || '';
+    if (f.aprobadas) document.getElementById('filtroAprobadas').value = f.aprobadas;
   }
 
   // ── Init ────────────────────────────────────────────────────────────────
@@ -470,7 +319,6 @@
     document.getElementById('logoutBtn').addEventListener('click', function () {
       clearSession(); location.href = 'index.html';
     });
-    document.getElementById('btnVolverCotiz').addEventListener('click', cerrarDetalle);
     document.getElementById('btnBuscar').addEventListener('click', cargar);
     document.getElementById('filtroAnio').addEventListener('change', cargar);
     document.getElementById('filtroMes').addEventListener('change', cargar);
@@ -478,11 +326,21 @@
     document.getElementById('filtroBuscar').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') cargar();
     });
-    cargar();
-    // Deep-link ?archivo=... → abre directo el detalle (usado por el panel de
-    // "Atención" en Programación para saltar a vincular una carpeta).
+    // `?archivo=…` era el enlace directo al detalle, y lo siguen usando dos
+    // botones de Programación y cualquier enlace guardado. El detalle ya no
+    // vive aquí, así que se averigua el CB y se sigue a la hoja de vida. Con
+    // `replace`, para que "atrás" no vuelva a caer en este rebote.
     var archivoQS = new URLSearchParams(location.search).get('archivo');
-    if (archivoQS) abrirDetalle(archivoQS);
+    if (archivoQS) {
+      apiCotizDetalle(token, archivoQS).then(function (r) {
+        var cb = r && r.cotizacion && r.cotizacion.consecutivo;
+        if (!cb) throw new Error('Esa cotización no tiene consecutivo CB');
+        location.replace(urlProyecto(cb, archivoQS));
+      }).catch(function (e) { manejarError(e); cargar(); });
+      return;
+    }
+    restaurarFiltros();
+    cargar();
   }
 
   init();

@@ -49,24 +49,6 @@
 
     .cot-link-badge { font-size: 0.66rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #EFF6FF; color: var(--cf-blue); white-space: nowrap; }
 
-    .card-sec { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:14px; }
-    .card-sec h3 { font-size:0.82rem; font-weight:800; color:var(--cf-dark); margin:0 0 12px; text-transform:uppercase; letter-spacing:0.04em; }
-    .cmp-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
-    .cmp-table th, .cmp-table td { padding:7px 10px; text-align:right; border-bottom:1px solid var(--cf-gray-mid); }
-    .cmp-table th:first-child, .cmp-table td:first-child { text-align:left; font-weight:700; }
-    .cmp-table thead th { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
-    .cmp-table tfoot td { font-weight:800; border-top:2px solid var(--cf-dark); border-bottom:none; }
-    .cmp-dif-pos { color:#B45309; } /* falta por producir */
-    .cmp-dif-ok  { color:#065F46; } /* completo o de más */
-    .fld-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; background:var(--cf-gray); border-radius:8px; margin-bottom:6px; }
-    .fld-info { min-width:0; flex:1; }
-    .fld-nombre { font-weight:700; font-size:0.82rem; color:var(--cf-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .fld-meta { font-size:0.72rem; color:var(--cf-gray-text); }
-    .fld-btn { font-size:0.72rem; font-weight:700; padding:5px 11px; border-radius:8px; border:1.5px solid var(--cf-gray-mid); background:#fff; cursor:pointer; white-space:nowrap; }
-    .fld-btn.link { border-color:var(--cf-blue); color:var(--cf-blue); }
-    .fld-btn.unlink { border-color:#DC2626; color:#DC2626; }
-    .fld-btn:disabled { opacity:0.5; cursor:default; }
-
     .mod-nav { background: #fff; border-bottom: 1px solid var(--cf-gray-mid); padding: 0 16px; display: flex; gap: 4px; overflow-x: auto; }
     .mod-nav-link { padding: 10px 14px; font-size: 0.82rem; font-weight: 700; color: var(--cf-gray-text); text-decoration: none; border-bottom: 3px solid transparent; white-space: nowrap; display: inline-block; }
     .mod-nav-link.active { color: var(--cf-blue); border-bottom-color: var(--cf-blue); }
@@ -192,19 +174,8 @@
 
   </div>
 
-  <!-- ══ VISTA DETALLE ═══════════════════════════════════════════ -->
-  <div id="vistaDetalle" class="admin-main admin-panel hidden">
-    <div class="detalle-header" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
-      <button id="btnVolverCotiz" class="btn btn-ghost btn-sm">← Volver</button>
-      <h2 id="detNombre" style="flex:1;min-width:160px;font-size:0.95rem;line-height:1.4;"></h2>
-    </div>
-
-    <div id="detBody">
-      <div style="text-align:center;padding:40px;">
-        <span class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:var(--cf-blue);"></span>
-      </div>
-    </div>
-  </div>
+  <!-- El detalle de una cotización vive en proyecto.html desde el 22-sep: la
+       tarjeta lleva a la hoja de vida del proyecto con esa cotización abierta. -->
 
   <!-- Toasts -->
   <div id="toastContainer" style="position:fixed;top:80px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>

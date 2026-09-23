@@ -72,6 +72,42 @@
     .badge.atr  { background:#DC2626; color:#fff; }
     .pill-aprob { font-size:0.63rem; font-weight:800; padding:1px 7px; border-radius:999px; background:#D1FAE5; color:#065F46; }
     .pill-noaprob { font-size:0.63rem; font-weight:800; padding:1px 7px; border-radius:999px; background:#F1F5F9; color:#64748B; }
+    .badge.pau  { background:#FFEDD5; color:#9A3412; }
+    .f { color:var(--cf-gray-text); font-size:0.75rem; }
+
+    /* ── Lo que era el detalle de Cotizaciones ─────────────────────────────
+       Vino de `cotizaciones.html` el 22-sep, cuando las dos pantallas pasaron a
+       ser una. Las tarjetas blancas con título en mayúsculas y las tablas son
+       la forma de mostrar que se decidió conservar. */
+    .card-sec { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; margin-bottom:14px; }
+    .card-sec h3 { font-size:0.82rem; font-weight:800; color:var(--cf-dark); margin:0 0 12px; text-transform:uppercase; letter-spacing:0.04em; }
+    .cmp-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+    .cmp-table th, .cmp-table td { padding:7px 10px; text-align:right; border-bottom:1px solid var(--cf-gray-mid); }
+    .cmp-table th:first-child, .cmp-table td:first-child { text-align:left; font-weight:700; }
+    .cmp-table thead th { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
+    .cmp-table tfoot td { font-weight:800; border-top:2px solid var(--cf-dark); border-bottom:none; }
+    .cmp-dif-pos { color:#B45309; } /* falta por producir */
+    .cmp-dif-ok  { color:#065F46; } /* completo o de más */
+    .cmp-tabla td { vertical-align:top; font-size:0.82rem; }
+    .cmp-tabla .badge { font-size:0.63rem; font-weight:800; padding:1px 7px; border-radius:999px; }
+    .fld-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; background:var(--cf-gray); border-radius:8px; margin-bottom:6px; }
+    .fld-info { min-width:0; flex:1; }
+    .fld-nombre { font-weight:700; font-size:0.82rem; color:var(--cf-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fld-meta { font-size:0.72rem; color:var(--cf-gray-text); }
+    .fld-btn { font-size:0.72rem; font-weight:700; padding:5px 11px; border-radius:8px; border:1.5px solid var(--cf-gray-mid); background:#fff; cursor:pointer; white-space:nowrap; color:var(--cf-dark); text-decoration:none; }
+    .fld-btn.link { border-color:var(--cf-blue); color:var(--cf-blue); }
+    .fld-btn.unlink { border-color:#DC2626; color:#DC2626; }
+    .fld-btn:disabled { opacity:0.5; cursor:default; }
+
+    /* ── El bloque de cada cotización ──────────────────────────────────── */
+    .sec-h { font-size:0.82rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-dark); margin:18px 0 10px; }
+    .cot-bloque.pedida { box-shadow:0 0 0 2px var(--cf-blue), var(--shadow); }
+    .hv-cot-cb { font-size:0.74rem; color:var(--cf-gray-text); }
+    .sub-h { font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-dark); margin:16px 0 8px; }
+    .nota-pie { font-size:0.7rem; color:var(--cf-gray-text); margin:10px 0 0; }
+    .det-toggle { margin-top:14px; width:100%; padding:8px 12px; border:1.5px dashed var(--cf-gray-mid); border-radius:8px; background:#fff; font-size:0.76rem; font-weight:700; color:var(--cf-blue); cursor:pointer; text-align:left; }
+    .det-toggle[aria-expanded="true"] { border-style:solid; }
+    .det-cuerpo { border-top:1px solid var(--cf-gray-mid); margin-top:12px; }
   </style>
 </head>
 <body>

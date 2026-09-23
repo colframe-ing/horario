@@ -337,6 +337,13 @@
     .mal { color:#DC2626; font-weight:800; }
     .ok  { color:#065F46; }
     .leyenda { font-size:0.75rem; color:var(--cf-gray-text); margin:12px 2px 0; max-width:74ch; }
+    .sin-rep { font-size:0.66rem; font-weight:800; color:#B45309; white-space:normal; margin-top:2px; }
+    /* MÁS ANCHO QUE EL RESTO DEL PANEL. `.admin-main` tope en 900px, y la tabla
+       por proyecto tiene ocho columnas de plata con `white-space:nowrap`: no
+       cabía, y el sobrante quedaba escondido detrás del scroll horizontal de
+       `.tabla-wrap` — "Cobrado sin salir", "Despachado" y el botón se veían
+       cortados, sin barra a la vista que dijera que había más. */
+    .admin-main { max-width:1280px; }
     .leyenda strong { color:var(--cf-dark); }
 
     .vacio { text-align:center; color:var(--cf-gray-text); font-size:0.8rem; padding:26px 0; }

@@ -907,11 +907,22 @@
         chips += ' <span class="estado prov" title="Cobros que no salen de la cotización de acero">' +
                  'con proveeduría</span>';
       }
+      // REGISTRADA NO ES REPARTIDA. La remisión ya dice bajo qué factura salió,
+      // pero "Facturado" solo cuenta la plata asignada — una factura puede cubrir
+      // varias obras y contarla entera aquí inventaría un cobro. Sin esta línea
+      // la fila decía $0 como si nadie la hubiera facturado, y lo que faltaba
+      // era solo el monto (SALON CESAR, 22-sep). Ver `_factFacturasDeRemisiones`.
+      var porRep = c.porRepartir || [];
+      var repTxt = porRep.length
+        ? '<div class="sin-rep" title="Registrada en una remisión de este proyecto, pero sin monto asignado a él">' +
+            esc(porRep.join(', ')) + (porRep.length === 1 ? ' registrada' : ' registradas') +
+            ' · falta el monto</div>'
+        : '';
       return '<tr>' +
         '<td><span class="proy">' + esc(c.proyecto || c.archivo) + '</span>' + chips +
           '<div class="cbv">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') + ' · ' + esc(c.estado) + '</div></td>' +
         '<td class="n">' + money(r.valorAprobado) + '</td>' +
-        '<td class="n">' + money(r.facturado) + (r.aiu > 0 ? '<div class="cbv">AIU ' + money(r.aiu) + '</div>' : '') + '</td>' +
+        '<td class="n">' + money(r.facturado) + (r.aiu > 0 ? '<div class="cbv">AIU ' + money(r.aiu) + '</div>' : '') + repTxt + '</td>' +
         '<td class="n">' + pend + '</td>' +
         // ADICIONAL. Sin "pendiente" y sin "de más" a propósito: la proveeduría
         // no tiene valor aprobado contra el cual compararse, y ponerle uno
@@ -922,8 +933,12 @@
           : '—') + '</td>' +
         '<td class="n">' + (r.expuesto > 0 ? '<span class="neg">' + money(r.expuesto) + '</span>' : '—') + '</td>' +
         '<td class="n">' + num(r.unidadesDespachadas) + '/' + num(r.unidades) + '</td>' +
-        '<td><button class="btn-mini" data-asignar="' + esc(c.archivo) + '" ' +
-          'data-proy="' + esc(c.proyecto || c.archivo) + '">Asignar</button></td></tr>';
+        // Con una factura por repartir, el botón ya la trae: el modal abre con el
+        // número puesto y el monto sugerido con su razón al lado.
+        '<td><button class="btn-mini' + (porRep.length ? ' primario' : '') + '" data-asignar="' + esc(c.archivo) + '" ' +
+          'data-proy="' + esc(c.proyecto || c.archivo) + '"' +
+          (porRep.length ? ' data-factura="' + esc(porRep[0]) + '"' : '') + '>' +
+          (porRep.length ? 'Asignar ' + esc(porRep[0]) : 'Asignar') + '</button></td></tr>';
     }).join('');
 
     // LAS CABECERAS AGRUPADAS EN DOS BLOQUES, y esa raya es el punto entero de
@@ -1830,6 +1845,27 @@
    *
    * FUNCIÓN PURA.
    */
+  /**
+   * Los OTROS proyectos que tienen remisiones bajo esta factura.
+   *
+   * Existe porque el botón "Asignar FE350" de la vista por proyecto invita a
+   * cargarle la factura entera al proyecto de la fila, y eso solo es cierto si
+   * la factura no cubre también material de otra obra. `sugerirMonto` no lo
+   * sabe —mira el saldo de la factura, no a quién salió—, así que se avisa
+   * aparte, junto a la cifra. FUNCIÓN PURA.
+   */
+  function otrosProyectosDeFactura(factura, archivo) {
+    var vistos = {}, out = [];
+    ((factura && factura.remisiones) || []).forEach(function (rm) {
+      if (!rm || !rm.cotizacionArchivo || rm.cotizacionArchivo === archivo) return;
+      if (vistos[rm.cotizacionArchivo]) return;
+      vistos[rm.cotizacionArchivo] = true;
+      out.push((rm.cb ? 'CB' + rm.cb + (rm.version ? '.' + rm.version : '') + ' ' : '') +
+               (rm.proyecto || rm.cotizacionArchivo));
+    });
+    return out;
+  }
+
   function sugerirMonto(factura, cotiz, sug) {
     if (!cotiz) return { monto: null, razon: '' };
     if (!factura) {
@@ -1957,8 +1993,13 @@
       var cot = (_datos.cotizaciones || []).filter(function (c) {
         return c.archivo === elegido;
       })[0];
-      var r = sugerirMonto(facturaActual(), cot, sugAbierta);
-      porQue.textContent = r.razon || '';
+      var fx = facturaActual();
+      var r = sugerirMonto(fx, cot, sugAbierta);
+      var otros = otrosProyectosDeFactura(fx, elegido);
+      porQue.textContent = (r.razon || '') + (otros.length
+        ? ' OJO: esta factura también salió en remisiones de ' + otros.join(', ') +
+          ' — lo que se asigne aquí no puede ser todo el subtotal.'
+        : '');
       if (r.monto == null) return;
       var actual = campoMonto.value.trim();
       if (actual === '' || (sugerido != null && actual === String(sugerido))) {
@@ -2138,7 +2179,8 @@
 
     // ── Vista Por proyecto ──
     if ((n = b.getAttribute('data-asignar'))) {
-      abrirAsignar(n, b.getAttribute('data-proy'));
+      var fac = b.getAttribute('data-factura');
+      abrirAsignar(n, b.getAttribute('data-proy'), fac ? { factura: fac } : undefined);
       return;
     }
   });
