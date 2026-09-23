@@ -102,17 +102,149 @@
 
   /** Una fila de la tabla de materiales. `conDatos` es el denominador del
    *  aviso: las unidades SIN datos ya están nombradas arriba, y contarlas aquí
-   *  otra vez inflaría el aviso con algo que no es de este material. */
-  function filaMaterialHtml(m, conDatos) {
+   *  otra vez inflaría el aviso con algo que no es de este material. En la
+   *  simulación hay una sola "unidad" —el pedido—, y "1 de 1 unidades" no le
+   *  dice nada a nadie: ahí va `avisoFijo`. */
+  function filaMaterialHtml(m, conDatos, avisoFijo) {
     var aviso = m.noPuedenAportar
-      ? '<div class="mat-alerta">⚠ ' + m.noPuedenAportar + ' de ' + conDatos +
-        ' unidades con datos no lo pueden decir</div>' : '';
+      ? '<div class="mat-alerta">⚠ ' + (avisoFijo || (m.noPuedenAportar + ' de ' + conDatos +
+        ' unidades con datos no lo pueden decir')) + '</div>' : '';
     return '<tr' + (m.cantidad === 0 ? ' class="cero"' : '') + '>' +
       '<td class="cod">' + esc(m.idProducto) + (m.frecuente ? ' <span class="mat-frec" title="Uno de los ocho más frecuentes">★</span>' : '') + '</td>' +
       '<td>' + esc(m.descripcion) + (m.sinMapeo ? ' <span class="mat-sinmap" title="El código de la plantilla no está en el catálogo">código desconocido</span>' : '') + aviso + '</td>' +
       '<td class="n"><strong>' + (m.cantidad ? fmtNum(m.cantidad) : '—') + '</strong> <span class="und">' + esc(m.unidad) + '</span></td>' +
       '<td class="n">' + (m.pesoKgEstimado != null ? fmtNum(m.pesoKgEstimado, 1) + ' kg' : '<span class="und">sin peso</span>') + '</td>' +
       '<td class="n">' + m.unidadesQueAportan + '</td></tr>';
+  }
+
+  /**
+   * EL ACERO POR PERFIL. Metros siempre; kg solo donde `CatalogoPerfiles` dice
+   * cuánto pesa el metro, y donde no, se nombra el perfil que falta en vez de
+   * inventar un peso. El KG del maestro va al lado para comparar: si la suma por
+   * perfil se aleja mucho, un factor está mal.
+   */
+  function aceroHtml(acero, hojaFalta) {
+    var a = acero || {};
+    var ps = a.perfiles || [];
+    var h = '<h4 class="mat-sub">Acero por perfil</h4>';
+    if (!ps.length) {
+      h += '<div class="mat-cob vacio">Las cotizaciones no traen metros por calibre.' +
+        (a.kgMaestro != null ? ' El maestro dice <strong>' + fmtNum(a.kgMaestro, 0) + ' kg</strong> de acero en total.' : '') +
+        '</div>';
+      return h;
+    }
+    h += '<div class="mat-tabla-wrap"><table class="mat-tabla"><thead><tr>' +
+      '<th>Perfil</th><th>Calibre</th><th class="n">Metros</th><th class="n">kg por metro</th><th class="n">Kg</th>' +
+      '</tr></thead><tbody>' + ps.map(function (p) {
+        return '<tr' + (p.kg == null ? ' class="cero"' : '') + '><td class="cod">' + esc(p.perfil) + '</td>' +
+          '<td>' + (p.calibre ? esc(p.calibre) : '<span class="und">sin calibre</span>') + '</td>' +
+          '<td class="n"><strong>' + fmtNum(p.metros, 2) + '</strong> <span class="und">m</span></td>' +
+          '<td class="n">' + (p.kgPorMetro != null ? fmtNum(p.kgPorMetro, 3) : '<span class="mat-alerta">falta</span>') + '</td>' +
+          '<td class="n">' + (p.kg != null ? '<strong>' + fmtNum(p.kg, 1) + '</strong> kg' : '—') + '</td></tr>';
+      }).join('') + '</tbody><tfoot><tr><td colspan="4">' +
+        (a.completo ? 'Total por perfil' : 'Total de los perfiles con peso por metro') + '</td>' +
+        '<td class="n"><strong>' + (a.kgPorPerfil != null ? fmtNum(a.kgPorPerfil, 1) + ' kg' : '—') + '</strong></td></tr></tfoot></table></div>';
+    var notas = [];
+    if (hojaFalta) {
+      notas.push('Falta la hoja <strong>CatalogoPerfiles</strong> en el libro de logística: ejecuta <code>setupRemisiones()</code>.');
+    } else if ((a.sinFactor || []).length) {
+      notas.push('Falta cuánto pesa un metro de <strong>' + esc(a.sinFactor.join(', ')) + '</strong>: se llena en la hoja ' +
+        '<strong>CatalogoPerfiles</strong> (perfil · calibre · kgPorMetro). Mientras tanto salen solo en metros.' +
+        (a.sinFactor.some(function (s) { return /sin calibre$/.test(s); })
+          ? ' <em>Sin calibre</em> es el C140 de cotizaciones viejas, que no lo separaban por calibre: en la hoja va con el calibre vacío.'
+          : ''));
+    }
+    if (a.kgMaestro != null) {
+      var comp = '';
+      if (a.completo && a.kgPorPerfil) {
+        var dif = (a.kgPorPerfil - a.kgMaestro) / a.kgMaestro * 100;
+        comp = Math.abs(dif) < 0.5 ? ' — cuadra con la suma por perfil.'
+          : ' — la suma por perfil da ' + (dif > 0 ? '+' : '−') + fmtNum(Math.abs(dif), 1) + ' %.';
+      }
+      notas.push('El maestro dice <strong>' + fmtNum(a.kgMaestro, 0) + ' kg</strong> de acero' +
+        ((a.sinKgUids || []).length ? ' (sin contar ' + a.sinKgUids.length + (a.sinKgUids.length === 1 ? ' unidad que no trae KG)' : ' unidades que no traen KG)') : '') + comp);
+    }
+    notas.push('El maestro no separa el acero G350 del G550: eso solo lo dicen los archivos de producción.');
+    return h + '<ul class="mat-notas">' + notas.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>';
+  }
+
+  /** Cómo se nombra una cotización en el buscador de la simulación. */
+  function etiquetaCotiz(c) {
+    return 'CB' + (c.consecutivo || '?') + (c.version ? '.' + c.version : '') + ' · ' + (c.proyecto || c.archivo) +
+      (c.mlTotal ? ' · ' + fmtNum(c.mlTotal, 0) + ' ML/casa' : '');
+  }
+
+  /** Qué cotización eligió quien escribe: la etiqueta exacta, o lo escrito si
+   *  lo contiene UNA sola. Dos o más no se adivinan. Devuelve el archivo o ''. */
+  function buscarCotiz(texto, lista) {
+    var t = String(texto || '').trim().toLowerCase();
+    if (!t) return '';
+    var exacta = (lista || []).filter(function (c) { return etiquetaCotiz(c).toLowerCase() === t; })[0];
+    if (exacta) return exacta.archivo;
+    var hits = (lista || []).filter(function (c) { return etiquetaCotiz(c).toLowerCase().indexOf(t) > -1; });
+    return hits.length === 1 ? hits[0].archivo : '';
+  }
+
+  /** Una fecha de la simulación: "12 oct 2026", o el porqué de no tenerla. */
+  function fechaSim(t, cual) {
+    if (!t) return '—';
+    if (t.demasiadoLargo) return 'más de 13 años';
+    var iso = t[cual];
+    if (!iso) return '—';
+    return fechaCorta(iso) + ' ' + String(iso).substring(0, 4);
+  }
+
+  /** EN CUÁNTO TIEMPO: días hábiles al ritmo del Gantt, y dos arranques. */
+  function tiempoHtml(tp) {
+    var t = tp || {};
+    if (!t.desdeHoy) {
+      return '<div class="mat-cob mal">No se puede calcular el tiempo: ' +
+        (!(t.ml > 0) ? 'la cotización no trae metros lineales.' : 'no hay ritmo de producción configurado.') + '</div>';
+    }
+    var fila = function (nombre, x) {
+      return '<tr><td>' + nombre + '</td><td class="n"><strong>' + fechaSim(x, 'inicio') + '</strong></td>' +
+        '<td class="n"><strong>' + fechaSim(x, 'fin') + '</strong></td></tr>';
+    };
+    var real = t.ritmoReal;
+    return '<div class="sim-tiempo"><div class="sim-dias"><strong>' + fmtNum(t.desdeHoy.dias, 0) + ' días hábiles</strong>' +
+      ' <span class="und">' + fmtNum(t.ml, 0) + ' ML a ' + fmtNum(t.ritmo, 0) + ' ML por día, el ritmo del Gantt</span></div>' +
+      '<table class="mat-tabla"><thead><tr><th>Si arranca…</th><th class="n">Empieza</th><th class="n">Termina</th></tr></thead><tbody>' +
+      fila('Hoy, como lo único por producir', t.desdeHoy) +
+      fila('Después de la cola actual' + (t.colaTermina ? ' <span class="und">(' + t.unidadesEnCola +
+        (t.unidadesEnCola === 1 ? ' unidad, termina el ' : ' unidades, terminan el ') + esc(fechaCorta(t.colaTermina)) + ')</span>' : ''), t.trasCola) +
+      '</tbody></table>' +
+      (real ? '<div class="und" style="margin-top:6px;">Al ritmo real medido (' + fmtNum(real.ritmo, 0) + ' ML por día, sobre ' +
+        real.n + ' unidades terminadas): <strong>' + fmtNum(real.desdeHoy.dias, 0) + ' días hábiles</strong>, hasta el ' +
+        fechaSim(real.trasCola, 'fin') + ' después de la cola.</div>' : '') +
+      '<ul class="mat-notas"><li>Con el mismo calendario del Gantt: domingos, festivos y excepciones. Una sola máquina.</li>' +
+      '<li>Un día empezado es un día ocupado: se redondea hacia arriba.</li></ul></div>';
+  }
+
+  /** La simulación completa: qué, cuánto tarda, qué materiales y qué acero. */
+  function simulacionHtml(res) {
+    var c = res.cotizacion || {}, cob = res.cobertura || {};
+    var h = '<div class="sim-titulo"><strong>' + fmtNum(res.casas, 0) + (res.casas === 1 ? ' casa' : ' casas') + '</strong> de ' +
+      esc(c.proyecto || c.archivo) + ' <span class="und">CB' + esc(c.cb) + (c.version ? '.' + esc(c.version) : '') +
+      ' · ' + fmtNum(c.mlCasa, 0) + ' ML por casa</span></div>';
+    h += '<h4 class="mat-sub">En cuánto tiempo</h4>' + tiempoHtml(res.tiempo);
+    h += '<h4 class="mat-sub">Accesorios</h4>';
+    if (!cob.conDatos) {
+      h += '<div class="mat-cob mal">Esta cotización no trae datos de material' +
+        (cob.porFuente && cob.porFuente.rota ? ' (su plantilla está dañada)' : '') + ': no hay accesorios que sumar.</div>';
+    } else {
+      if (cob.respaldo) {
+        h += '<div class="mat-cob aviso">Esta cotización usa la plantilla vieja, que solo dice ' + (res.alcanceRespaldo || []).length +
+          ' accesorios. Los marcados <span class="mat-alerta">⚠</span> no los dice: pueden faltar.</div>';
+      }
+      h += '<div class="mat-tabla-wrap"><table class="mat-tabla"><thead><tr>' +
+        '<th>Código</th><th>Material</th><th class="n">Cantidad</th><th class="n">Peso estimado</th><th class="n"></th></tr></thead><tbody>' +
+        (res.materiales || []).map(function (m) {
+          return filaMaterialHtml(Object.assign({}, m, { unidadesQueAportan: '' }), 1, 'la plantilla vieja no lo dice: puede faltar');
+        }).join('') + '</tbody></table></div>' +
+        '<ul class="mat-notas"><li>Lo que se cuenta va en enteros sobre el pedido completo. Si sale en varios envíos, ' +
+        'cada remisión redondea la suya y el total puede subir un poco.</li></ul>';
+    }
+    return h + aceroHtml(res.acero, res.catalogoPerfilesFalta);
   }
 
   /** Lo que queda por fuera de la ventana a propósito, con su número. */
@@ -132,24 +264,53 @@
   }
 
   /** El CSV de la tabla, con la ventana y la cobertura arriba: quien lo abre
-   *  en Excel no tiene la pantalla para saber qué quedó por fuera. */
+   *  en Excel no tiene la pantalla para saber qué quedó por fuera. Sirve para
+   *  la ventana y para la simulación; el acero va al final, en su propia tabla. */
   function csvMateriales(res) {
     var c = res.cobertura || {};
-    var out = [
-      [celdaCsv('Materiales para producir del ' + res.desde + ' al ' + res.hasta)],
-      [celdaCsv(c.conDatos + ' de ' + c.total + ' unidades con datos de material' +
-                (c.respaldo ? '; ' + c.respaldo + ' de plantilla vieja (solo ' + (res.alcanceRespaldo || []).length +
-                              ' accesorios: los que marcan unidades_que_no_lo_pueden_decir pueden quedarse cortos)' : ''))],
+    var n = (res.alcanceRespaldo || []).length;
+    var cabecera;
+    if (res.simulacion) {
+      var cot = res.cotizacion || {}, t = res.tiempo || {}, d = t.desdeHoy;
+      cabecera = [
+        [celdaCsv('Simulación: ' + res.casas + ' casas de ' + (cot.proyecto || cot.archivo) +
+                  ' (CB' + cot.cb + (cot.version ? '.' + cot.version : '') + ')')],
+        [celdaCsv((d ? d.dias + ' días hábiles a ' + t.ritmo + ' ML por día (' + t.ml + ' ML). Desde hoy: ' +
+                      (d.inicio || '') + ' a ' + (d.fin || 'más de 13 años') + '. Después de la cola: ' +
+                      ((t.trasCola && t.trasCola.inicio) || '') + ' a ' + ((t.trasCola && t.trasCola.fin) || 'más de 13 años')
+                    : 'Sin tiempo: la cotización no trae metros o no hay ritmo configurado.') +
+         (c.respaldo ? ' Plantilla vieja: solo ' + n + ' accesorios, los marcados en unidades_que_no_lo_pueden_decir pueden faltar.' : ''))],
+      ];
+    } else {
+      cabecera = [
+        [celdaCsv('Materiales para producir del ' + res.desde + ' al ' + res.hasta)],
+        [celdaCsv(c.conDatos + ' de ' + c.total + ' unidades con datos de material' +
+                  (c.respaldo ? '; ' + c.respaldo + ' de plantilla vieja (solo ' + n +
+                                ' accesorios: los que marcan unidades_que_no_lo_pueden_decir pueden quedarse cortos)' : ''))],
+      ];
+    }
+    var out = cabecera.concat([
       [],
       ['codigo', 'descripcion', 'unidad', 'cantidad', 'peso_kg_estimado', 'frecuente',
        'unidades_que_aportan', 'unidades_que_no_lo_pueden_decir', 'codigo_desconocido'].map(celdaCsv),
-    ];
+    ]);
     (res.materiales || []).forEach(function (m) {
       out.push([m.idProducto, m.descripcion, m.unidad, m.cantidad,
                 m.pesoKgEstimado == null ? '' : m.pesoKgEstimado,
                 m.frecuente ? 'si' : '', m.unidadesQueAportan, m.noPuedenAportar,
                 m.sinMapeo ? 'si' : ''].map(celdaCsv));
     });
+    // El acero, después: en metros siempre, en kg donde hay peso por metro.
+    var ac = res.acero || {};
+    if ((ac.perfiles || []).length) {
+      out.push([]);
+      out.push(['perfil', 'calibre', 'metros', 'kg_por_metro', 'kg'].map(celdaCsv));
+      ac.perfiles.forEach(function (p) {
+        out.push([p.perfil, p.calibre, p.metros, p.kgPorMetro == null ? '' : p.kgPorMetro,
+                  p.kg == null ? '' : p.kg].map(celdaCsv));
+      });
+      if (ac.kgMaestro != null) out.push([celdaCsv('KG del maestro'), '', '', '', celdaCsv(ac.kgMaestro)]);
+    }
     return out.map(function (f) { return f.join(','); }).join('\n');
   }
 
@@ -176,6 +337,8 @@
         '<th class="n" title="Cuántas unidades de la ventana lo piden">Unidades</th></tr></thead><tbody>' +
         (res.materiales || []).map(function (m) { return filaMaterialHtml(m, c.conDatos); }).join('') +
         '</tbody></table></div>';
+
+      h += aceroHtml(res.acero, res.catalogoPerfilesFalta);
 
       h += '<details class="mat-unidades"><summary>Las ' + c.total + ' unidades de la ventana</summary>' +
         '<table class="mat-tabla"><thead><tr><th>Proyecto</th><th>Producción</th><th class="n">ML</th><th>Datos</th></tr></thead><tbody>' +
@@ -237,13 +400,73 @@
     consultar();
   }
 
-  function descargarCsv() {
-    if (!_res) return;
-    var blob = new Blob(['﻿' + csvMateriales(_res)], { type: 'text/csv;charset=utf-8' });
+  function descargar(res, nombre) {
+    if (!res) return;
+    var blob = new Blob(['﻿' + csvMateriales(res)], { type: 'text/csv;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    a.href = url; a.download = 'colframe-materiales-' + _res.desde + '_' + _res.hasta + '.csv';
+    a.href = url; a.download = nombre;
     a.click(); URL.revokeObjectURL(url);
+  }
+  function descargarCsv() {
+    if (_res) descargar(_res, 'colframe-materiales-' + _res.desde + '_' + _res.hasta + '.csv');
+  }
+
+  // ── Simular un pedido ───────────────────────────────────────────────────
+  //
+  // "¿Qué materiales necesitaría para 500 casas, y en cuánto tiempo?" Una
+  // cotización del maestro como modelo y N casas. No programa ni guarda nada:
+  // es la misma cuenta de la ventana, sobre un pedido que no existe todavía.
+
+  var _sim = null;            // última respuesta de prod_materiales_simular
+  var _cotizaciones = null;   // la lista del maestro, para el buscador
+
+  function abrirSim() {
+    $('modalSimular').classList.remove('hidden');
+    $('simBuscar').focus();
+    if (_cotizaciones) return;
+    $('simCuerpo').innerHTML = '<div class="und" style="padding:8px 0;">Cargando las cotizaciones del maestro…</div>';
+    apiCotizList(token).then(function (r) {
+      _cotizaciones = (r.cotizaciones || []).filter(function (c) { return c.archivo; });
+      $('simOpciones').innerHTML = _cotizaciones.map(function (c) {
+        return '<option value="' + esc(etiquetaCotiz(c)) + '"></option>';
+      }).join('');
+      $('simCuerpo').innerHTML = '';
+    }).catch(function (e) {
+      if (e && e.tipo === 'auth') { clearSession(); location.href = 'index.html'; return; }
+      $('simCuerpo').innerHTML = '<div class="mat-cob mal">' + esc((e && e.message) || 'No se pudieron cargar las cotizaciones') + '</div>';
+    });
+  }
+  function cerrarSim() { $('modalSimular').classList.add('hidden'); }
+
+  function simular() {
+    var cuerpo = $('simCuerpo');
+    var archivo = buscarCotiz($('simBuscar').value, _cotizaciones);
+    if (!archivo) {
+      cuerpo.innerHTML = '<div class="mat-cob mal">Elige la cotización modelo de la lista' +
+        ($('simBuscar').value.trim() ? ': lo escrito coincide con varias o con ninguna.' : '.') + '</div>';
+      return;
+    }
+    var casas = Number($('simCasas').value);
+    if (!(casas >= 1 && casas <= 100000) || Math.floor(casas) !== casas) {
+      cuerpo.innerHTML = '<div class="mat-cob mal">La cantidad de casas tiene que ser un número entero entre 1 y 100.000.</div>';
+      return;
+    }
+    var btn = $('simCalcular');
+    btn.disabled = true; $('simCsv').disabled = true;
+    cuerpo.innerHTML = '<div style="text-align:center;padding:20px;"><span class="spinner" ' +
+      'style="border-color:rgba(0,0,0,0.1);border-top-color:var(--cf-blue);"></span></div>';
+    apiProdMaterialesSimular(token, archivo, casas)
+      .then(function (r) { _sim = r; cuerpo.innerHTML = simulacionHtml(r); $('simCsv').disabled = false; })
+      .catch(function (e) {
+        if (e && e.tipo === 'auth') { clearSession(); location.href = 'index.html'; return; }
+        _sim = null;
+        cuerpo.innerHTML = '<div class="mat-cob mal">' + esc((e && e.message) || 'No se pudo simular') + '</div>';
+      })
+      .finally(function () { btn.disabled = false; });
+  }
+  function descargarCsvSim() {
+    if (_sim) descargar(_sim, 'colframe-simulacion-' + _sim.casas + '-casas-CB' + (_sim.cotizacion || {}).cb + '.csv');
   }
 
   function init() {
@@ -260,6 +483,20 @@
     });
     $('matConsultar').addEventListener('click', consultar);
     $('matCsv').addEventListener('click', descargarCsv);
+
+    // El botón vive dentro de <summary>: sin esto, además de abrir la
+    // simulación, abriría o cerraría la tarjeta.
+    $('matSimular').addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); abrirSim(); });
+    $('simCalcular').addEventListener('click', simular);
+    $('simCsv').addEventListener('click', descargarCsvSim);
+    $('simCerrar').addEventListener('click', cerrarSim);
+    $('modalSimular').addEventListener('click', function (e) { if (e.target.id === 'modalSimular') cerrarSim(); });
+    ['simBuscar', 'simCasas'].forEach(function (id) {
+      $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); simular(); } });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !$('modalSimular').classList.contains('hidden')) cerrarSim();
+    });
   }
   init();
 })();

@@ -225,6 +225,11 @@ async function apiProdColaGet(token) {
 async function apiProdMaterialesVentana(token, desde, hasta) {
   return apiCall('prod_materiales_ventana', { token, desde, hasta });
 }
+// Simula un pedido: N casas de una cotización del maestro. Materiales, acero y
+// en cuánto tiempo se producirían. No escribe nada.
+async function apiProdMaterialesSimular(token, cotizacionArchivo, casas) {
+  return apiCall('prod_materiales_simular', { token, cotizacionArchivo, casas });
+}
 async function apiProdColaReordenar(token, orden) {
   return apiCall('prod_cola_reordenar', { token, orden });
 }
