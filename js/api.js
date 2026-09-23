@@ -424,6 +424,14 @@ async function apiFacturaAsignar(token, facturaNumero, cotizacionArchivo, monto,
 async function apiFacturaAsignacionAnular(token, asigId, motivo) {
   return apiCall('factura_asignacion_anular', { token, asigId, motivo });
 }
+// Qué factura corrige una nota crédito que el sync no pudo resolver. Queda en
+// `RelacionesNotaCredito`, aparte del maestro, que es espejo de Dataico.
+async function apiFacturaNcRelacionar(token, ncNumero, facturaNumero, nota) {
+  return apiCall('factura_nc_relacionar', { token, ncNumero, facturaNumero, nota: nota || '' });
+}
+async function apiFacturaNcRelacionAnular(token, relId, motivo) {
+  return apiCall('factura_nc_relacion_anular', { token, relId, motivo });
+}
 async function apiFacturaCotizacion(token, cotizacionArchivo) {
   return apiCall('factura_cotizacion', { token, cotizacionArchivo });
 }

@@ -41,6 +41,9 @@
   var sugAbierta = null;      // sugerencias de esa factura (llegan aparte)
   var filtro = 'todas';
   var busca = '';
+  // El PERÍODO de la lista de facturas: un atajo (`mes`, `anio`…) o `rango`,
+  // que es lo que queda al tocar las fechas a mano. Ver `rangoPeriodo`.
+  var periodo = 'todo', periodoDesde = '', periodoHasta = '';
   var marcadas = {};          // docId → true, en la vista Por cobrar
 
   // ── Utilidades ───────────────────────────────────────────────────────────
@@ -655,6 +658,89 @@
   // "11 millones sin repartir", que se lee como plata por cobrar, y es lo
   // contrario.
 
+  // ── El período ──────────────────────────────────────────────────────────
+
+  function hoyBogota() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
+
+  /**
+   * Un atajo de período → `{ desde, hasta }` en YYYY-MM-DD, contra `hoy`.
+   * `trimestre` son los tres últimos meses ENTEROS contando el actual —jul, ago
+   * y sep el 23-sep—, que es como se habla de un trimestre de cobro, y no
+   * "hace 90 días", que empieza en un día cualquiera. FUNCIÓN PURA.
+   */
+  function rangoPeriodo(p, hoy) {
+    var y = parseInt(String(hoy).substring(0, 4), 10), m = parseInt(String(hoy).substring(5, 7), 10);
+    var dos = function (n) { return (n < 10 ? '0' : '') + n; };
+    var ini = function (yy, mm) { return yy + '-' + dos(mm) + '-01'; };
+    var fin = function (yy, mm) { return yy + '-' + dos(mm) + '-' + dos(new Date(Date.UTC(yy, mm, 0)).getUTCDate()); };
+    if (p === 'mes') return { desde: ini(y, m), hasta: hoy };
+    if (p === 'mesPasado') {
+      var ya = m === 1 ? y - 1 : y, ma = m === 1 ? 12 : m - 1;
+      return { desde: ini(ya, ma), hasta: fin(ya, ma) };
+    }
+    if (p === 'trimestre') {
+      var mt = m - 2, yt = y;
+      if (mt < 1) { mt += 12; yt--; }
+      return { desde: ini(yt, mt), hasta: hoy };
+    }
+    if (p === 'anio') return { desde: y + '-01-01', hasta: hoy };
+    return { desde: '', hasta: '' };
+  }
+
+  /** ¿La fecha cae en el rango? Sin rango, todo cae; con rango, una factura sin
+   *  fecha NO — no se puede afirmar que sea del período. FUNCIÓN PURA. */
+  function enPeriodo(fecha, r) {
+    if (!r || (!r.desde && !r.hasta)) return true;
+    var f = String(fecha || '').substring(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return false;
+    if (r.desde && f < r.desde) return false;
+    if (r.hasta && f > r.hasta) return false;
+    return true;
+  }
+
+  function rangoActivo() {
+    return periodo === 'rango' ? { desde: periodoDesde, hasta: periodoHasta }
+                               : rangoPeriodo(periodo, hoyBogota());
+  }
+
+  /**
+   * Las facturas que PODRÍA corregir una nota crédito sin referencia, de la más
+   * probable a la menos. Solo las posibles: del mismo cliente (si los dos traen
+   * NIT), anteriores a la nota, y que valgan al menos lo que ella devuelve. Las
+   * que valen exactamente lo mismo van primero —es la anulación, el caso común—
+   * y después las más recientes, que son las más cercanas a la nota.
+   *
+   * Son las mismas reglas que el servidor exige al relacionar
+   * (`_factValidarRelacionNc`): aquí solo sirven para no mostrar imposibles.
+   * FUNCIÓN PURA.
+   */
+  function candidatasNc(nc, facturas) {
+    var nit = function (v) { return String(v || '').replace(/\D/g, ''); };
+    var mismoNit = function (a, b) {
+      return a === b || (a.length === b.length + 1 && a.indexOf(b) === 0) ||
+             (b.length === a.length + 1 && b.indexOf(a) === 0);
+    };
+    var sub = Number(nc && nc.subtotal) || 0;
+    var a = nit(nc && nc.nit);
+    return (facturas || []).filter(function (f) {
+      if (!f || f.notaCredito || !f.enMaestro) return false;
+      if (nc.fecha && f.fecha && String(f.fecha) > String(nc.fecha)) return false;
+      var b = nit(f.nit);
+      if (a && b && !mismoNit(a, b)) return false;
+      return (Number(f.subtotal) || 0) - sub > -0.5;
+    }).map(function (f) {
+      return { numero: f.numero, fecha: f.fecha || '', subtotal: Number(f.subtotal) || 0,
+               razonSocial: f.razonSocial || '',
+               exacta: Math.abs((Number(f.subtotal) || 0) - sub) < 0.5,
+               yaCorregida: (f.corregidaPor || []).length > 0 };
+    }).sort(function (x, y) {
+      if (x.exacta !== y.exacta) return x.exacta ? -1 : 1;
+      return String(y.fecha).localeCompare(String(x.fecha));
+    }).slice(0, 8);
+  }
+
   function facturaPorNumero(n) {
     return ((_datos && _datos.facturas) || []).filter(function (x) { return x.numero === n; })[0] || null;
   }
@@ -712,7 +798,16 @@
     // dibujarse. Se dice qué falta y cómo arreglarlo, en vez de mostrar una
     // lista vacía que se lee como "no hay facturas".
     if (_backendViejo) return avisoBackendViejo();
-    var facturas = _datos.facturas || [];
+    var todas = _datos.facturas || [];
+    // EL PERÍODO VA ANTES QUE TODO: filtra la lista Y los cortes de arriba. Un
+    // "Sin repartir" que sumara el año entero mientras la lista muestra un mes
+    // sería el mismo descuadre de R9-03, ahora en esta vista.
+    var rango = rangoActivo();
+    var conPeriodo = !!(rango.desde || rango.hasta);
+    var facturas = todas.filter(function (f) { return enPeriodo(f.fecha, rango); });
+    var sinFecha = conPeriodo ? todas.filter(function (f) {
+      return !/^\d{4}-\d{2}-\d{2}/.test(String(f.fecha || ''));
+    }).length : 0;
     var sinRep = 0, nPend = 0;
     facturas.forEach(function (f) {
       // Las NC no suman aquí —no son plata por cobrar— ni las facturas anuladas
@@ -723,7 +818,7 @@
     });
 
     var h = '<div class="fact-cortes">' +
-      corte('a', 'Facturas', facturas.length, 'en el maestro') +
+      corte('a', 'Facturas', facturas.length, conPeriodo ? 'en el período' : 'en el maestro') +
       corte('c', 'Sin repartir', money(sinRep), 'de las que tienen saldo') +
       corte('b', 'Con algo pendiente', nPend, nPend === 1 ? 'factura' : 'facturas') +
       '</div>';
@@ -741,6 +836,21 @@
       // a correr la compuerta en cada carga de la pantalla, y la compuerta lee
       // seis hojas. Un clic muestra el plan; el segundo lo escribe.
       '<button class="btn-auto" data-auto="1">Asignar las seguras…</button>' +
+      '</div>';
+
+    // El período. Los atajos son los cortes con que se habla de cobro; las dos
+    // fechas son para cualquier otro, y tocarlas pasa a "rango".
+    h += '<div class="barra-f periodo"><span class="p-lbl">Período</span>' +
+      [['todo', 'Todo'], ['mes', 'Este mes'], ['mesPasado', 'Mes pasado'],
+       ['trimestre', 'Últimos 3 meses'], ['anio', 'Este año']]
+        .map(function (x) {
+          return '<button class="fchip" data-periodo="' + x[0] + '" aria-pressed="' +
+                 (periodo === x[0]) + '">' + x[1] + '</button>';
+        }).join('') +
+      '<span class="p-fechas"><input type="date" id="pDesde" value="' + esc(rango.desde) + '" aria-label="Desde">' +
+      '<span>a</span><input type="date" id="pHasta" value="' + esc(rango.hasta) + '" aria-label="Hasta"></span>' +
+      (sinFecha ? '<span class="p-nota">' + sinFecha + (sinFecha === 1 ? ' factura sin fecha no se muestra'
+                                                                       : ' facturas sin fecha no se muestran') + '</span>' : '') +
       '</div>';
 
     var vis = facturas.filter(function (f) {
@@ -767,7 +877,8 @@
     if (!vis.length) {
       return h + '<div class="vacio">' +
         (facturas.length ? 'Ninguna factura coincide.'
-          : 'El maestro de facturas está vacío. Corre <code>factImportarFacturas()</code> o el .bat de sync.') +
+          : (todas.length ? 'Ninguna factura en este período.'
+            : 'El maestro de facturas está vacío. Corre <code>factImportarFacturas()</code> o el .bat de sync.')) +
         '</div>';
     }
 
@@ -846,12 +957,30 @@
 
     if (f.notas) h += '<p class="nota-f">notas: “' + esc(f.notas) + '”</p>';
     if (f.notaCredito) {
-      h += f.corrigeA
-        ? '<div class="aviso info"><strong>Nota crédito que corrige a ' + esc(f.corrigeA) + '.</strong> ' +
+      if (f.corrigeA) {
+        var aMano = f.corrigeAOrigen === 'MANUAL' && f.relacionNc;
+        h += '<div class="aviso info"><strong>Nota crédito que corrige a ' + esc(f.corrigeA) + '.</strong> ' +
           'Resta: lo que se asigne aquí se <strong>descuenta</strong> del proyecto. Se asigna con el monto ' +
-          'en positivo; el signo lo pone el documento.</div>'
-        : '<div class="aviso warn"><strong>Nota crédito sin la factura que corrige.</strong> El sync no ' +
-          'encontró la referencia: hay que decidir a mano de qué proyecto descontarla.</div>';
+          'en positivo; el signo lo pone el documento.' +
+          (aMano
+            ? '<div class="nc-rel">Relacionada a mano' +
+                (f.relacionNc.nota ? ' — “' + esc(f.relacionNc.nota) + '”' : '') +
+                ' <button class="btn-mini quitar" data-nc-quitar="' + esc(f.relacionNc.relId) + '" ' +
+                'data-nc="' + esc(f.numero) + '" data-fe="' + esc(f.corrigeA) + '">Quitar relación</button></div>'
+            : '') +
+          '</div>';
+      } else {
+        // LAS DOS SALIDAS, cada una con su botón. Antes el aviso decía "hay que
+        // decidir a mano" y no había con qué: el único botón era "Asignar a
+        // otro proyecto…", que descuenta sin decir qué factura se corrige.
+        h += '<div class="aviso warn"><strong>Nota crédito sin la factura que corrige.</strong> El XML ' +
+          'firmado no trae la referencia, así que el sistema no sabe de qué proyectos descontarla.' +
+          '<div class="nc-rel"><button class="btn-mini primario" data-nc-rel="' + esc(f.numero) + '">' +
+            'Relacionar con su factura…</button></div>' +
+          '<div class="nc-rel-ayuda">Con la factura relacionada, el sistema propone descontarla de sus ' +
+          'mismos proyectos. Si no corrige ninguna —un descuento suelto—, descuéntala directo de un ' +
+          'proyecto con <em>Asignar a otro proyecto…</em>, abajo.</div></div>';
+      }
     }
     if ((f.corregidaPor || []).length) {
       h += '<div class="aviso ' + (anuladaEntera(f) ? 'warn' : 'info') + '">' +
@@ -949,7 +1078,8 @@
           ? '<div class="aviso info">' + (f.corrigeA
               ? esc(f.corrigeA) + ' no tiene reparto, así que no hay de qué proyecto descontarla. Si ' +
                 esc(f.corrigeA) + ' tampoco se va a asignar, las dos juntas ya dan cero.'
-              : 'Sin la factura que corrige no hay propuesta: asígnala a mano.') + '</div>'
+              : 'Sin la factura que corrige no hay propuesta. Relaciónala arriba, o descuéntala ' +
+                'directo de un proyecto con <em>Asignar a otro proyecto…</em>.') + '</div>'
           : '<div class="aviso info">Ni la nota menciona una cotización, ni esta factura está en ' +
              'ninguna remisión. Hay que asignarla a mano — es lo normal en anticipos.</div>';
       }
@@ -1904,6 +2034,59 @@
   }
 
   function cerrarModal() { document.getElementById('modalCont').innerHTML = ''; }
+
+  /** Relacionar una nota crédito con la factura que corrige. Las candidatas
+   *  salen de `candidatasNc`; el servidor vuelve a validar todo. */
+  function abrirRelacionarNc(numero) {
+    var nc = facturaPorNumero(numero);
+    if (!nc) return;
+    var cands = candidatasNc(nc, _datos.facturas || []);
+    modal('<h4>¿Qué factura corrige ' + esc(numero) + '?</h4>' +
+      '<p class="hint">' + esc(nc.fecha || 'sin fecha') + ' · devuelve ' + money(nc.subtotal) +
+        (clienteDe(nc) ? ' · ' + esc(clienteDe(nc)) : '') + '. Con la factura relacionada, el sistema ' +
+        'propone descontarla de los mismos proyectos. Queda en la auditoría y se puede quitar.</p>' +
+      (cands.length
+        ? '<div class="nc-cands"><div class="ayuda">Posibles — mismo cliente, anteriores a la nota y que ' +
+            'valen al menos lo que ella devuelve:</div>' +
+          cands.map(function (c) {
+            return '<button class="nc-cand" data-cand="' + esc(c.numero) + '">' +
+              '<b>' + esc(c.numero) + '</b> · ' + esc(c.fecha || 'sin fecha') + ' · ' + money(c.subtotal) +
+              (c.exacta ? ' <span class="estado ok">mismo valor</span>' : '') +
+              (c.yaCorregida ? ' <span class="estado na">ya tiene nota crédito</span>' : '') +
+              '</button>';
+          }).join('') + '</div>'
+        : '<p class="hint">Ninguna factura del maestro encaja: mismo cliente, anterior a la nota y de ' +
+          'al menos ese valor. Si sabes el número, escríbelo igual.</p>') +
+      '<div class="campo"><label>Factura</label>' +
+        '<input id="ncFe" maxlength="60" placeholder="FE201" autocomplete="off"></div>' +
+      '<div class="campo"><label>Nota (opcional)</label>' +
+        '<input id="ncNota" maxlength="300" placeholder="lo dice el PDF de la nota, lo confirmó contabilidad…" autocomplete="off"></div>' +
+      '<div class="modal-acciones"><button class="btn btn-sm" id="ncNo">Cancelar</button>' +
+      '<button class="btn btn-sm btn-primary" id="ncSi">Relacionar</button></div>');
+    var campo = document.getElementById('ncFe');
+    Array.prototype.forEach.call(document.querySelectorAll('.nc-cand'), function (b) {
+      b.onclick = function () {
+        campo.value = b.getAttribute('data-cand');
+        Array.prototype.forEach.call(document.querySelectorAll('.nc-cand'), function (x) {
+          x.setAttribute('aria-pressed', String(x === b));
+        });
+      };
+    });
+    campo.focus();
+    document.getElementById('ncNo').onclick = cerrarModal;
+    document.getElementById('ncSi').onclick = function () {
+      var fe = campo.value.trim().toUpperCase();
+      if (!fe) { toast('Elige o escribe la factura', 'error'); return; }
+      var btn = this; btn.disabled = true;
+      apiFacturaNcRelacionar(token, numero, fe, document.getElementById('ncNota').value.trim())
+        .then(function () {
+          cerrarModal();
+          toast(numero + ' relacionada con ' + fe, 'ok');
+          return refrescar();
+        })
+        .catch(function (e) { btn.disabled = false; manejarError(e); });
+    };
+  }
   function modal(html) {
     document.getElementById('modalCont').innerHTML =
       '<div class="modal-back" id="modalBack"><div class="modal-box">' + html + '</div></div>';
@@ -2271,9 +2454,11 @@
     var sub = r2(Number(factura.subtotal));
     var disp = r2(Number(factura.sinAsignar));
     var excede = total - disp >= 0.5;
-    var texto = factura.numero + ' vale ' + money(sub) + ' sin IVA' +
-      (disp < sub ? ' · ya tiene ' + money(r2(sub - disp)) + ' asignados' : '') +
-      ' · le quedan ' + money(Math.max(0, disp)) + ' por repartir.';
+    // Una nota crédito no se "reparte": se DESCUENTA. Mismo tope, otra palabra.
+    var nc = !!factura.notaCredito;
+    var texto = factura.numero + (nc ? ' devuelve ' : ' vale ') + money(sub) + ' sin IVA' +
+      (disp < sub ? ' · ya tiene ' + money(r2(sub - disp)) + (nc ? ' descontados' : ' asignados') : '') +
+      ' · le quedan ' + money(Math.max(0, disp)) + (nc ? ' por descontar.' : ' por repartir.');
     if (excede) {
       texto += ' Te pasas por ' + money(r2(total - disp)) + ': no se puede asignar más de lo que queda.';
     }
@@ -2545,6 +2730,9 @@
       vista = v; abierta = null; sugAbierta = null; pintar(); return;
     }
     if ((n = b.getAttribute('data-fp'))) { filtroProy = n; pintar(); return; }
+    // Va ANTES del `.fchip` genérico de abajo, que es el de estado y leería
+    // `data-f` vacío.
+    if ((n = b.getAttribute('data-periodo'))) { periodo = n; pintar(); return; }
     if (b.classList.contains('fchip')) { filtro = b.getAttribute('data-f'); pintar(); return; }
     if ((n = b.getAttribute('data-cerrar'))) { abrirCerrar(n); return; }
     if ((n = b.getAttribute('data-reabrir'))) { reabrirCierre(n, b.getAttribute('data-proy') || ''); return; }
@@ -2614,6 +2802,19 @@
       }
       return;
     }
+    if ((n = b.getAttribute('data-nc-rel'))) { abrirRelacionarNc(n); return; }
+    if ((n = b.getAttribute('data-nc-quitar'))) {
+      pedirMotivo('Quitar la relación', b.getAttribute('data-nc') + ' dejará de decir que corrige a ' +
+                  b.getAttribute('data-fe') + '. Lo ya descontado no se toca: eso se anula aparte.', 'Quitar')
+        .then(function (m) {
+          if (!m) return;
+          return apiFacturaNcRelacionAnular(token, n, m).then(function () {
+            toast('Relación quitada', 'ok');
+            return refrescar();
+          });
+        }).catch(manejarError);
+      return;
+    }
     if ((n = b.getAttribute('data-manual'))) {
       // Asignar a un proyecto que no está propuesto: el camino de los anticipos.
       abrirAsignar('', '', { factura: n });
@@ -2647,6 +2848,18 @@
 
   document.addEventListener('input', function (ev) {
     if (ev.target && ev.target.id === 'buscar') { busca = ev.target.value.trim(); pintar(); }
+  });
+
+  // Las fechas del período van por `change` y no por `input`: repintar mientras
+  // se escoge el día cerraría el calendario del navegador a medio camino.
+  document.addEventListener('change', function (ev) {
+    var id = ev.target && ev.target.id;
+    if (id !== 'pDesde' && id !== 'pHasta') return;
+    var r = rangoActivo();
+    periodo = 'rango';
+    periodoDesde = id === 'pDesde' ? ev.target.value : r.desde;
+    periodoHasta = id === 'pHasta' ? ev.target.value : r.hasta;
+    pintar();
   });
 
   // `clearSession()` ya borra la fila de sesión en el servidor además del

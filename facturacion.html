@@ -331,6 +331,22 @@
     .fact-table thead tr:first-child th { font-size:0.6rem; padding-bottom:3px; text-align:center; }
     .prov-val { color:#B45309; font-weight:700; }
     .estado.prov { background:#FEF3C7; color:#92400E; }
+    /* El período de la lista de facturas. */
+    .barra-f.periodo { margin-top:-4px; }
+    .p-lbl { font-size:0.72rem; font-weight:700; color:var(--cf-gray-text); text-transform:uppercase;
+             letter-spacing:0.03em; }
+    .p-fechas { display:inline-flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--cf-gray-text); }
+    .p-fechas input { font-family:inherit; font-size:0.78rem; padding:5px 7px; border:1px solid #CBD5E1;
+                      border-radius:8px; }
+    .p-nota { font-size:0.72rem; color:#92400E; }
+    /* Relacionar una nota crédito con su factura. */
+    .nc-rel { margin-top:8px; }
+    .nc-rel-ayuda { margin-top:6px; font-size:0.76rem; }
+    .nc-cands { display:flex; flex-direction:column; gap:5px; margin:8px 0 12px; }
+    .nc-cands .ayuda { font-size:0.75rem; color:var(--cf-gray-text); margin-bottom:2px; }
+    .nc-cand { text-align:left; font-family:inherit; font-size:0.8rem; padding:7px 10px; cursor:pointer;
+               background:#fff; border:1px solid #CBD5E1; border-radius:8px; }
+    .nc-cand:hover, .nc-cand[aria-pressed="true"] { border-color:#5B21B6; background:#F5F3FF; }
     /* Nota crédito: resta. Violeta y no rojo, porque no es un error. */
     .nc-tag { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:6px;
               background:#EDE9FE; color:#5B21B6; font-size:0.66rem; font-weight:700;

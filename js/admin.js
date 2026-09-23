@@ -1693,6 +1693,8 @@
     FACTURA_ASIGNACION_ANULAR:  { txt: 'Asignación anulada',         color: '#DC2626', g: 'Facturación' },
     FACTURA_CIERRE:             { txt: 'Cobro cerrado',              color: '#0E7490', g: 'Facturación' },
     FACTURA_CIERRE_ANULAR:      { txt: 'Cobro reabierto',            color: '#DC2626', g: 'Facturación' },
+    FACTURA_NC_RELACIONAR:      { txt: 'Nota crédito relacionada',   color: '#5B21B6', g: 'Facturación' },
+    FACTURA_NC_RELACION_ANULAR: { txt: 'Relación de NC quitada',     color: '#DC2626', g: 'Facturación' },
     // — Remisiones (hoja AuditoriaRemisiones) —
     REMISION_CREADA:            { txt: 'Remisión creada',            color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_EDITADA:           { txt: 'Remisión editada',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
