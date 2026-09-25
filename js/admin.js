@@ -28,8 +28,9 @@
   // Guard: solo admins. La verificación real está en el backend;
   // esta es solo UX para no mostrar la UI a operarios normales.
   const session = getSession();
-  if (!session || !session.token || !session.esAdmin) {
-    window.location.replace('index.html');
+  // Es RRHH: solo Dirección. Un administrativo que llegue aquí va a su inicio.
+  if (!session || !session.token || !esDireccion(session)) {
+    window.location.replace(session && session.token ? paginaInicio(session) : 'index.html');
     return;
   }
 
@@ -1126,9 +1127,12 @@
       const bloqueadoBadge = op.bloqueado
         ? '<span class="badge badge-inactive" style="margin-left:6px;font-size:0.65rem;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;">BLOQUEADO</span>'
         : '';
-      const adminBadge = op.esAdmin
-        ? '<span class="badge badge-active" style="margin-left:6px;font-size:0.65rem;">ADMIN</span>'
-        : '';
+      const rol = rolDeSesion(op);
+      const adminBadge = rol === 'DIRECCION'
+        ? '<span class="badge badge-active" style="margin-left:6px;font-size:0.65rem;">DIRECCIÓN</span>'
+        : (rol === 'ADMINISTRATIVO'
+          ? '<span class="badge" style="margin-left:6px;font-size:0.65rem;background:#EDE9FE;color:#6D28D9;">ADMINISTRATIVO</span>'
+          : '');
       const btnDesbloquear = op.bloqueado
         ? `<button class="btn btn-ghost btn-sm" data-acc="desbloquear" data-i="${i}" style="color:#DC2626;border-color:#FECACA;">Desbloquear</button>`
         : '';
@@ -1198,30 +1202,31 @@
     document.getElementById('opCargo').value  = operario ? (operario.cargo || '') : '';
     document.getElementById('opEmail').value  = operario ? (operario.email || '') : '';
     document.getElementById('opActivo').checked = operario ? operario.activo : true;
-    document.getElementById('opAdmin').checked  = operario ? operario.esAdmin : false;
+    document.getElementById('opRol').value      = operario ? rolDeSesion(operario) : 'OPERARIO';
     poblarSelectHorario(document.getElementById('opHorario'), horariosList);
     document.getElementById('opHorario').value = operario ? (operario.horario || '') : '';
     modalError.classList.add('hidden');
     actualizarLabelPin();
-    // Email solo visible para admins
-    const esAdminActual = operario ? operario.esAdmin : false;
-    document.getElementById('opEmailGroup').style.display = esAdminActual ? '' : 'none';
+    actualizarEmailVisible();
     modal.classList.remove('hidden');
     document.getElementById('opNombre').focus();
   }
 
   function cerrarModal() { modal.classList.add('hidden'); operarioEditar = null; }
 
-  // Actualizar longitud de PIN y visibilidad del email cuando cambia el checkbox de admin
-  document.getElementById('opAdmin').addEventListener('change', (e) => {
+  // Quien no es operario entra a más que marcar: PIN de 6 y correo.
+  const rolElegido = () => document.getElementById('opRol').value || 'OPERARIO';
+  function actualizarEmailVisible() {
+    document.getElementById('opEmailGroup').style.display = rolElegido() === 'OPERARIO' ? 'none' : '';
+  }
+  document.getElementById('opRol').addEventListener('change', () => {
     actualizarLabelPin();
-    document.getElementById('opEmailGroup').style.display = e.target.checked ? '' : 'none';
+    actualizarEmailVisible();
   });
 
   // También actualizar label al abrir modal (en abrirModal se setea el checkbox)
   function actualizarLabelPin() {
-    const esAdmin  = document.getElementById('opAdmin').checked;
-    const longitud = esAdmin ? 6 : 4;
+    const longitud = rolElegido() === 'OPERARIO' ? 4 : 6;
     const pinEl    = document.getElementById('opPin');
     pinEl.maxLength = longitud;
     document.getElementById('opPinLongitud').textContent = longitud + ' dígitos';
@@ -1396,9 +1401,9 @@
     const horario = document.getElementById('opHorario').value;
     const email   = document.getElementById('opEmail').value.trim();
     const activo  = document.getElementById('opActivo').checked;
-    const esAdmin = document.getElementById('opAdmin').checked;
+    const rol     = rolElegido();
     const fila    = document.getElementById('opFila').value;
-    const longitudReq = esAdmin ? 6 : 4;
+    const longitudReq = rol === 'OPERARIO' ? 4 : 6;
 
     if (!nombre || !cedula) {
       modalError.textContent = 'Nombre y cédula son obligatorios';
@@ -1411,7 +1416,7 @@
       return;
     }
     if (pin && (pin.length !== longitudReq || !/^\d+$/.test(pin))) {
-      modalError.textContent = `El PIN debe ser exactamente ${longitudReq} dígitos${esAdmin ? ' (administradores requieren 6)' : ''}`;
+      modalError.textContent = `El PIN debe ser exactamente ${longitudReq} dígitos${rol === 'OPERARIO' ? '' : ' (Dirección y Administrativo requieren 6)'}`;
       modalError.classList.remove('hidden');
       return;
     }
@@ -1423,7 +1428,8 @@
     document.getElementById('btnModalSave').disabled = true;
 
     try {
-      const operario = { nombre, cedula, pin, cargo, horario, email, activo, esAdmin };
+      // `esAdmin` va en espejo del rol: un backend todavía sin roles lo entiende.
+      const operario = { nombre, cedula, pin, cargo, horario, email, activo, rol, esAdmin: rol === 'DIRECCION' };
       if (operarioEditar) {
         // cedulaOriginal identifica la FILA; `cedula` es el valor nuevo (el campo
         // es editable, así que pueden diferir cuando se corrige un dígito). El
@@ -1648,6 +1654,7 @@
     // — Operarios y asistencia —
     OPERARIO_CREADO:            { txt: 'Operario creado',            color: '#16A34A', g: 'Operarios y asistencia' },
     OPERARIO_ACTUALIZADO:       { txt: 'Operario actualizado',       color: '#2563EB', g: 'Operarios y asistencia' },
+    OPERARIO_ROL_CAMBIADO:      { txt: 'Rol cambiado',               color: '#7C3AED', g: 'Operarios y asistencia' },
     DESBLOQUEO:                 { txt: 'Desbloqueo',                 color: '#D97706', g: 'Operarios y asistencia' },
     MARCACION_ADMIN:            { txt: 'Marcación por admin',        color: '#7C3AED', g: 'Operarios y asistencia' },
     REGISTRO_ELIMINADO:         { txt: 'Registro eliminado',         color: '#DC2626', g: 'Operarios y asistencia' },

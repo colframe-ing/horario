@@ -610,9 +610,16 @@
             <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
               <input type="checkbox" id="opActivo" checked> Activo
             </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
-              <input type="checkbox" id="opAdmin"> Es administrador
-            </label>
+          </div>
+          <!-- Rol (PLAN_ACCESO.md §2). Dirección ve todo; Administrativo, remisiones y
+               producción, sin datos de los operarios ni facturación. -->
+          <div class="form-group">
+            <label for="opRol">Rol</label>
+            <select id="opRol">
+              <option value="OPERARIO">Operario — marca turno</option>
+              <option value="ADMINISTRATIVO">Administrativo — remisiones y producción</option>
+              <option value="DIRECCION">Dirección / RRHH — todo</option>
+            </select>
           </div>
         </div>
         <div id="modalError" class="alert alert-error hidden" style="margin-top:14px;"></div>

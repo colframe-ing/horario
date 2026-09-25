@@ -9,7 +9,9 @@
     return;
   }
   const { token } = session;
-  const esAdmin = !!session.esAdmin;
+  // "Admin" en esta pantalla es quien administra producción: Dirección o
+  // Administrativo (PLAN_ACCESO §2).
+  const esAdmin = puedeOperar(session);
 
   // ── Estado del módulo ────────────────────────────────────
   let proyectosData  = [];

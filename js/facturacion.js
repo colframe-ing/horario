@@ -31,7 +31,7 @@
   var session = getSession();
   if (!session || !session.token) { location.href = 'index.html'; return; }
   // Solo admin: esta pantalla muestra precios, márgenes y cobros.
-  if (!session.esAdmin) { location.href = 'produccion.html'; return; }
+  if (!esDireccion(session)) { location.href = 'produccion.html'; return; }
   var token = session.token;
 
   var _datos = null;
@@ -1089,7 +1089,12 @@
       }).join('');
       if (!props.length && !(f.reparto || []).length) {
         h += f.notaCredito
-          ? '<div class="aviso info">' + (f.corrigeA
+          ? '<div class="aviso info">' + (sug.yaDescontada
+              // R10-02: tenía reparto, pero otras notas ya descontaron todo.
+              ? 'Los proyectos de ' + esc(f.corrigeA) + ' ya tienen descontado todo lo que ' +
+                esc(f.corrigeA) + ' les asignó, por otras notas crédito. Descontar esta los dejaría ' +
+                'en negativo: revisa si alguna de esas notas está mal relacionada.'
+              : f.corrigeA
               ? esc(f.corrigeA) + ' no tiene reparto, así que no hay de qué proyecto descontarla. Si ' +
                 esc(f.corrigeA) + ' tampoco se va a asignar, las dos juntas ya dan cero.'
               : 'Sin la factura que corrige no hay propuesta. Relaciónala arriba, o descuéntala ' +
@@ -1945,6 +1950,8 @@
     NC_SIN_REFERENCIA:      'nota crédito sin la factura que corrige',
     NC_SIN_REPARTO:         'corrige una factura que no se repartió',
     NC_A_MANO:              'nota crédito parcial sobre varios proyectos',
+    NC_MAYOR_QUE_REPARTO:   'la nota crédito vale más de lo que sus proyectos tienen por devolver',
+    NC_YA_DESCONTADA:       'otras notas crédito ya descontaron todo lo de esa factura',
     ANULADA_POR_NC:         'la anuló una nota crédito',
   };
 

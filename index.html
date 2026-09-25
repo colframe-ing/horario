@@ -125,7 +125,7 @@
     (function() {
       const s = getSession();
       if (s && s.token) {
-        window.location.replace(s.esAdmin ? 'admin.html' : 'app.html');
+        window.location.replace(paginaInicio(s));
       }
     })();
 
@@ -173,7 +173,7 @@
           pinFld.focus();
         } else {
           setSession(res);
-          window.location.replace(res.esAdmin ? 'admin.html' : 'app.html');
+          window.location.replace(paginaInicio(res));
         }
       } catch (err) {
         showError('Error de conexión. Verifica tu internet e intenta de nuevo.');

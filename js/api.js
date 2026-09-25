@@ -57,6 +57,50 @@ function getSession() {
 function setSession(data) {
   localStorage.setItem('cf_session', JSON.stringify(data));
 }
+
+// ── Roles (PLAN_ACCESO.md §3.3) ──
+//
+// SOLO UX. Quién puede qué lo decide el backend (`validarAdmin` /
+// `validarOperacion`); esto es para no mostrarle a nadie una pantalla que le
+// va a responder "No autorizado" en cada botón.
+
+/** El rol de la sesión. Una sesión guardada antes de los roles trae solo
+ *  `esAdmin`: se lee como Dirección u Operario, igual que el backend. */
+function rolDeSesion(s) {
+  if (!s) return '';
+  if (s.rol) return String(s.rol).trim().toUpperCase();
+  return s.esAdmin ? 'DIRECCION' : 'OPERARIO';
+}
+function esDireccion(s) { return rolDeSesion(s) === 'DIRECCION'; }
+/** Dirección o Administrativo: producción, programación, cotizaciones,
+ *  hoja de vida y administrar remisiones. */
+function puedeOperar(s) { var r = rolDeSesion(s); return r === 'DIRECCION' || r === 'ADMINISTRATIVO'; }
+
+/** A dónde entra cada rol. El administrativo no tiene nada que hacer en
+ *  `app.html` (marcar turno) ni puede abrir `admin.html` (RRHH). */
+function paginaInicio(s) {
+  var r = rolDeSesion(s);
+  if (r === 'DIRECCION') return 'admin.html';
+  if (r === 'ADMINISTRATIVO') return 'programacion.html';
+  return 'app.html';
+}
+
+/** Las páginas del navegador de módulos que son solo de Dirección. */
+var PAGINAS_SOLO_DIRECCION = ['admin.html', 'facturacion.html'];
+
+/** Quita del navegador de módulos los enlaces que el rol no puede abrir. Se
+ *  corre sola al cargar cualquier página: así no hay que tocar los siete
+ *  navegadores copiados (ver tests/nav_modulos.test.js). */
+function ajustarNavPorRol(s) {
+  if (!s || esDireccion(s)) return;
+  document.querySelectorAll('nav a[href]').forEach(function (a) {
+    var destino = String(a.getAttribute('href') || '').split(/[?#]/)[0];
+    if (PAGINAS_SOLO_DIRECCION.indexOf(destino) !== -1) a.remove();
+  });
+}
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('DOMContentLoaded', function () { ajustarNavPorRol(getSession()); });
+}
 /**
  * Cierra la sesión: revoca el token en el servidor y borra el local.
  *

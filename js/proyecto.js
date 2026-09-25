@@ -25,7 +25,7 @@
 
   var session = getSession();
   if (!session || !session.token) { location.href = 'index.html'; return; }
-  if (!session.esAdmin) { location.href = 'produccion.html'; return; }
+  if (!puedeOperar(session)) { location.href = 'produccion.html'; return; }
   var token = session.token;
 
   var MESES_COR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -217,6 +217,9 @@
       { t: 'Primer despacho',    fecha: desp,   falta: 'pendiente' },
       { t: 'Primera factura',    fecha: fact,   falta: 'pendiente' },
     ];
+    // Sin el cobro (PLAN_ACCESO D1) no se sabe cuándo se facturó: el hito se
+    // quita en vez de decir "pendiente", que sería un dato y falso.
+    if (d && d.cobroOculto) hitos.pop();
     var ultima = null;
     hitos.forEach(function (h) {
       h.dias = (h.fecha && ultima) ? diasEntre(ultima, h.fecha) : null;
@@ -280,16 +283,24 @@
 
   /** Una remisión del proyecto. El consecutivo lleva al documento en
    *  Remisiones; un borrador todavía no tiene consecutivo —se asigna al
-   *  conciliar— y se nombra por lo que es. */
-  function filaRemision(rm) {
+   *  conciliar— y se nombra por lo que es.
+   *
+   *  `op.sinCobro`: la respuesta vino sin el cobro (PLAN_ACCESO D1) y la
+   *  columna Factura dice solo el número del papel. `op.antiguas`: quien mira
+   *  puede quitar una remisión del sistema anterior (solo Dirección). Van por
+   *  parámetro y no leídos del módulo, para que la función se pueda probar sola. */
+  function filaRemision(rm, op) {
+    op = op || {};
     var e = ESTADO_REM[rm.estado] || { txt: rm.estado, cls: 'back' };
     var nombre = rm.consecutivo || (rm.estado === 'ANULADA' ? 'Anulada sin número' : 'Borrador');
     // Una remisión del sistema anterior no tiene documento aquí: el número va
     // sin enlace, y en su lugar se puede quitar si se registró mal.
     var link = rm.antigua
       ? '<span class="n-ant">' + esc(nombre) + '</span>' +
-        '<div><button class="btn-quitar" data-acc="ant-quitar" data-id="' + esc(rm.antId) + '" ' +
-          'data-num="' + esc(rm.consecutivo) + '">Quitar</button></div>'
+        (op.antiguas
+          ? '<div><button class="btn-quitar" data-acc="ant-quitar" data-id="' + esc(rm.antId) + '" ' +
+            'data-num="' + esc(rm.consecutivo) + '">Quitar</button></div>'
+          : '')
       : (rm.docId
         ? '<a class="a-doc" target="_blank" rel="noopener" href="remisiones.html?doc=' +
             encodeURIComponent(rm.docId) + '">' + esc(nombre) + '</a>'
@@ -300,7 +311,9 @@
       (rm.antigua && rm.nota ? '<span class="f">' + esc(rm.nota) + '</span>' : '<span class="f">—</span>');
     if (rm.ordenCompra) destino += '<div class="f">OC ' + esc(rm.ordenCompra) + '</div>';
     var factura;
-    if (rm.facturaNumero) {
+    if (op.sinCobro) {
+      factura = rm.facturaNumero ? esc(rm.facturaNumero) : '<span class="f">—</span>';
+    } else if (rm.facturaNumero) {
       // REGISTRADA NO ES REPARTIDA: la remisión dice bajo qué factura salió,
       // pero si esa factura no le asignó monto a este proyecto, el proyecto
       // sigue "por facturar". Es lo que se leía como "no tiene factura".
@@ -362,6 +375,7 @@
                             : 'sin facturar'),
                          cls: (todoFact||todoCerr)?'ok':(t.facturado?'act':'') },
     ];
+    if (d.cobroOculto) et.pop();
     return '<div class="hv-etapas">'+et.map(function(e){
       return '<div class="hv-etapa '+e.cls+'"><div class="t">'+esc(e.t)+'</div><div class="v">'+esc(e.v)+'</div></div>';
     }).join('')+'</div>';
@@ -389,7 +403,7 @@
       '</div>';
   }
 
-  function tarjetasHtml(t) {
+  function tarjetasHtml(t, sinCobro) {
     return '<div class="hv-cards">'+
         '<div class="hv-card"><div class="label">ML aprobados</div><div class="value">'+fmtNum(t.mlAprobado,0)+'</div>'+
           '<div class="sub">de '+fmtNum(t.mlCotizado,0)+' cotizados</div></div>'+
@@ -402,6 +416,7 @@
         '<div class="hv-card" style="border-left-color:#0891B2;"><div class="label">Despachado</div>'+
           '<div class="value">'+fmtNum(t.kgDespachado,0)+'</div>'+
           '<div class="sub">kg de kit · '+t.unidadesDespachadas+'/'+t.unidades+' unidades</div></div>'+
+        (sinCobro ? '' :
         '<div class="hv-card" style="border-left-color:#16A34A;"><div class="label">Facturado</div>'+
           '<div class="value" style="font-size:1.1rem;">'+fmtMoney(t.facturado)+'</div>'+
           '<div class="sub">'+(t.aiu?'incluye '+fmtMoney(t.aiu)+' de AIU':'sin AIU registrado')+'</div></div>'+
@@ -417,7 +432,7 @@
           ? '<div class="hv-card" style="border-left-color:#B45309;"><div class="label">Proveeduría</div>'+
               '<div class="value" style="font-size:1.1rem;">'+fmtMoney(t.adicional)+'</div>'+
               '<div class="sub">'+t.adicionalN+(t.adicionalN===1?' cobro':' cobros')+' aparte del contrato</div></div>'
-          : '')+
+          : ''))+
       '</div>';
   }
 
@@ -604,7 +619,10 @@
     var lista = d.remisiones || [];
     // Para los proyectos despachados ANTES de este sistema: el número de su
     // remisión vieja, sin crear un documento (ver `remAntiguaAgregar`).
-    var botonAnt = '<button class="btn-ant" data-acc="ant-nueva">+ Remisión del sistema anterior</button>';
+    // Solo Dirección: registrarla lleva la factura, y eso es cobro (D1).
+    var opFila = { sinCobro: !!d.cobroOculto, antiguas: esDireccion(session) };
+    var botonAnt = opFila.antiguas
+      ? '<button class="btn-ant" data-acc="ant-nueva">+ Remisión del sistema anterior</button>' : '';
     if (!lista.length) {
       return '<div class="card-sec"><div class="sec-top"><h3>Remisiones (0)</h3>' + botonAnt + '</div>' +
         '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Este proyecto todavía no tiene remisiones.</div></div>';
@@ -616,7 +634,8 @@
       '<div style="overflow-x:auto;"><table class="cmp-tabla"><thead><tr>' +
         '<th>Remisión</th><th>Fecha</th><th>Estado</th><th>Cotización</th><th>Destino</th>' +
         '<th style="text-align:right;">Peso</th><th>Factura</th>' +
-      '</tr></thead><tbody>' + lista.map(filaRemision).join('') + '</tbody></table></div></div>';
+      '</tr></thead><tbody>' + lista.map(function (rm) { return filaRemision(rm, opFila); }).join('') +
+      '</tbody></table></div></div>';
   }
 
   // Las facturas del proyecto, con lo que se le asignó a cada cotización.
@@ -812,12 +831,12 @@
     document.title = 'COLFRAME — ' + (d.nombres.length ? d.nombres.join(' · ') : 'CB' + d.cb);
     document.getElementById('hvBody').innerHTML =
       cabeceraHtml(d) +
-      tarjetasHtml(d.totales) +
+      tarjetasHtml(d.totales, !!d.cobroOculto) +
       cicloHtml(d) +
       '<h3 class="sec-h">Cotizaciones del proyecto (' + d.totales.cotizaciones + ')</h3>' +
       _orden.map(cotizacionHtml).join('') +
       remisionesHtml(d) +
-      facturasHtml(d) +
+      (d.cobroOculto ? '' : facturasHtml(d)) +
       historiaHtml(d);
   }
 

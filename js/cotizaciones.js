@@ -7,7 +7,7 @@
   var session = getSession();
   if (!session || !session.token) { location.href = 'index.html'; return; }
   // Módulo solo-admin: las cotizaciones muestran precios y utilidad.
-  if (!session.esAdmin) { location.href = 'produccion.html'; return; }
+  if (!puedeOperar(session)) { location.href = 'produccion.html'; return; }
   var token   = session.token;
   var esAdmin = true;
 

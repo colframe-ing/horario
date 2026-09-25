@@ -20,7 +20,7 @@
   'use strict';
 
   var session = getSession();
-  if (!session || !session.token || !session.esAdmin) return;   // programacion.js ya redirige
+  if (!session || !session.token || !puedeOperar(session)) return;   // programacion.js ya redirige
   var token = session.token;
 
   var MESES_COR = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];

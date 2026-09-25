@@ -6,7 +6,7 @@
 
   var session = getSession();
   if (!session || !session.token) { location.href = 'index.html'; return; }
-  if (!session.esAdmin) { location.href = 'produccion.html'; return; }
+  if (!puedeOperar(session)) { location.href = 'produccion.html'; return; }
   var token = session.token;
 
   var _data = null;            // respuesta de prod_cola_get
