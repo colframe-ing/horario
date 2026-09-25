@@ -113,6 +113,7 @@ input[type="text"],
 input[type="number"],
 input[type="password"],
 input[type="date"],
+input[type="email"],
 select {
   width: 100%;
   padding: 13px 16px;

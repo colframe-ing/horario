@@ -1228,7 +1228,11 @@
   function actualizarLabelPin() {
     const longitud = rolElegido() === 'OPERARIO' ? 4 : 6;
     const pinEl    = document.getElementById('opPin');
-    pinEl.maxLength = longitud;
+    // El tope del campo es SIEMPRE 6, el largo mayor, y no el del rol: con
+    // `maxLength = 4` un PIN de 6 escrito antes de cambiar el rol quedaba
+    // cortado en silencio, y ningún PIN pasaba ("ni de 4 ni de 6"). El largo
+    // exacto lo valida el guardado, con un mensaje que lo dice.
+    pinEl.maxLength = 6;
     document.getElementById('opPinLongitud').textContent = longitud + ' dígitos';
     // Placeholder contextual: nuevo operario vs. editar
     pinEl.placeholder = operarioEditar

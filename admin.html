@@ -588,9 +588,21 @@
             <label>Cédula *</label>
             <input type="number" id="opCedula" inputmode="numeric" placeholder="Ej: 1234567890" required>
           </div>
+          <!-- Rol (PLAN_ACCESO.md §2). Dirección ve todo; Administrativo, remisiones y
+               producción, sin datos de los operarios ni facturación. Va ANTES del PIN
+               porque decide cuántos dígitos lleva: abajo, se escribía el PIN con el
+               largo del rol anterior y el navegador lo cortaba sin decir nada. -->
+          <div class="form-group">
+            <label for="opRol">Rol</label>
+            <select id="opRol">
+              <option value="OPERARIO">Operario — marca turno</option>
+              <option value="ADMINISTRATIVO">Administrativo — remisiones y producción</option>
+              <option value="DIRECCION">Dirección / RRHH — todo</option>
+            </select>
+          </div>
           <div class="form-group">
             <label>PIN (<span id="opPinLongitud">4 dígitos</span>) *</label>
-            <input type="text" id="opPin" inputmode="numeric" maxlength="4" placeholder="Dejar en blanco para no cambiar">
+            <input type="text" id="opPin" inputmode="numeric" maxlength="6" placeholder="Dejar en blanco para no cambiar">
           </div>
           <div class="form-group">
             <label>Cargo</label>
@@ -610,16 +622,6 @@
             <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
               <input type="checkbox" id="opActivo" checked> Activo
             </label>
-          </div>
-          <!-- Rol (PLAN_ACCESO.md §2). Dirección ve todo; Administrativo, remisiones y
-               producción, sin datos de los operarios ni facturación. -->
-          <div class="form-group">
-            <label for="opRol">Rol</label>
-            <select id="opRol">
-              <option value="OPERARIO">Operario — marca turno</option>
-              <option value="ADMINISTRATIVO">Administrativo — remisiones y producción</option>
-              <option value="DIRECCION">Dirección / RRHH — todo</option>
-            </select>
           </div>
         </div>
         <div id="modalError" class="alert alert-error hidden" style="margin-top:14px;"></div>
