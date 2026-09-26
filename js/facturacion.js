@@ -767,6 +767,30 @@
   }
 
   /**
+   * El total de lo que queda en la lista después del período, el filtro y la
+   * búsqueda (pedido del usuario, 26-sep). Sin IVA, como todo el módulo. La NC
+   * RESTA del neto. "Sin repartir" se cuenta igual que el corte de arriba: sin
+   * las NC ni las facturas anuladas enteras, que no son plata por cobrar.
+   * FUNCIÓN PURA.
+   */
+  function totalesFiltro(lista) {
+    var t = { n: 0, nFacturas: 0, nNotas: 0, facturado: 0, notas: 0, neto: 0, sinRepartir: 0 };
+    var r2 = function (x) { return Math.round(x * 100) / 100; };
+    (lista || []).forEach(function (f) {
+      var sub = Number(f.subtotal) || 0;
+      t.n++;
+      if (f.notaCredito) { t.nNotas++; t.notas += sub; return; }
+      t.nFacturas++;
+      t.facturado += sub;
+      var sin = Number(f.sinAsignar) || 0;
+      if (!anuladaEntera(f) && sin > 0.5) t.sinRepartir += sin;
+    });
+    t.facturado = r2(t.facturado); t.notas = r2(t.notas);
+    t.neto = r2(t.facturado - t.notas); t.sinRepartir = r2(t.sinRepartir);
+    return t;
+  }
+
+  /**
    * ¿Esta NC tiene algo que descontar? Solo si le queda saldo Y la factura que
    * corrige sí se repartió a algún proyecto: si nadie asignó FE201, NC31 no
    * tiene de dónde descontar y las dos, juntas, ya dan cero. Sin referencia sí
@@ -898,6 +922,19 @@
 
     var ctxProy = { porArchivo: indiceProyectos(),
                     candidatas: (_datos && _datos.candidatasPorCotizacion) || {} };
+
+    // El total de lo que se ve: se recalcula con cada filtro, búsqueda o período.
+    var tot = totalesFiltro(vis);
+    h += '<div class="fact-total">' +
+      '<strong>' + tot.nFacturas + (tot.nFacturas === 1 ? ' factura' : ' facturas') + '</strong>' +
+      ' · Facturado <strong>' + money(tot.facturado) + '</strong>' +
+      (tot.nNotas
+        ? ' · ' + tot.nNotas + (tot.nNotas === 1 ? ' nota crédito' : ' notas crédito') +
+          ' <strong>−' + money(tot.notas) + '</strong> · Neto <strong>' + money(tot.neto) + '</strong>'
+        : '') +
+      ' · Sin repartir <strong>' + money(tot.sinRepartir) + '</strong>' +
+      ' <span class="fact-total-nota">sin IVA</span>' +
+      '</div>';
 
     h += '<div class="lista">' + vis.map(function (f) {
       var e = estadoFactura(f), ab = abierta === f.numero;

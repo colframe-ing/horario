@@ -85,6 +85,10 @@
     document.getElementById('sumAprobadas').textContent = stats ? fmtNum(stats.aprobadas) : '—';
     document.getElementById('sumMl').textContent        = stats ? (fmtNum(stats.mlAprobado, 1) + ' m') : '—';
     document.getElementById('sumValor').textContent     = stats ? fmtMoney(stats.valorAprobado) : '—';
+    // Sin los acumulados en pesos (quien no es Dirección, 26-sep): la tarjeta de
+    // valor aprobado sobra y las de los cortes muestran solo los metros.
+    var ocultos = !!(stats && stats.valoresOcultos);
+    document.getElementById('sumValor').closest('.summary-card').classList.toggle('hidden', ocultos);
     // Cortes por estado. "En avance" es lo declarado al pausar, no un hecho
     // medido: va aparte de lo producido a propósito (PLAN_ESTADOS §4).
     var cortes = [
@@ -97,6 +101,7 @@
       if (!elMl || !elVal) return;
       elMl.textContent  = stats ? (fmtNum(stats[c[3]], 1) + ' m') : '—';
       elVal.textContent = stats ? fmtMoney(stats[c[4]]) : '—';
+      elVal.classList.toggle('hidden', ocultos);
     });
   }
 

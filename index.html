@@ -43,34 +43,94 @@
       </div>
     </div>
 
+    <!-- Cuatro vistas en la misma tarjeta (PLAN_ACCESO pasos 2 y 3): entrar, poner la
+         clave propia (con el PIN viejo o una clave temporal), pedir un código por
+         correo, y restablecer con el código. Una sola visible a la vez. -->
     <div class="login-card">
-      <h1 class="login-title">Iniciar sesión</h1>
 
-      <form id="loginForm" class="login-form" novalidate>
-        <div class="form-group">
-          <label for="cedula">Cédula</label>
-          <input
-            type="number" id="cedula"
-            placeholder="Ej: 1234567890"
-            inputmode="numeric" autocomplete="off" required>
-        </div>
+      <!-- 1. Entrar -->
+      <div id="vistaLogin">
+        <h1 class="login-title">Iniciar sesión</h1>
+        <form id="loginForm" class="login-form" novalidate>
+          <div class="form-group">
+            <!-- texto, no número (R2-24): acepta cédula o correo, y el navegador
+                 no le quita los ceros ni le pone flechas. -->
+            <label for="usuario">Cédula o correo</label>
+            <input type="text" id="usuario" placeholder="Ej: 1234567890"
+                   autocomplete="username" autocapitalize="off" spellcheck="false" required>
+          </div>
+          <div class="form-group">
+            <label for="clave">Clave</label>
+            <input type="password" id="clave" autocomplete="current-password" required>
+          </div>
+          <div id="loginError" class="alert alert-error hidden" role="alert"></div>
+          <button type="submit" id="loginBtn" class="btn btn-primary btn-full">
+            <span class="btn-text">Ingresar</span>
+            <span class="btn-loading hidden"><span class="spinner"></span>&nbsp;Verificando...</span>
+          </button>
+          <button type="button" id="irOlvide" class="login-privacy-link" style="color:var(--cf-blue);">¿Olvidaste tu clave?</button>
+        </form>
+      </div>
 
-        <div class="form-group">
-          <label for="pin">PIN</label>
-          <input
-            type="password" id="pin"
-            placeholder="• • • •"
-            maxlength="6" inputmode="numeric"
-            class="pin-input" autocomplete="current-password" required>
-        </div>
+      <!-- 2. Poner la clave propia: tras entrar con el PIN viejo o con una clave temporal -->
+      <div id="vistaCrear" class="hidden">
+        <h1 class="login-title">Crea tu clave</h1>
+        <p id="crearIntro" style="font-size:0.85rem;color:var(--cf-gray-text);margin:0 0 12px;"></p>
+        <form id="crearForm" class="login-form" novalidate>
+          <div class="form-group">
+            <label for="crearNueva">Clave nueva</label>
+            <input type="password" id="crearNueva" autocomplete="new-password" required>
+          </div>
+          <div class="form-group">
+            <label for="crearConfirma">Repítela</label>
+            <input type="password" id="crearConfirma" autocomplete="new-password" required>
+          </div>
+          <p style="font-size:0.78rem;color:var(--cf-gray-text);margin:0;">Mínimo 8 caracteres, con letras y números. No uses tu cédula.</p>
+          <div id="crearError" class="alert alert-error hidden" role="alert"></div>
+          <button type="submit" id="crearBtn" class="btn btn-primary btn-full">Guardar y entrar</button>
+        </form>
+      </div>
 
-        <div id="loginError" class="alert alert-error hidden" role="alert"></div>
+      <!-- 3. Pedir el código -->
+      <div id="vistaOlvide" class="hidden">
+        <h1 class="login-title">Recuperar la clave</h1>
+        <p style="font-size:0.85rem;color:var(--cf-gray-text);margin:0 0 12px;">Te enviamos un código de 6 dígitos al correo de tu cuenta.
+          Si no tienes correo registrado, pídele a Recursos Humanos una clave temporal.</p>
+        <form id="olvideForm" class="login-form" novalidate>
+          <div class="form-group">
+            <label for="olvideUsuario">Cédula o correo</label>
+            <input type="text" id="olvideUsuario" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+          </div>
+          <div id="olvideError" class="alert alert-error hidden" role="alert"></div>
+          <button type="submit" id="olvideBtn" class="btn btn-primary btn-full">Enviar código</button>
+          <button type="button" class="login-privacy-link volverLogin" style="color:var(--cf-blue);">Volver a iniciar sesión</button>
+        </form>
+      </div>
 
-        <button type="submit" id="loginBtn" class="btn btn-primary btn-full">
-          <span class="btn-text">Ingresar</span>
-          <span class="btn-loading hidden"><span class="spinner"></span>&nbsp;Verificando...</span>
-        </button>
-      </form>
+      <!-- 4. Restablecer con el código -->
+      <div id="vistaRestablecer" class="hidden">
+        <h1 class="login-title">Nueva clave</h1>
+        <p id="restIntro" style="font-size:0.85rem;color:var(--cf-gray-text);margin:0 0 12px;"></p>
+        <form id="restForm" class="login-form" novalidate>
+          <div class="form-group">
+            <label for="restCodigo">Código del correo</label>
+            <input type="text" id="restCodigo" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required>
+          </div>
+          <div class="form-group">
+            <label for="restNueva">Clave nueva</label>
+            <input type="password" id="restNueva" autocomplete="new-password" required>
+          </div>
+          <div class="form-group">
+            <label for="restConfirma">Repítela</label>
+            <input type="password" id="restConfirma" autocomplete="new-password" required>
+          </div>
+          <div id="restError" class="alert alert-error hidden" role="alert"></div>
+          <button type="submit" id="restBtn" class="btn btn-primary btn-full">Guardar clave</button>
+          <button type="button" class="login-privacy-link volverLogin" style="color:var(--cf-blue);">Volver a iniciar sesión</button>
+        </form>
+      </div>
+
+      <div id="loginInfo" class="alert hidden" role="status" style="margin-top:12px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;"></div>
     </div>
 
     <p class="login-footer">COLFRAME — Framing Colombia S.A.S. BIC</p>
@@ -97,7 +157,9 @@
         Sus datos se usan exclusivamente para el registro y control de asistencia y horas extra del personal, en cumplimiento de las obligaciones del contrato de trabajo y la normativa laboral colombiana.</p>
 
         <p><strong>Datos que se recopilan</strong><br>
-        Número de cédula, nombre, cargo, horario laboral y ubicación GPS al momento de cada marcación de entrada o salida.</p>
+        Número de cédula, nombre, cargo, horario laboral y ubicación GPS al momento de cada marcación de entrada o salida.
+        Si se registra, el correo electrónico, que se usa solo para enviarle el código con el que recupera su clave
+        (y, para el personal directivo que lo elija, el reporte diario).</p>
 
         <p><strong>Base legal</strong><br>
         Ejecución del contrato de trabajo (Art. 6, Ley 1581/2012). La ubicación GPS se solicita con su consentimiento explícito vía el navegador y únicamente en el momento del registro.</p>
@@ -131,60 +193,135 @@
 
     // Reloj de clock en título opcional — dejamos simple
 
-    const form    = document.getElementById('loginForm');
-    const cedFld  = document.getElementById('cedula');
-    const pinFld  = document.getElementById('pin');
-    const errorEl = document.getElementById('loginError');
-    const btn     = document.getElementById('loginBtn');
-    const btnText = btn.querySelector('.btn-text');
-    const btnLoad = btn.querySelector('.btn-loading');
+    const $ = (id) => document.getElementById(id);
+    const VISTAS = ['vistaLogin', 'vistaCrear', 'vistaOlvide', 'vistaRestablecer'];
+    function mostrar(vista) {
+      VISTAS.forEach((v) => $(v).classList.toggle('hidden', v !== vista));
+      ['loginError', 'crearError', 'olvideError', 'restError'].forEach((id) => $(id).classList.add('hidden'));
+    }
+    function error(id, msg) { $(id).textContent = msg; $(id).classList.remove('hidden'); }
+    function info(msg) { $('loginInfo').textContent = msg; $('loginInfo').classList.toggle('hidden', !msg); }
 
+    /** El texto de un error de la API. `apiCall` LANZA con cada `{ error }` del
+     *  backend; antes este catch decía "Error de conexión" también para un PIN
+     *  equivocado, porque solo se pensó en la red. Ahora solo la red lo dice. */
+    function textoError(err) {
+      if (err && err.name === 'ApiError' && err.tipo !== 'red') return err.message;
+      return 'Error de conexión. Verifica tu internet e intenta de nuevo.';
+    }
+
+    // Lo que hace falta para la vista "Crea tu clave": el token RESTRINGIDO que
+    // dio el login y la clave con que se entró (el backend la vuelve a pedir: un
+    // token solo no alcanza para cambiarla). Solo en memoria, nunca guardado.
+    let pendiente = null;
+
+    // ── 1. Entrar ──
+    const btn = $('loginBtn');
     function setLoading(v) {
-      btnText.classList.toggle('hidden', v);
-      btnLoad.classList.toggle('hidden', !v);
+      btn.querySelector('.btn-text').classList.toggle('hidden', v);
+      btn.querySelector('.btn-loading').classList.toggle('hidden', !v);
       btn.disabled = v;
     }
-
-    function showError(msg) {
-      errorEl.textContent = msg;
-      errorEl.classList.remove('hidden');
-    }
-
-    function hideError() {
-      errorEl.classList.add('hidden');
-    }
-
-    form.addEventListener('submit', async (e) => {
+    $('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      hideError();
-
-      const cedula = cedFld.value.trim();
-      const pin    = pinFld.value.trim();
-
-      if (!cedula) { showError('Ingresa tu cédula'); cedFld.focus(); return; }
-      if (!pin)    { showError('Ingresa tu PIN');    pinFld.focus(); return; }
-
+      mostrar('vistaLogin'); info('');
+      const usuario = $('usuario').value.trim();
+      const clave   = $('clave').value;
+      if (!usuario) { error('loginError', 'Escribe tu cédula o tu correo.'); $('usuario').focus(); return; }
+      if (!clave)   { error('loginError', 'Escribe tu clave.'); $('clave').focus(); return; }
       setLoading(true);
       try {
-        const res = await apiLogin(cedula, pin);
-        if (res.error) {
-          showError(res.error);
-          pinFld.value = '';
-          pinFld.focus();
-        } else {
-          setSession(res);
-          window.location.replace(paginaInicio(res));
+        const res = await apiLogin(usuario, clave);
+        if (res.debeCambiarClave) {
+          pendiente = { token: res.token, clave: clave };
+          $('crearIntro').textContent = res.desdePin
+            ? 'Hola ' + (res.nombre || '') + '. El PIN se reemplaza por una clave con letras y números: créala ahora. ' +
+              'Desde hoy entras con ella, y el PIN deja de servir.'
+            : 'Hola ' + (res.nombre || '') + '. Entraste con una clave temporal: pon la tuya para seguir.';
+          mostrar('vistaCrear');
+          $('crearNueva').focus();
+          return;
         }
+        setSession(res);
+        window.location.replace(paginaInicio(res));
       } catch (err) {
-        showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+        error('loginError', textoError(err));
+        $('clave').value = '';
+        $('clave').focus();
       } finally {
         setLoading(false);
       }
     });
 
-    // Máximo 6 dígitos en PIN (4 para operarios, 6 para admins)
-    pinFld.addEventListener('input', () => {
-      if (pinFld.value.length > 6) pinFld.value = pinFld.value.slice(0, 6);
+    // ── 2. Crear la clave propia ──
+    $('crearForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nueva = $('crearNueva').value;
+      const mal = validarClaveLocal(nueva, $('crearConfirma').value);
+      if (mal) { error('crearError', mal); return; }
+      if (!pendiente) { mostrar('vistaLogin'); return; }
+      $('crearBtn').disabled = true;
+      try {
+        const res = await apiCambiarClave(pendiente.token, pendiente.clave, nueva);
+        pendiente = null;
+        setSession(res);
+        window.location.replace(paginaInicio(res));
+      } catch (err) {
+        // La sesión restringida venció (12 h): se vuelve a entrar.
+        if (err && err.tipo === 'auth') { pendiente = null; mostrar('vistaLogin'); info('Vuelve a entrar para crear tu clave.'); return; }
+        error('crearError', textoError(err));
+      } finally {
+        $('crearBtn').disabled = false;
+      }
+    });
+
+    // ── 3. Pedir el código ──
+    $('irOlvide').addEventListener('click', () => {
+      $('olvideUsuario').value = $('usuario').value.trim();
+      info(''); mostrar('vistaOlvide'); $('olvideUsuario').focus();
+    });
+    document.querySelectorAll('.volverLogin').forEach((b) => b.addEventListener('click', () => { info(''); mostrar('vistaLogin'); }));
+    $('olvideForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const usuario = $('olvideUsuario').value.trim();
+      if (!usuario) { error('olvideError', 'Escribe tu cédula o tu correo.'); return; }
+      $('olvideBtn').disabled = true;
+      try {
+        const res = await apiClaveOlvide(usuario);
+        // La respuesta es la misma exista o no la cuenta: se pasa a la vista del
+        // código siempre, con el mensaje del backend.
+        $('restIntro').textContent = res.mensaje || '';
+        $('restForm').dataset.usuario = usuario;
+        mostrar('vistaRestablecer');
+        $('restCodigo').focus();
+      } catch (err) {
+        error('olvideError', textoError(err));
+      } finally {
+        $('olvideBtn').disabled = false;
+      }
+    });
+
+    // ── 4. Restablecer ──
+    $('restForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const codigo = $('restCodigo').value.trim();
+      if (!/^\d{6}$/.test(codigo)) { error('restError', 'El código tiene 6 dígitos.'); return; }
+      const nueva = $('restNueva').value;
+      const mal = validarClaveLocal(nueva, $('restConfirma').value);
+      if (mal) { error('restError', mal); return; }
+      $('restBtn').disabled = true;
+      try {
+        await apiClaveRestablecer($('restForm').dataset.usuario || '', codigo, nueva);
+        ['restCodigo', 'restNueva', 'restConfirma', 'clave'].forEach((id) => { $(id).value = ''; });
+        $('usuario').value = $('restForm').dataset.usuario || '';
+        mostrar('vistaLogin');
+        info('Listo: tu clave quedó cambiada. Entra con ella.');
+        $('clave').focus();
+      } catch (err) {
+        error('restError', textoError(err));
+      } finally {
+        $('restBtn').disabled = false;
+      }
     });
 
     // Registrar Service Worker

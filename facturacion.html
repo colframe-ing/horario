@@ -46,6 +46,11 @@
     /* Cortes: cada vista muestra LOS SUYOS. Cinco tiles genéricos arriba de todo
        mezclaban unidades porque intentaban resumir tres cosas a la vez. */
     .fact-cortes { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-bottom:14px; }
+    /* El total de lo que queda en la lista tras filtrar (26-sep). */
+    .fact-total { background:#F8FAFC; border:1px solid var(--cf-gray-mid); border-radius:8px; padding:8px 12px;
+                  font-size:0.84rem; color:var(--cf-dark); margin-bottom:10px; line-height:1.6; }
+    .fact-total strong { font-weight:800; }
+    .fact-total-nota { font-size:0.72rem; color:var(--cf-gray-text); }
     .corte { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:12px 14px; border-left:4px solid var(--cf-gray-mid); }
     .corte .lbl { font-size:0.64rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
     .corte .val { font-size:1.1rem; font-weight:800; color:var(--cf-dark); margin-top:3px; font-variant-numeric:tabular-nums; }

@@ -1219,7 +1219,6 @@
     document.getElementById('opFila').value   = operario ? operario.fila : '';
     document.getElementById('opNombre').value = operario ? operario.nombre : '';
     document.getElementById('opCedula').value = operario ? operario.cedula : '';
-    document.getElementById('opPin').value    = '';
     document.getElementById('opCargo').value  = operario ? (operario.cargo || '') : '';
     document.getElementById('opEmail').value  = operario ? (operario.email || '') : '';
     document.getElementById('opActivo').checked = operario ? operario.activo : true;
@@ -1229,7 +1228,11 @@
     poblarSelectHorario(document.getElementById('opHorario'), horariosList);
     document.getElementById('opHorario').value = operario ? (operario.horario || '') : '';
     modalError.classList.add('hidden');
-    actualizarLabelPin();
+    // La clave (PLAN_ACCESO paso 2): al crear, la genera el sistema; al editar,
+    // el botón genera una temporal. A uno mismo no: para eso está "Cambiar clave".
+    const propio = !!operario && String(operario.cedula) === String(session.cedula);
+    document.getElementById('opClaveNuevo').classList.toggle('hidden', !!operario);
+    document.getElementById('btnClaveTemporal').classList.toggle('hidden', !operario || propio);
     actualizarEmailVisible();
     modal.classList.remove('hidden');
     document.getElementById('opNombre').focus();
@@ -1237,37 +1240,43 @@
 
   function cerrarModal() { modal.classList.add('hidden'); operarioEditar = null; }
 
-  // Quien no es operario entra a más que marcar: PIN de 6 y correo.
+  /** Muestra una clave temporal UNA vez. `prompt` y no `alert`: deja el texto
+   *  seleccionado para copiarlo, que es lo que hay que hacer con él. */
+  function mostrarClaveTemporal(nombre, clave) {
+    window.prompt('Clave temporal de ' + nombre + '. Cópiala y dásela: no se vuelve a mostrar.\n' +
+                  'Al entrar con ella, tendrá que poner la suya.', clave);
+  }
+
+  document.getElementById('btnClaveTemporal').addEventListener('click', async () => {
+    if (!operarioEditar) return;
+    if (!await confirmar({
+      titulo: 'Generar clave temporal',
+      mensaje: 'La clave actual de ' + operarioEditar.nombre + ' deja de servir y se cierran sus sesiones. ' +
+               'Le darás la temporal, y al entrar tendrá que poner la suya.',
+      btnOk: 'Generar',
+    })) return;
+    try {
+      const r = await apiAdminClaveTemporal(token, operarioEditar.cedula);
+      mostrarClaveTemporal(operarioEditar.nombre, r.clave);
+    } catch (e) {
+      modalError.textContent = (e && e.name === 'ApiError') ? e.message : 'Error de conexión';
+      modalError.classList.remove('hidden');
+    }
+  });
+
+  // El correo: obligatorio para quien no es operario —con él recupera la clave—
+  // y opcional para el operario, que sin él la recupera con Recursos Humanos.
   const rolElegido = () => document.getElementById('opRol').value || 'OPERARIO';
   function actualizarEmailVisible() {
     const rol = rolElegido();
-    document.getElementById('opEmailGroup').style.display = rol === 'OPERARIO' ? 'none' : '';
-    // El reporte diario lo recibe solo Dirección, y cada directivo elige; para el
-    // administrativo el correo sirve para recuperar la clave, no para el reporte.
+    document.getElementById('opEmailGroup').style.display = '';
+    // El reporte diario lo recibe solo Dirección, y cada directivo elige.
     document.getElementById('opRecibeGroup').style.display = rol === 'DIRECCION' ? '' : 'none';
     document.getElementById('opEmailPara').textContent = rol === 'DIRECCION'
-      ? '(para el reporte diario y para recuperar la clave)' : '(para recuperar la clave)';
+      ? '(obligatorio: reporte diario y recuperar la clave)'
+      : (rol === 'ADMINISTRATIVO' ? '(obligatorio: para recuperar la clave)' : '(opcional: para recuperar la clave)');
   }
-  document.getElementById('opRol').addEventListener('change', () => {
-    actualizarLabelPin();
-    actualizarEmailVisible();
-  });
-
-  // También actualizar label al abrir modal (en abrirModal se setea el checkbox)
-  function actualizarLabelPin() {
-    const longitud = rolElegido() === 'OPERARIO' ? 4 : 6;
-    const pinEl    = document.getElementById('opPin');
-    // El tope del campo es SIEMPRE 6, el largo mayor, y no el del rol: con
-    // `maxLength = 4` un PIN de 6 escrito antes de cambiar el rol quedaba
-    // cortado en silencio, y ningún PIN pasaba ("ni de 4 ni de 6"). El largo
-    // exacto lo valida el guardado, con un mensaje que lo dice.
-    pinEl.maxLength = 6;
-    document.getElementById('opPinLongitud').textContent = longitud + ' dígitos';
-    // Placeholder contextual: nuevo operario vs. editar
-    pinEl.placeholder = operarioEditar
-      ? 'Dejar en blanco para no cambiar'
-      : `Obligatorio — ${longitud} dígitos`;
-  }
+  document.getElementById('opRol').addEventListener('change', actualizarEmailVisible);
 
   function abrirEditar(op) { abrirModal(op); }
 
@@ -1429,7 +1438,6 @@
 
     const nombre  = document.getElementById('opNombre').value.trim();
     const cedula  = document.getElementById('opCedula').value.trim();
-    const pin     = document.getElementById('opPin').value.trim();
     const cargo   = document.getElementById('opCargo').value.trim();
     const horario = document.getElementById('opHorario').value;
     const email   = document.getElementById('opEmail').value.trim();
@@ -1437,27 +1445,16 @@
     const recibeReporte = document.getElementById('opRecibeReporte').checked;
     const rol     = rolElegido();
     const fila    = document.getElementById('opFila').value;
-    const longitudReq = rol === 'OPERARIO' ? 4 : 6;
 
     if (!nombre || !cedula) {
       modalError.textContent = 'Nombre y cédula son obligatorios';
       modalError.classList.remove('hidden');
       return;
     }
-    if (!operarioEditar && !pin) {
-      modalError.textContent = 'El PIN es obligatorio para nuevos operarios';
-      modalError.classList.remove('hidden');
-      return;
-    }
-    // De operario a oficina hace falta un PIN nuevo: el de operario es de 4 y el
-    // rol nuevo pide 6. El backend también lo exige; aquí se dice antes.
-    if (operarioEditar && rolDeSesion(operarioEditar) === 'OPERARIO' && rol !== 'OPERARIO' && !pin) {
-      modalError.textContent = 'Para darle acceso de oficina, asígnale un PIN de 6 dígitos: el de operario es de 4.';
-      modalError.classList.remove('hidden');
-      return;
-    }
-    if (pin && (pin.length !== longitudReq || !/^\d+$/.test(pin))) {
-      modalError.textContent = `El PIN debe ser exactamente ${longitudReq} dígitos${rol === 'OPERARIO' ? '' : ' (Dirección y Administrativo requieren 6)'}`;
+    // El correo: obligatorio para quien no es operario (con él recupera la clave).
+    // El backend lo valida igual, y además que sea único; aquí se dice antes.
+    if (rol !== 'OPERARIO' && !email) {
+      modalError.textContent = 'Dirección y Administrativo necesitan correo: con él recuperan la clave.';
       modalError.classList.remove('hidden');
       return;
     }
@@ -1470,7 +1467,7 @@
 
     try {
       // `esAdmin` va en espejo del rol: un backend todavía sin roles lo entiende.
-      const operario = { nombre, cedula, pin, cargo, horario, email, activo, rol, esAdmin: rol === 'DIRECCION',
+      const operario = { nombre, cedula, cargo, horario, email, activo, rol, esAdmin: rol === 'DIRECCION',
                          // Solo cuenta para Dirección; a los demás no se les manda y queda como está.
                          recibeReporte: rol === 'DIRECCION' ? recibeReporte : undefined };
       if (operarioEditar) {
@@ -1484,17 +1481,11 @@
           fila: parseInt(fila),
           cedulaOriginal: operarioEditar.cedula,
         });
-        // Cambiar el PIN cierra las sesiones de esa persona (R10-22), y si es la
-        // propia, también esta: se dice y se vuelve a entrar, en vez de que la
-        // siguiente acción falle con "sesión vencida" sin explicación.
-        if (pin && String(operarioEditar.cedula) === String(session.cedula)) {
-          alert('Cambiaste tu propio PIN. Vuelve a entrar con el PIN nuevo.');
-          clearSession();
-          window.location.replace('index.html');
-          return;
-        }
       } else {
-        await apiAdminOperarioAdd(token, operario);
+        const r = await apiAdminOperarioAdd(token, operario);
+        // La clave temporal se muestra UNA vez (PLAN_ACCESO §5.3): después del
+        // guardado, para que el modal ya no esté encima.
+        if (r && r.claveTemporal) setTimeout(() => mostrarClaveTemporal(nombre, r.claveTemporal), 0);
       }
       cerrarModal();
       await cargarOperarios();
@@ -1707,6 +1698,12 @@
     OPERARIO_CREADO:            { txt: 'Operario creado',            color: '#16A34A', g: 'Operarios y asistencia' },
     OPERARIO_ACTUALIZADO:       { txt: 'Operario actualizado',       color: '#2563EB', g: 'Operarios y asistencia' },
     OPERARIO_ROL_CAMBIADO:      { txt: 'Rol cambiado',               color: '#7C3AED', g: 'Operarios y asistencia' },
+    CLAVE_CAMBIADA:             { txt: 'Clave cambiada',             color: '#0F766E', g: 'Operarios y asistencia' },
+    CLAVE_TEMPORAL:             { txt: 'Clave temporal generada',    color: '#B45309', g: 'Operarios y asistencia' },
+    CLAVE_CODIGO_PEDIDO:        { txt: 'Código de clave pedido',     color: '#0369A1', g: 'Operarios y asistencia' },
+    CLAVE_CODIGO_FALLIDO:       { txt: 'Código de clave fallido',    color: '#DC2626', g: 'Operarios y asistencia' },
+    CLAVE_RESTABLECIDA:         { txt: 'Clave restablecida',         color: '#0F766E', g: 'Operarios y asistencia' },
+    ERROR_CORREO_CLAVE:         { txt: 'Error enviando el código',   color: '#DC2626', g: 'Operarios y asistencia' },
     DESBLOQUEO:                 { txt: 'Desbloqueo',                 color: '#D97706', g: 'Operarios y asistencia' },
     MARCACION_ADMIN:            { txt: 'Marcación por admin',        color: '#7C3AED', g: 'Operarios y asistencia' },
     REGISTRO_ELIMINADO:         { txt: 'Registro eliminado',         color: '#DC2626', g: 'Operarios y asistencia' },

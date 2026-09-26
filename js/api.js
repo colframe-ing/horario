@@ -99,7 +99,10 @@ function ajustarNavPorRol(s) {
   });
 }
 if (typeof document !== 'undefined' && document.addEventListener) {
-  document.addEventListener('DOMContentLoaded', function () { ajustarNavPorRol(getSession()); });
+  document.addEventListener('DOMContentLoaded', function () {
+    ajustarNavPorRol(getSession());
+    montarCambioClave();
+  });
 }
 /**
  * Cierra la sesión: revoca el token en el servidor y borra el local.
@@ -136,8 +139,118 @@ function clearSession() {
 }
 
 // ── Auth ──
-async function apiLogin(cedula, pin) {
-  return apiCall('login', { cedula: String(cedula), pin: String(pin) });
+/** Entra con cédula o correo y la clave (PLAN_ACCESO paso 2). Mientras dure la
+ *  migración, la clave también puede ser el PIN viejo: entonces la respuesta
+ *  trae `debeCambiarClave` y un token que solo sirve para `apiCambiarClave`. */
+async function apiLogin(usuario, clave) {
+  return apiCall('login', { usuario: String(usuario), clave: String(clave) });
+}
+
+// ── La clave (PLAN_ACCESO pasos 2 y 3) ──
+async function apiCambiarClave(token, claveActual, claveNueva) {
+  return apiCall('cambiar_clave', { token, claveActual, claveNueva });
+}
+async function apiClaveOlvide(usuario) {
+  return apiCall('clave_olvide', { usuario: String(usuario) });
+}
+async function apiClaveRestablecer(usuario, codigo, claveNueva) {
+  return apiCall('clave_restablecer', { usuario: String(usuario), codigo: String(codigo), claveNueva });
+}
+async function apiAdminClaveTemporal(token, cedulaOperario) {
+  return apiCall('admin_clave_temporal', { token, cedulaOperario: String(cedulaOperario) });
+}
+
+/** La regla de la clave, para avisar antes de enviar. SOLO UX: la que decide es
+ *  `_claveInvalida` (Code.gs), que además rechaza la cédula, el correo y las
+ *  triviales. Devuelve el porqué, o '' si en principio sirve. */
+function validarClaveLocal(clave, confirmacion) {
+  var c = String(clave || '');
+  if (c.length < 8) return 'La clave tiene que tener al menos 8 caracteres.';
+  if (c.length > 64) return 'La clave puede tener máximo 64 caracteres.';
+  if (!/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(c)) return 'La clave tiene que tener al menos una letra.';
+  if (!/[0-9]/.test(c)) return 'La clave tiene que tener al menos un número.';
+  if (confirmacion !== undefined && c !== String(confirmacion)) return 'Las dos claves no coinciden.';
+  return '';
+}
+
+/**
+ * "Cambiar clave" en cualquier pantalla con sesión (PLAN_ACCESO §4.5). Se
+ * agrega solo junto al botón de salir (`#logoutBtn`), como el navegador de
+ * módulos: así no hay que tocar las ocho páginas, y la próxima que se agregue
+ * lo trae sin que nadie se acuerde. Al cambiarla, el backend cierra las demás
+ * sesiones y devuelve una nueva, que reemplaza a la guardada.
+ */
+function montarCambioClave() {
+  var salir = document.getElementById('logoutBtn');
+  var s = getSession();
+  if (!salir || !s || !s.token || document.getElementById('btnCambiarClave')) return;
+  var btn = document.createElement('button');
+  btn.id = 'btnCambiarClave';
+  btn.type = 'button';
+  btn.className = salir.className;
+  btn.title = 'Cambiar mi clave';
+  btn.setAttribute('aria-label', 'Cambiar mi clave');
+  btn.textContent = '🔑';
+  salir.parentNode.insertBefore(btn, salir);
+  btn.addEventListener('click', abrirCambioClave);
+}
+
+function abrirCambioClave() {
+  var ov = document.getElementById('modalCambioClave');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'modalCambioClave';
+    ov.className = 'modal-overlay';
+    ov.innerHTML =
+      '<div class="modal" style="max-width:420px;">' +
+        '<div class="modal-header"><h2>Cambiar mi clave</h2></div>' +
+        '<form id="formCambioClave" novalidate style="display:flex;flex-direction:column;gap:12px;">' +
+          '<div class="form-group"><label for="ccActual">Clave actual</label>' +
+            '<input type="password" id="ccActual" autocomplete="current-password"></div>' +
+          '<div class="form-group"><label for="ccNueva">Clave nueva</label>' +
+            '<input type="password" id="ccNueva" autocomplete="new-password"></div>' +
+          '<div class="form-group"><label for="ccConfirma">Repite la clave nueva</label>' +
+            '<input type="password" id="ccConfirma" autocomplete="new-password"></div>' +
+          '<p style="font-size:0.78rem;color:var(--cf-gray-text);margin:0;">Mínimo 8 caracteres, con letras y números. ' +
+            'Al cambiarla se cierran tus sesiones en otros equipos.</p>' +
+          '<div id="ccError" class="alert alert-error hidden"></div>' +
+          '<div class="modal-actions">' +
+            '<button type="button" id="ccCancelar" class="btn btn-ghost btn-sm">Cancelar</button>' +
+            '<button type="submit" id="ccGuardar" class="btn btn-primary btn-sm">Guardar</button>' +
+          '</div>' +
+        '</form>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var cerrar = function () { ov.classList.add('hidden'); };
+    document.getElementById('ccCancelar').addEventListener('click', cerrar);
+    ov.addEventListener('click', function (e) { if (e.target === ov) cerrar(); });
+    document.getElementById('formCambioClave').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var err = document.getElementById('ccError');
+      var actual = document.getElementById('ccActual').value;
+      var nueva = document.getElementById('ccNueva').value;
+      var mal = actual ? validarClaveLocal(nueva, document.getElementById('ccConfirma').value) : 'Escribe tu clave actual.';
+      if (mal) { err.textContent = mal; err.classList.remove('hidden'); return; }
+      var boton = document.getElementById('ccGuardar');
+      boton.disabled = true;
+      try {
+        var r = await apiCambiarClave(getSession().token, actual, nueva);
+        setSession(r);
+        cerrar();
+        alert('Listo: tu clave quedó cambiada.');
+      } catch (ex) {
+        if (ex && ex.tipo === 'auth') { clearSession(); location.replace('index.html'); return; }
+        err.textContent = (ex && ex.message) || 'No se pudo cambiar la clave.';
+        err.classList.remove('hidden');
+      } finally {
+        boton.disabled = false;
+      }
+    });
+  }
+  ['ccActual', 'ccNueva', 'ccConfirma'].forEach(function (id) { document.getElementById(id).value = ''; });
+  document.getElementById('ccError').classList.add('hidden');
+  ov.classList.remove('hidden');
+  document.getElementById('ccActual').focus();
 }
 
 // ── Operario ──

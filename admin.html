@@ -592,9 +592,7 @@
             <input type="number" id="opCedula" inputmode="numeric" placeholder="Ej: 1234567890" required>
           </div>
           <!-- Rol (PLAN_ACCESO.md §2). Dirección ve todo; Administrativo, remisiones y
-               producción, sin datos de los operarios ni facturación. Va ANTES del PIN
-               porque decide cuántos dígitos lleva: abajo, se escribía el PIN con el
-               largo del rol anterior y el navegador lo cortaba sin decir nada. -->
+               producción, sin datos de los operarios ni facturación. -->
           <div class="form-group">
             <label for="opRol">Rol</label>
             <select id="opRol">
@@ -603,9 +601,17 @@
               <option value="DIRECCION">Dirección / RRHH — todo</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>PIN (<span id="opPinLongitud">4 dígitos</span>) *</label>
-            <input type="text" id="opPin" inputmode="numeric" maxlength="6" placeholder="Dejar en blanco para no cambiar">
+          <!-- La clave ya no se escribe aquí (PLAN_ACCESO paso 2): al crear, el sistema
+               genera una clave temporal que se muestra una vez; al editar, este botón
+               genera otra, para quien la olvidó y no tiene correo. -->
+          <div class="form-group" id="opClaveGroup">
+            <label>Clave</label>
+            <div id="opClaveNuevo" style="font-size:0.82rem;color:var(--cf-gray-text);">
+              Al guardar se genera una clave temporal. Dásela a la persona: al entrar, pone la suya.
+            </div>
+            <button type="button" id="btnClaveTemporal" class="btn btn-ghost btn-sm hidden" style="align-self:flex-start;">
+              🔑 Generar clave temporal
+            </button>
           </div>
           <div class="form-group">
             <label>Cargo</label>
