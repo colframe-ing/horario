@@ -9,7 +9,9 @@
   // Módulo solo-admin: las cotizaciones muestran precios y utilidad.
   if (!puedeOperar(session)) { location.href = 'produccion.html'; return; }
   var token   = session.token;
-  var esAdmin = true;
+  // Aprobar y cambiar las unidades es de Dirección; el administrativo ve el
+  // estado ("✓ Aprobada") sin el botón (decisión del usuario, 25-sep).
+  var esAdmin = esDireccion(session);
 
   var _cache = [];      // última lista recibida
   var _marcando = {};   // archivo → true mientras se procesa el toggle
@@ -315,7 +317,7 @@
 
   // ── Init ────────────────────────────────────────────────────────────────
   function init() {
-    if (esAdmin) document.getElementById('modNav').classList.remove('hidden');
+    document.getElementById('modNav').classList.remove('hidden');   // quien llega aquí ya puede operar
     document.getElementById('logoutBtn').addEventListener('click', function () {
       clearSession(); location.href = 'index.html';
     });

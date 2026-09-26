@@ -12,6 +12,9 @@
   // "Admin" en esta pantalla es quien administra producción: Dirección o
   // Administrativo (PLAN_ACCESO §2).
   const esAdmin = puedeOperar(session);
+  // Escanear Drive y cerrar o reactivar una carpeta CAMBIAN datos: son de
+  // Dirección. El administrativo ve la lista, el detalle y las anomalías.
+  const puedeCambiar = esDireccion(session);
 
   // ── Estado del módulo ────────────────────────────────────
   let proyectosData  = [];
@@ -30,7 +33,7 @@
     if (esAdmin) {
       modNav?.classList.remove('hidden');
       // adminBar tiene display:flex inline pero también hidden; remover hidden lo muestra
-      if (adminBar) {
+      if (adminBar && puedeCambiar) {
         adminBar.classList.remove('hidden');
         adminBar.style.display = 'flex';
       }
@@ -272,7 +275,8 @@
     }
 
     const btnEstado = document.getElementById('btnEstado');
-    if (esAdmin) {
+    document.getElementById('btnRescan')?.classList.toggle('hidden', !puedeCambiar);
+    if (puedeCambiar) {
       btnEstado.classList.remove('hidden');
       btnEstado.textContent        = p.estado === 'ACTIVO' ? 'Cerrar proyecto' : 'Reactivar proyecto';
       // Si la cerró el sistema, conviene decirlo: reactivarla a mano la saca del

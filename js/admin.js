@@ -1111,8 +1111,29 @@
   async function cargarOperarios() {
     try {
       const resOp = await apiAdminOperariosList(token);
+      avisarSiBackendSinRoles(resOp.operarios || []);
       renderOperarios(resOp.operarios || []);
     } catch (e) { manejarError(e, 'cargarOperarios'); }
+  }
+
+  /**
+   * El backend con roles devuelve `rol` en cada usuario. Si no viene, la Web App
+   * está sirviendo una versión VIEJA del código —el editor tiene la nueva, pero
+   * nadie publicó "Nueva versión"— y cambiar a alguien a Administrativo lo deja
+   * como Operario sin ningún error: el backend viejo no conoce `rol`, escribe
+   * `admin = falso`, y así se lee al volver. Pasó en producción el 25-sep. Se
+   * dice en la pantalla en vez de dejar que parezca un fallo del formulario.
+   */
+  function avisarSiBackendSinRoles(operarios) {
+    const el = document.getElementById('avisoSinRoles');
+    if (!el) return;
+    const sinRoles = operarios.length > 0 && operarios.every((o) => !('rol' in o));
+    el.classList.toggle('hidden', !sinRoles);
+    if (sinRoles) {
+      el.innerHTML = '<strong>El servidor todavía no tiene los roles.</strong> La Web App está en una versión ' +
+        'anterior del código, así que cambiar a alguien a Administrativo no se guarda. En Apps Script: ' +
+        '<em>Implementar → Administrar implementaciones → editar → Nueva versión → Implementar</em>.';
+    }
   }
 
   function renderOperarios(operarios) {
@@ -1419,6 +1440,13 @@
       modalError.classList.remove('hidden');
       return;
     }
+    // De operario a oficina hace falta un PIN nuevo: el de operario es de 4 y el
+    // rol nuevo pide 6. El backend también lo exige; aquí se dice antes.
+    if (operarioEditar && rolDeSesion(operarioEditar) === 'OPERARIO' && rol !== 'OPERARIO' && !pin) {
+      modalError.textContent = 'Para darle acceso de oficina, asígnale un PIN de 6 dígitos: el de operario es de 4.';
+      modalError.classList.remove('hidden');
+      return;
+    }
     if (pin && (pin.length !== longitudReq || !/^\d+$/.test(pin))) {
       modalError.textContent = `El PIN debe ser exactamente ${longitudReq} dígitos${rol === 'OPERARIO' ? '' : ' (Dirección y Administrativo requieren 6)'}`;
       modalError.classList.remove('hidden');
@@ -1445,6 +1473,15 @@
           fila: parseInt(fila),
           cedulaOriginal: operarioEditar.cedula,
         });
+        // Cambiar el PIN cierra las sesiones de esa persona (R10-22), y si es la
+        // propia, también esta: se dice y se vuelve a entrar, en vez de que la
+        // siguiente acción falle con "sesión vencida" sin explicación.
+        if (pin && String(operarioEditar.cedula) === String(session.cedula)) {
+          alert('Cambiaste tu propio PIN. Vuelve a entrar con el PIN nuevo.');
+          clearSession();
+          window.location.replace('index.html');
+          return;
+        }
       } else {
         await apiAdminOperarioAdd(token, operario);
       }

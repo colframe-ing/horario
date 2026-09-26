@@ -116,6 +116,18 @@
     .row-menu-btn:hover { background:#F1F5F9; }
     .row-menu { position:absolute; right:0; top:calc(100% + 4px); z-index:20; background:#fff; border:1px solid var(--cf-gray-mid); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.15); padding:4px; min-width:200px; display:none; }
     .row-menu.open { display:block; }
+    /* Solo lectura (administrativo, 25-sep): se esconde todo lo que cambia la
+       cola, el calendario o la configuración. Los ENLACES del menú ⋯ (hoja de
+       vida, carpeta) se quedan; si una fila no tiene ninguno, el ⋯ sobra. */
+    .solo-lectura .row-menu button,
+    .solo-lectura .cola-drag-handle,
+    .solo-lectura [data-agregar],
+    .solo-lectura [data-reabrir],
+    .solo-lectura #btnCfgGuardar { display:none !important; }
+    .solo-lectura .row-actions:not(:has(a.menu-link)) { display:none !important; }
+    .solo-lectura .cal-cell[data-dia] { cursor:default; }
+    .aviso-solo-lectura { background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; border-radius:8px;
+                          padding:8px 12px; font-size:0.82rem; margin-bottom:12px; }
     .row-menu button { display:block; width:100%; text-align:left; border:none; background:none; padding:8px 10px; font-size:0.8rem; font-weight:600; color:var(--cf-dark); cursor:pointer; border-radius:6px; white-space:nowrap; }
     .row-menu button:hover { background:#F1F5F9; }
     .row-menu button.danger { color:#DC2626; }

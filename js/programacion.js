@@ -8,6 +8,19 @@
   if (!session || !session.token) { location.href = 'index.html'; return; }
   if (!puedeOperar(session)) { location.href = 'produccion.html'; return; }
   var token = session.token;
+  // El administrativo VE la cola, el Gantt y el calendario, y no los cambia
+  // (decisión del usuario, 25-sep). El backend ya lo niega; esto es para no
+  // ofrecerle controles que le van a responder "No autorizado". Lo que se
+  // esconde está en el CSS de `.solo-lectura` (programacion.html).
+  var SOLO_LECTURA = !esDireccion(session);
+  if (SOLO_LECTURA) {
+    document.body.classList.add('solo-lectura');
+    var avisoSL = document.createElement('div');
+    avisoSL.className = 'aviso-solo-lectura';
+    avisoSL.textContent = 'Vista de solo lectura: puedes ver la cola, el Gantt y el calendario. Mover, iniciar, pausar o finalizar lo hace Dirección.';
+    var mainSL = document.querySelector('.admin-main');
+    if (mainSL) mainSL.insertBefore(avisoSL, mainSL.firstChild);
+  }
 
   var _data = null;            // respuesta de prod_cola_get
   var _festivos = {};          // set ISO
@@ -350,6 +363,7 @@
     document.getElementById('cfgRitmo').value = resp.config.ritmoMlDia || '';
     document.getElementById('cfgInicio').value = resp.config.fechaInicioCola || '';
     document.getElementById('cfgInicio').min = todayISO();   // la cola nunca arranca en el pasado
+    if(SOLO_LECTURA){ document.getElementById('cfgRitmo').disabled = true; document.getElementById('cfgInicio').disabled = true; }
     renderRitmoReal();
     // primer render: ir al mes del primer proyecto (o de la fecha de inicio, o hoy)
     if(_mesY===0){
@@ -441,7 +455,7 @@
       return '<div class="cola-row" data-uid="'+esc(c.uid)+'">'+
         '<div class="cola-orden">'+
           '<input type="number" class="orden-input" data-orden="'+i+'" min="1" max="'+cola.length+'" '+
-                 'value="'+(i+1)+'" title="Escribe el puesto al que quieres mover este proyecto y presiona Enter">'+
+                 'value="'+(i+1)+'"'+(SOLO_LECTURA?' disabled':'')+' title="Escribe el puesto al que quieres mover este proyecto y presiona Enter">'+
           '<span class="cola-drag-handle" draggable="true" data-uid="'+esc(c.uid)+'" title="Arrastrar para reordenar">⠿</span>'+
         '</div>'+
         '<div class="cola-color" style="background:'+c.color+';"></div>'+
@@ -463,7 +477,7 @@
         '</div>'+
         '<div class="cola-entrega">'+
           '<span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--cf-gray-text);">Entrega</span>'+
-          '<input type="date" value="'+esc(c.fechaEntrega)+'" data-entrega="'+esc(c.uid)+'" title="Fecha comprometida con el cliente">'+
+          '<input type="date" value="'+esc(c.fechaEntrega)+'" data-entrega="'+esc(c.uid)+'"'+(SOLO_LECTURA?' disabled':'')+' title="Fecha comprometida con el cliente">'+
           atraso+
         '</div>'+
         rowMenu(
@@ -1560,6 +1574,7 @@
   // impracticable. Se confirma en 'change' (Enter o al salir del campo), no en
   // cada tecla, para no reordenar a media cifra de un número de dos dígitos.
   function reordenarUnidad(i, destino){
+    if(SOLO_LECTURA) return;
     var cola = nuevoOrdenPorNumero(_data.cola, i, destino);
     // Sin cambio real: se repinta igual para que el input vuelva a mostrar el
     // número que le corresponde si se escribió algo fuera de rango.
@@ -1586,6 +1601,7 @@
 
   var _dragUid = null;
   function bindDragDrop(body){
+    if(SOLO_LECTURA) return;
     body.querySelectorAll('.cola-drag-handle').forEach(function(h){
       h.addEventListener('dragstart', function(e){
         _dragUid = h.getAttribute('data-uid');
@@ -1623,6 +1639,7 @@
 
   // ── Fecha de entrega (optimista, coalescida por unidad) ──
   function cambiarEntrega(uid, fecha){
+    if(SOLO_LECTURA) return;
     var item = _data.cola.filter(function(c){ return c.uid===uid; })[0];
     if(!item) return;
     var before = item.fechaEntrega;
@@ -1644,6 +1661,7 @@
   // ── Marcar día laborable/no laborable (optimista, coalescido por día) ──
   var _excBefore = {}; // ISO → snapshot antes del primer clic de una ráfaga sobre ese día
   function toggleDia(iso){
+    if(SOLO_LECTURA) return;
     if(!(iso in _excBefore)) _excBefore[iso] = _exc[iso] ? Object.assign({}, _exc[iso]) : null;
 
     var accion, laborableToSend;
@@ -1673,6 +1691,7 @@
   // ── Config (ritmo / inicio) — ahora optimista: cada ítem trae su ritmoOvr,
   // así que se puede recalcular todo localmente sin esperar al servidor. ──
   function guardarConfig(){
+    if(SOLO_LECTURA) return;
     var ritmoStr  = document.getElementById('cfgRitmo').value;
     var inicioStr = document.getElementById('cfgInicio').value;
     if(ritmoStr && !(Number(ritmoStr) > 0)){ toast('El ritmo debe ser mayor a 0','error'); return; }

@@ -800,10 +800,14 @@
               '<div class="fld-meta">' + esc(fechaCorta(f.fecha)) + ' · ' + fmtNum(f.metrosTotal, 1) + ' ML · ' + esc(f.estado) + '</div></div>' +
               '<a class="fld-btn" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/' +
                 esc(f.carpetaId) + '">Drive</a>' +
-              '<button class="fld-btn unlink" data-acc="unlink" data-i="' + i + '" data-carpeta="' + esc(f.carpetaId) + '">Quitar</button></div>';
+              // Vincular y quitar carpetas es de Dirección (25-sep): el administrativo las ve.
+              (esDireccion(session)
+                ? '<button class="fld-btn unlink" data-acc="unlink" data-i="' + i + '" data-carpeta="' + esc(f.carpetaId) + '">Quitar</button>'
+                : '') + '</div>';
           }).join('')
         : '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Aún no hay carpetas de producción vinculadas.</div>');
 
+    if (!esDireccion(session)) return html;   // ver, sí; vincular, no
     // Vincular exige cotización aprobada (`handleCotizVincular`). Antes se
     // ofrecía igual y el backend rechazaba al hacer clic; ahora se dice antes.
     if (!c.aprobada) {
