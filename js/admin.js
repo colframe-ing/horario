@@ -1223,6 +1223,8 @@
     document.getElementById('opCargo').value  = operario ? (operario.cargo || '') : '';
     document.getElementById('opEmail').value  = operario ? (operario.email || '') : '';
     document.getElementById('opActivo').checked = operario ? operario.activo : true;
+    // Sin el dato (backend viejo, o nuevo usuario) se muestra marcada: vacía es sí.
+    document.getElementById('opRecibeReporte').checked = operario ? operario.recibeReporte !== false : true;
     document.getElementById('opRol').value      = operario ? rolDeSesion(operario) : 'OPERARIO';
     poblarSelectHorario(document.getElementById('opHorario'), horariosList);
     document.getElementById('opHorario').value = operario ? (operario.horario || '') : '';
@@ -1238,7 +1240,13 @@
   // Quien no es operario entra a más que marcar: PIN de 6 y correo.
   const rolElegido = () => document.getElementById('opRol').value || 'OPERARIO';
   function actualizarEmailVisible() {
-    document.getElementById('opEmailGroup').style.display = rolElegido() === 'OPERARIO' ? 'none' : '';
+    const rol = rolElegido();
+    document.getElementById('opEmailGroup').style.display = rol === 'OPERARIO' ? 'none' : '';
+    // El reporte diario lo recibe solo Dirección, y cada directivo elige; para el
+    // administrativo el correo sirve para recuperar la clave, no para el reporte.
+    document.getElementById('opRecibeGroup').style.display = rol === 'DIRECCION' ? '' : 'none';
+    document.getElementById('opEmailPara').textContent = rol === 'DIRECCION'
+      ? '(para el reporte diario y para recuperar la clave)' : '(para recuperar la clave)';
   }
   document.getElementById('opRol').addEventListener('change', () => {
     actualizarLabelPin();
@@ -1426,6 +1434,7 @@
     const horario = document.getElementById('opHorario').value;
     const email   = document.getElementById('opEmail').value.trim();
     const activo  = document.getElementById('opActivo').checked;
+    const recibeReporte = document.getElementById('opRecibeReporte').checked;
     const rol     = rolElegido();
     const fila    = document.getElementById('opFila').value;
     const longitudReq = rol === 'OPERARIO' ? 4 : 6;
@@ -1461,7 +1470,9 @@
 
     try {
       // `esAdmin` va en espejo del rol: un backend todavía sin roles lo entiende.
-      const operario = { nombre, cedula, pin, cargo, horario, email, activo, rol, esAdmin: rol === 'DIRECCION' };
+      const operario = { nombre, cedula, pin, cargo, horario, email, activo, rol, esAdmin: rol === 'DIRECCION',
+                         // Solo cuenta para Dirección; a los demás no se les manda y queda como está.
+                         recibeReporte: rol === 'DIRECCION' ? recibeReporte : undefined };
       if (operarioEditar) {
         // cedulaOriginal identifica la FILA; `cedula` es el valor nuevo (el campo
         // es editable, así que pueden diferir cuando se corrige un dígito). El

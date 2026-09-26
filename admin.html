@@ -618,8 +618,15 @@
             </select>
           </div>
           <div class="form-group" id="opEmailGroup" style="display:none;">
-            <label>Email <span style="font-weight:400;color:var(--cf-gray-text);">(para reportes diarios automáticos)</span></label>
+            <label>Email <span id="opEmailPara" style="font-weight:400;color:var(--cf-gray-text);"></span></label>
             <input type="email" id="opEmail" placeholder="correo@empresa.com">
+          </div>
+          <!-- Solo Dirección recibe el reporte diario, y cada directivo elige si lo quiere
+               (25-sep). Desmarcada = no le llega; nueva o sin tocar = le llega. -->
+          <div id="opRecibeGroup" style="display:none;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
+              <input type="checkbox" id="opRecibeReporte" checked> Recibe el reporte diario por correo
+            </label>
           </div>
           <div style="display:flex;gap:20px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:0.88rem;font-weight:600;cursor:pointer;">
