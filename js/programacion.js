@@ -82,6 +82,10 @@
   function envioBadge(c){ return c.esEnvio ? ' <span class="envio-badge">Envío '+c.envioIdx+'/'+c.enviosTotal+'</span>' : ''; }
   function etiquetaUnidad(c){ return (c.proyecto||'') + (c.esEnvio ? ' — Envío '+c.envioIdx+'/'+c.enviosTotal : ''); }
   function nUnidades(n){ return n+(n>1?' unidades':' unidad'); }
+  // Un tramo de pausa sin cerrar. En una PAUSADA es lo normal; fuera de ella es
+  // el dato roto de R10-07 (se sacó de la cola estando pausada), y "Reanudar" lo
+  // cierra: por eso se ofrece también ahí.
+  function tienePausaAbierta(c){ return (c.pausas||[]).some(function(p){ return p && !p.hasta; }); }
   // ── Menú ⋯ por fila (agrupa las acciones poco frecuentes) ──
   function rowMenu(inner){
     return '<div class="row-actions">'+
@@ -486,7 +490,7 @@
           '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción')+'</button>'+
           // Pausar / reanudar. Solo tiene sentido sobre algo que ya arrancó: lo
           // que no arrancó se saca de la cola, que es otra operación.
-          (c.pausada
+          ((c.pausada || tienePausaAbierta(c))
             ? '<button data-reanudar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ Reanudar producción</button>'
             : (c.fechaRealInicio
                 ? '<button data-pausar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⏸ Pausar producción</button>'
@@ -499,7 +503,8 @@
             ? '<button data-partir-envio="'+esc(c.uid)+'">✂ Partir este envío en partes</button>' : '')+
           '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
           '<div class="menu-sep"></div>'+
-          '<button data-sacar="'+esc(c.uid)+'">Sacar de la cola</button>'+
+          // A una pausada no se le ofrece sacarla (R10-07): primero se reanuda o se finaliza.
+          (c.pausada ? '' : '<button data-sacar="'+esc(c.uid)+'">Sacar de la cola</button>')+
           '<button class="danger" data-finalizar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">Finalizar</button>'
         )+
       '</div>';
@@ -568,6 +573,10 @@
         '<button class="cola-toggle-btn add" data-agregar="'+esc(c.uid)+'" title="Agregar al Gantt (se programa al final de la cola)">+ Agregar a la cola</button>'+
         rowMenu(
           '<a class="menu-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'" target="_blank" rel="noopener">📋 Hoja de vida</a>'+
+          // Sacada de la cola con una pausa sin cerrar (R10-07, datos de antes del
+          // arreglo): cerrarla es la única forma de que el ritmo real no se desvíe.
+          (tienePausaAbierta(c)
+            ? '<button data-reanudar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ Cerrar la pausa abierta</button>' : '')+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
           '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
           // Partir ESTE envío, no el proyecto entero. Solo si es un envío y no

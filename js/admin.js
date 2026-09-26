@@ -482,14 +482,14 @@
     </tr>`;
 
     // Mapas para acceso rápido
-    const progMap = {}, sesMap = {}, novMap = {};
+    const progMap = {}, sesMap = {};
     progDatos.programacion.forEach(p => { progMap[p.cedula + '|' + p.fecha] = p; });
     progDatos.sesiones.forEach(s => {
       const k = s.cedula + '|' + s.fecha;
       if (!sesMap[k]) sesMap[k] = [];
       sesMap[k].push(s);
     });
-    (progDatos.novedades || []).forEach(n => { novMap[n.cedula + '|' + n.fecha] = n; });
+    const novMap = indiceNovedades(progDatos.novedades);
 
     const operarios = progDatos.operarios;
     if (!operarios.length) {
@@ -698,6 +698,25 @@
     turnoFinEl.value    = fin;
     actualizarCalcHoras();
   });
+
+  /**
+   * Las novedades por `cedula|fecha`, UNA por día. La hoja Novedades guarda
+   * también la "Tardanza justificada" que escribe el operario; si un día tiene
+   * las dos, gana la de RRHH (R10-06): es la que el modal del turno edita, y con
+   * la tardanza en su lugar el modal decía "Sin novedad" y guardar el turno
+   * borraba la incapacidad. Si el día solo tiene la tardanza, queda la tardanza.
+   * FUNCIÓN PURA.
+   */
+  function indiceNovedades(lista) {
+    const out = {};
+    (lista || []).forEach(function (n) {
+      const k = n.cedula + '|' + n.fecha;
+      const esTardanza = n.tipo === 'Tardanza justificada';
+      if (out[k] && esTardanza && out[k].tipo !== 'Tardanza justificada') return;
+      out[k] = n;
+    });
+    return out;
+  }
 
   function editarTurno(op, fecha, horaInicio, horaFin, novExistente) {
     turnoEditando = { ...op, fecha };
