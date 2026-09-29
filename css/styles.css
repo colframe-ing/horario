@@ -114,6 +114,7 @@ input[type="number"],
 input[type="password"],
 input[type="date"],
 input[type="email"],
+input[type="search"],
 select {
   width: 100%;
   padding: 13px 16px;

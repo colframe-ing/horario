@@ -1775,6 +1775,10 @@
     REMISION_EDITADA:           { txt: 'Remisión editada',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ESTADO:            { txt: 'Cambio de estado',           color: '#4F46E5', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_CONCILIADA:        { txt: 'Remisión conciliada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    // Inventario (Inventario.gs): van a la misma hoja AuditoriaRemisiones.
+    RECEPCION_REGISTRADA:       { txt: 'Recepción registrada',       color: '#2563EB', g: 'Inventario (hoja AuditoriaRemisiones)' },
+    RECEPCION_APROBADA:         { txt: 'Recepción aprobada',         color: '#16A34A', g: 'Inventario (hoja AuditoriaRemisiones)' },
+    RECEPCION_RECHAZADA:        { txt: 'Recepción rechazada',        color: '#DC2626', g: 'Inventario (hoja AuditoriaRemisiones)' },
     // Solo aparece cuando remConciliar encuentra un documento DESPACHADO sin
     // sus movimientos de inventario y los completa (R4-04). En rojo a
     // propósito: cada fila de estas es un despacho que estuvo sin registrar

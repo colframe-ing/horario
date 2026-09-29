@@ -387,6 +387,22 @@ async function apiProdMaterialesVentana(token, desde, hasta) {
 async function apiProdMaterialesSimular(token, cotizacionArchivo, casas) {
   return apiCall('prod_materiales_simular', { token, cotizacionArchivo, casas });
 }
+// Inventario (Inventario.gs): existencias y recepciones de proveedor.
+async function apiInvStock(token) {
+  return apiCall('inv_stock', { token });
+}
+async function apiInvRecepcionCrear(token, recepcion) {
+  return apiCall('inv_recepcion_crear', { token, recepcion });
+}
+async function apiInvRecepcionLista(token) {
+  return apiCall('inv_recepcion_lista', { token });
+}
+async function apiInvRecepcionAprobar(token, docId, costos) {
+  return apiCall('inv_recepcion_aprobar', { token, docId, costos });
+}
+async function apiInvRecepcionRechazar(token, docId, motivo) {
+  return apiCall('inv_recepcion_rechazar', { token, docId, motivo });
+}
 async function apiProdColaReordenar(token, orden) {
   return apiCall('prod_cola_reordenar', { token, orden });
 }

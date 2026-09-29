@@ -155,14 +155,24 @@
           : ''));
     }
     if (a.kgMaestro != null) {
-      var comp = '';
-      if (a.completo && a.kgPorPerfil) {
-        var dif = (a.kgPorPerfil - a.kgMaestro) / a.kgMaestro * 100;
-        comp = Math.abs(dif) < 0.5 ? ' — cuadra con la suma por perfil.'
-          : ' — la suma por perfil da ' + (dif > 0 ? '+' : '−') + fmtNum(Math.abs(dif), 1) + ' %.';
+      // El porcentaje, solo sobre las unidades que traen metros Y KG (R10-10):
+      // `kgPorPerfil` contra `kgMaestro` suman conjuntos distintos.
+      var comp = '', c = a.comparacion;
+      var sinMetros = (a.sinMetrosUids || []).length;
+      if (c && c.kgMaestro) {
+        var dif = (c.kgPorPerfil - c.kgMaestro) / c.kgMaestro * 100;
+        var parcial = sinMetros || (a.sinKgUids || []).length;
+        comp = ' — ' + (parcial ? (c.unidades === 1 ? 'en la 1 unidad que trae metros y KG, '
+                                                      : 'en las ' + c.unidades + ' unidades que traen metros y KG, ') : '') +
+          (Math.abs(dif) < 0.5 ? 'cuadra con la suma por perfil.'
+            : 'la suma por perfil da ' + (dif > 0 ? '+' : '−') + fmtNum(Math.abs(dif), 1) + ' %.');
       }
       notas.push('El maestro dice <strong>' + fmtNum(a.kgMaestro, 0) + ' kg</strong> de acero' +
         ((a.sinKgUids || []).length ? ' (sin contar ' + a.sinKgUids.length + (a.sinKgUids.length === 1 ? ' unidad que no trae KG)' : ' unidades que no traen KG)') : '') + comp);
+    }
+    if (sinMetros) {
+      notas.push(sinMetros + (sinMetros === 1 ? ' unidad no trae metros por calibre' : ' unidades no traen metros por calibre') +
+        ': no están en la tabla de arriba.');
     }
     notas.push('El maestro no separa el acero G350 del G550: eso solo lo dicen los archivos de producción.');
     return h + '<ul class="mat-notas">' + notas.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>';

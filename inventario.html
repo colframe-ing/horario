@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#071D49">
+  <title>COLFRAME — Inventario</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .mod-nav { background: #fff; border-bottom: 1px solid var(--cf-gray-mid); padding: 0 16px; display: flex; gap: 4px; overflow-x: auto; }
+    .mod-nav-link { padding: 10px 14px; font-size: 0.82rem; font-weight: 700; color: var(--cf-gray-text); text-decoration: none; border-bottom: 3px solid transparent; white-space: nowrap; display: inline-block; }
+    .mod-nav-link.active { color: var(--cf-blue); border-bottom-color: var(--cf-blue); }
+    .mod-nav-link:hover:not(.active) { color: var(--cf-dark); }
+    .mod-nav-sep { width:1px; background:var(--cf-gray-mid); margin:8px 6px; flex-shrink:0; }
+
+    .inv-main { max-width: 980px; margin: 0 auto; padding: 16px; }
+    .inv-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 14px; }
+    .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+    .inv-grid .form-group input, .inv-grid .form-group textarea { width: 100%; }
+    .inv-sub { font-size: 0.72rem; font-weight: 700; color: var(--cf-gray-text); text-transform: uppercase; letter-spacing: 0.07em; margin: 16px 0 8px; }
+    .inv-nota { font-size: 0.78rem; color: var(--cf-gray-text); line-height: 1.45; }
+    .inv-main textarea { width: 100%; padding: 13px 16px; border: 2px solid var(--cf-gray-mid); border-radius: var(--radius-sm);
+      font-family: 'Montserrat', sans-serif; font-size: 1rem; color: var(--cf-black); background: var(--cf-white); outline: none; resize: vertical; }
+    .inv-main textarea:focus { border-color: var(--cf-blue); }
+
+    /* Líneas de la recepción: una fila por código, que en el celular se apila. */
+    .rec-linea { display: grid; grid-template-columns: minmax(0, 3fr) minmax(90px, 1fr) minmax(100px, 1fr) auto; gap: 8px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--cf-gray-mid); }
+    .rec-linea:last-child { border-bottom: none; }
+    .rec-linea label { display: block; font-size: 0.7rem; font-weight: 700; color: var(--cf-gray-text); text-transform: uppercase; margin-bottom: 4px; }
+    .rec-linea input { width: 100%; }
+    .rec-und { font-size: 0.72rem; color: var(--cf-gray-text); margin-top: 3px; min-height: 1em; }
+    .rec-quitar { background: none; border: 1px solid var(--cf-gray-mid); border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--cf-gray-text); font-size: 0.9rem; }
+    @media (max-width: 600px) {
+      .rec-linea { grid-template-columns: 1fr 1fr auto; }
+      .rec-linea .rec-cod { grid-column: 1 / -1; }
+    }
+    .inv-acciones { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+    .inv-error { background: #FEE2E2; color: #B91C1C; border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; white-space: pre-line; margin-top: 10px; }
+
+    /* Recepciones */
+    .rec-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 10px; border-left: 4px solid var(--cf-gray-mid); }
+    .rec-card.PENDIENTE { border-left-color: #D97706; }
+    .rec-card.APROBADA  { border-left-color: #16A34A; }
+    .rec-card.RECHAZADA { border-left-color: #DC2626; }
+    .rec-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+    .rec-prov { font-weight: 800; color: var(--cf-dark); font-size: 0.92rem; }
+    .rec-meta { font-size: 0.78rem; color: var(--cf-gray-text); margin-top: 2px; }
+    .rec-estado { font-size: 0.67rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .rec-estado.PENDIENTE { background: #FEF3C7; color: #92400E; }
+    .rec-estado.APROBADA  { background: #D1FAE5; color: #065F46; }
+    .rec-estado.RECHAZADA { background: #FEE2E2; color: #B91C1C; }
+    .rec-tabla { width: 100%; margin-top: 10px; font-size: 0.82rem; }
+    .rec-tabla td, .rec-tabla th { padding: 6px 8px; }
+    .rec-tabla .n { text-align: right; white-space: nowrap; }
+    .rec-tabla input { width: 110px; text-align: right; }
+    .rec-aviso { background: #FFFBEB; border: 1px solid #FDE68A; color: #92400E; border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; margin-top: 10px; line-height: 1.4; }
+    .rec-motivo { font-size: 0.8rem; color: #B91C1C; margin-top: 8px; }
+    .tab-cuenta { background: #D97706; color: #fff; border-radius: 999px; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px; vertical-align: middle; }
+
+    /* Existencias */
+    .ex-resumen { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .ex-dato { background: #fff; border-radius: 10px; box-shadow: var(--shadow); padding: 10px 14px; flex: 1; min-width: 130px; }
+    .ex-dato .v { font-size: 1.25rem; font-weight: 800; color: var(--cf-dark); }
+    .ex-dato .l { font-size: 0.7rem; font-weight: 700; color: var(--cf-gray-text); text-transform: uppercase; }
+    .ex-tabla .n { text-align: right; white-space: nowrap; }
+    .ex-estado { font-size: 0.65rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; }
+    .ex-estado.OK { background: #D1FAE5; color: #065F46; }
+    .ex-estado.BAJO { background: #FEF3C7; color: #92400E; }
+    .ex-estado.SIN_STOCK { background: #FEE2E2; color: #B91C1C; }
+    .ex-estado.SIN_CONTEO { background: #F1F5F9; color: #64748B; }
+    .und { color: var(--cf-gray-text); font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <img src="assets/logo-horizontal-blanco.svg"
+         onerror="this.outerHTML='<span style=\'color:#fff;font-weight:800;font-size:1.1rem\'><span>COL</span><span style=\'color:#0072CE\'>FRAME</span></span>'"
+         alt="COLFRAME" class="header-logo">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <a href="app.html" id="lnkInicio" class="hidden" style="color:#fff;font-size:0.78rem;font-weight:700;text-decoration:none;">← Inicio</a>
+      <span id="userName" style="color:rgba(255,255,255,0.65);font-size:0.78rem;font-weight:600;"></span>
+      <button id="logoutBtn" class="btn-icon" title="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Nav módulos (solo Dirección y administrativo — el JS quita hidden) -->
+  <nav id="modNav" class="mod-nav hidden">
+    <a href="cotizaciones.html" class="mod-nav-link">Cotizaciones</a>
+    <a href="programacion.html" class="mod-nav-link">Programación</a>
+    <a href="produccion.html"   class="mod-nav-link">Producción</a>
+    <a href="remisiones.html"   class="mod-nav-link">Remisiones</a>
+    <a href="inventario.html"   class="mod-nav-link active">Inventario</a>
+    <a href="facturacion.html"  class="mod-nav-link">Facturación</a>
+    <span class="mod-nav-sep" aria-hidden="true"></span>
+    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
+  </nav>
+
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="registrar" role="tab">Registrar recepción</button>
+    <button class="tab-btn" data-tab="recepciones" role="tab">Recepciones <span id="cuentaPendientes" class="tab-cuenta hidden"></span></button>
+    <button class="tab-btn hidden" data-tab="existencias" id="tabExistencias" role="tab">Existencias</button>
+  </div>
+
+  <main class="inv-main">
+
+    <!-- ══ REGISTRAR ══════════════════════════════════════════ -->
+    <section class="tab-panel active" id="panel-registrar">
+      <div class="inv-card">
+        <div class="inv-grid">
+          <div class="form-group">
+            <label for="recFecha">Fecha de ingreso</label>
+            <input type="date" id="recFecha">
+          </div>
+          <div class="form-group">
+            <label for="recProveedor">Proveedor</label>
+            <input type="text" id="recProveedor" list="dlProveedores" maxlength="120" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="recFactura">Factura</label>
+            <input type="text" id="recFactura" maxlength="60" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="recRemision">Remisión del proveedor</label>
+            <input type="text" id="recRemision" maxlength="60" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="recOC">Orden de compra (opcional)</label>
+            <input type="text" id="recOC" maxlength="60" autocomplete="off">
+          </div>
+        </div>
+        <p class="inv-nota" style="margin-top:8px;">La factura o la remisión del proveedor: al menos una de las dos.</p>
+
+        <div class="inv-sub">Lo que llegó</div>
+        <div id="recLineas"></div>
+        <button id="btnAgregarLinea" class="btn btn-ghost btn-sm" style="margin-top:10px;">+ Agregar línea</button>
+
+        <div class="form-group" style="margin-top:14px;">
+          <label for="recObs">Observaciones (opcional)</label>
+          <textarea id="recObs" rows="2" maxlength="500"></textarea>
+        </div>
+
+        <div id="recError" class="inv-error hidden"></div>
+        <div class="inv-acciones">
+          <button id="btnLimpiar" class="btn btn-ghost btn-sm">Limpiar</button>
+          <button id="btnRegistrar" class="btn btn-primary">Registrar recepción</button>
+        </div>
+        <p class="inv-nota" style="margin-top:10px;">No suma al inventario hasta que Dirección la aprueba.</p>
+      </div>
+    </section>
+
+    <!-- ══ RECEPCIONES ════════════════════════════════════════ -->
+    <section class="tab-panel" id="panel-recepciones">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <p class="inv-nota" id="recListaNota" style="margin:0;"></p>
+        <button id="btnRefrescarLista" class="btn btn-ghost btn-sm">🔄 Actualizar</button>
+      </div>
+      <div id="recLista"><div class="empty-state"><p>Cargando…</p></div></div>
+    </section>
+
+    <!-- ══ EXISTENCIAS ════════════════════════════════════════ -->
+    <section class="tab-panel" id="panel-existencias">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+        <input type="search" id="exFiltro" placeholder="Buscar código o descripción" style="flex:1;min-width:180px;">
+        <button id="btnRefrescarEx" class="btn btn-ghost btn-sm">🔄 Actualizar</button>
+      </div>
+      <div id="exCuerpo"><div class="empty-state"><p>Cargando…</p></div></div>
+    </section>
+
+  </main>
+
+  <datalist id="dlProductos"></datalist>
+  <datalist id="dlProveedores"></datalist>
+
+  <div id="toastContainer" style="position:fixed;top:80px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/inventario.js"></script>
+</body>
+</html>
