@@ -260,6 +260,9 @@
       case 'REMISION_ANTIGUA_AGREGADA': return rm + 'registrada del sistema anterior' +
                                           (d.fecha ? ' (' + fechaCorta(d.fecha) + ')' : '');
       case 'REMISION_ANTIGUA_ANULADA':  return rm + 'quitada' + (d.motivo ? ' — ' + d.motivo : '');
+      case 'DESPACHO_SIN_REMISION':     return 'Despacho sin remisión registrado' +
+                                          (d.fecha ? ' (' + fechaCorta(d.fecha) + ')' : '') + (d.nota ? ' — ' + d.nota : '');
+      case 'DESPACHO_SIN_REMISION_ANULADO': return 'Despacho sin remisión quitado' + (d.motivo ? ' — ' + d.motivo : '');
       case 'REMISION_CONCILIADA':  return rm + 'conciliada y despachada' + (d.pesoTotalKg ? ' · ' + fmtNum(d.pesoTotalKg, 0) + ' kg' : '');
       case 'REMISION_ESTADO':      return rm + String(d.de || '').toLowerCase().replace('_', ' ') + ' → ' +
                                           String(d.a || '').toLowerCase().replace('_', ' ') + (d.motivo ? ' — ' + d.motivo : '');
@@ -279,6 +282,8 @@
     ANULADA:       { txt: 'Anulada',       cls: 'anu'  },
     // Del sistema anterior: solo el número, no hay documento que abrir.
     ANTIGUA:       { txt: 'Sistema anterior', cls: 'ant' },
+    // Salió de la planta sin remisión, por error (1-oct): el despacho que faltó.
+    SIN_REMISION:  { txt: 'Sin remisión', cls: 'ant' },
   };
 
   /** Una remisión del proyecto. El consecutivo lleva al documento en
@@ -450,10 +455,14 @@
   /** El espejo de las reglas de `remAntiguaAgregar`, para decirlas antes de
    *  enviar. Quien decide sigue siendo el servidor. FUNCIÓN PURA. */
   function validarAntiguaLocal(v, primera, hoy) {
-    if (!String(v.numero || '').trim()) return 'Escribe el número de la remisión.';
+    // Un despacho sin remisión (1-oct) no tiene número ni tope de fecha, y la
+    // nota es lo único que lo explica.
+    var sinRem = v.tipo === 'SIN_REMISION';
+    if (!sinRem && !String(v.numero || '').trim()) return 'Escribe el número de la remisión.';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v.fecha || ''))) return 'Pon la fecha de la remisión.';
     if (hoy && v.fecha > hoy) return 'La fecha no puede ser en el futuro.';
-    if (primera && v.fecha > primera) {
+    if (sinRem && !String(v.nota || '').trim()) return 'Escribe qué pasó: por qué salió sin remisión.';
+    if (!sinRem && primera && v.fecha > primera) {
       return 'Es posterior a la primera remisión de este sistema (' + fechaCorta(primera) +
              '): esa se hace en Remisiones, con su documento.';
     }
@@ -477,20 +486,30 @@
   }
   function cerrarCapa() { var c = document.getElementById('hvCapa'); if (c) c.remove(); }
 
-  function abrirAntigua() {
+  /**
+   * El formulario de una remisión del sistema anterior o, con `sinRem`, de un
+   * despacho que salió SIN remisión por error (1-oct): sin número, cualquier
+   * fecha hasta hoy, y la nota obligatoria.
+   */
+  function abrirAntigua(sinRem) {
     var cots = (_datos.cotizaciones || []).filter(function (c) { return c.aprobada; });
     if (!cots.length) { toast('Este proyecto no tiene cotizaciones aprobadas.', 'error'); return; }
     var primera = _datos.primeraRemisionSistema || '';
     var hoy = hoyBogota();
-    var tope = primera && primera < hoy ? primera : hoy;
+    var tope = sinRem ? hoy : (primera && primera < hoy ? primera : hoy);
     var capa = abrirCapa(
-      '<h3 class="capa-t">Remisión del sistema anterior</h3>' +
-      '<p class="capa-x">Para los despachos que se hicieron antes de este sistema. Se registra <strong>solo el ' +
-        'número</strong>, no un documento: cuenta como despacho del proyecto, pero no tiene detalle ni mueve ' +
-        'inventario.' + (primera ? ' Solo fechas hasta el <strong>' + esc(fechaCorta(primera)) +
-        '</strong>, cuando empezó este sistema.' : '') + '</p>' +
-      '<label class="capa-l">Número<input id="aNum" placeholder="RM-0118" autocomplete="off"></label>' +
-      '<label class="capa-l">Fecha<input id="aFec" type="date" max="' + esc(tope) + '"></label>' +
+      (sinRem
+        ? '<h3 class="capa-t">Despacho sin remisión</h3>' +
+          '<p class="capa-x">Para lo que salió de la planta <strong>sin remisión</strong>, por error. Cuenta como ' +
+            'despacho del proyecto —deja de aparecer como "cobrado sin salir"— pero no tiene documento ni mueve ' +
+            'inventario. Queda marcado <em>Sin remisión</em> y en la historia del proyecto.</p>'
+        : '<h3 class="capa-t">Remisión del sistema anterior</h3>' +
+          '<p class="capa-x">Para los despachos que se hicieron antes de este sistema. Se registra <strong>solo el ' +
+            'número</strong>, no un documento: cuenta como despacho del proyecto, pero no tiene detalle ni mueve ' +
+            'inventario.' + (primera ? ' Solo fechas hasta el <strong>' + esc(fechaCorta(primera)) +
+            '</strong>, cuando empezó este sistema.' : '') + '</p>' +
+          '<label class="capa-l">Número<input id="aNum" placeholder="RM-0118" autocomplete="off"></label>') +
+      '<label class="capa-l">Fecha' + (sinRem ? ' en que salió' : '') + '<input id="aFec" type="date" max="' + esc(tope) + '"></label>' +
       '<label class="capa-l">Cotización<select id="aCot">' + cots.map(function (c) {
         return '<option value="' + esc(c.archivo) + '">' + esc(c.proyecto || c.archivo) +
                (c.version ? ' (v' + esc(c.version) + ')' : '') + '</option>';
@@ -498,7 +517,9 @@
       '<label class="capa-l" id="aEnvL">Envío<select id="aEnv"></select></label>' +
       '<div class="capa-2"><label class="capa-l">Kg de acero <span class="f">(opcional)</span><input id="aKg" type="number" min="0" step="0.1"></label>' +
       '<label class="capa-l">Factura <span class="f">(opcional)</span><input id="aFac" placeholder="FE120" autocomplete="off"></label></div>' +
-      '<label class="capa-l">Nota <span class="f">(opcional)</span><input id="aNota" maxlength="300" placeholder="de dónde sale, quién la tiene…"></label>' +
+      (sinRem
+        ? '<label class="capa-l">Qué pasó<input id="aNota" maxlength="300" placeholder="salió sin remisión porque…, se entregó a…"></label>'
+        : '<label class="capa-l">Nota <span class="f">(opcional)</span><input id="aNota" maxlength="300" placeholder="de dónde sale, quién la tiene…"></label>') +
       '<div id="aErr" class="aviso-rep" style="min-height:1em;"></div>' +
       '<div class="modal-actions"><button class="btn btn-ghost btn-sm" id="aNo">Cancelar</button>' +
       '<button class="btn btn-primary btn-sm" id="aSi">Registrar</button></div>');
@@ -514,12 +535,13 @@
     };
     selCot.addEventListener('change', pintarEnvios);
     pintarEnvios();
-    capa.querySelector('#aNum').focus();
+    capa.querySelector(sinRem ? '#aFec' : '#aNum').focus();
     capa.querySelector('#aNo').onclick = cerrarCapa;
     capa.querySelector('#aSi').onclick = function () {
       var btn = this;
       var v = {
-        numero: capa.querySelector('#aNum').value.trim(), fecha: capa.querySelector('#aFec').value,
+        tipo: sinRem ? 'SIN_REMISION' : '',
+        numero: sinRem ? '' : capa.querySelector('#aNum').value.trim(), fecha: capa.querySelector('#aFec').value,
         cotizacionArchivo: selCot.value, envioId: selEnv.value || '',
         pesoKg: capa.querySelector('#aKg').value, facturaNumero: capa.querySelector('#aFac').value.trim(),
         nota: capa.querySelector('#aNota').value.trim(),
@@ -528,7 +550,8 @@
       if (e) { capa.querySelector('#aErr').textContent = e; return; }
       btn.disabled = true;
       apiRemAntiguaAgregar(token, v).then(function () {
-        cerrarCapa(); toast('Remisión ' + v.numero + ' registrada', 'ok'); return cargar();
+        cerrarCapa(); toast(sinRem ? 'Despacho sin remisión registrado' : 'Remisión ' + v.numero + ' registrada', 'ok');
+        return cargar();
       }).catch(function (err) {
         btn.disabled = false;
         if (err && err.tipo === 'auth') { manejarError(err); return; }
@@ -622,7 +645,9 @@
     // Solo Dirección: registrarla lleva la factura, y eso es cobro (D1).
     var opFila = { sinCobro: !!d.cobroOculto, antiguas: esDireccion(session) };
     var botonAnt = opFila.antiguas
-      ? '<button class="btn-ant" data-acc="ant-nueva">+ Remisión del sistema anterior</button>' : '';
+      ? '<span><button class="btn-ant" data-acc="ant-nueva">+ Remisión del sistema anterior</button> ' +
+        '<button class="btn-ant" data-acc="sinrem-nueva" title="Salió de la planta sin remisión, por error">' +
+        '+ Despacho sin remisión</button></span>' : '';
     if (!lista.length) {
       return '<div class="card-sec"><div class="sec-top"><h3>Remisiones (0)</h3>' + botonAnt + '</div>' +
         '<div style="font-size:0.8rem;color:var(--cf-gray-text);">Este proyecto todavía no tiene remisiones.</div></div>';
@@ -949,7 +974,8 @@
         if (sec) { var tmp = document.createElement('div'); tmp.innerHTML = historiaHtml(_datos); sec.parentNode.replaceChild(tmp.firstChild, sec); }
         return;
       }
-      if (el.dataset.acc === 'ant-nueva') { abrirAntigua(); return; }
+      if (el.dataset.acc === 'ant-nueva') { abrirAntigua(false); return; }
+      if (el.dataset.acc === 'sinrem-nueva') { abrirAntigua(true); return; }
       if (el.dataset.acc === 'ant-quitar') { quitarAntigua(el.dataset.id, el.dataset.num || ''); return; }
       if (el.dataset.acc === 'toggle') toggle(i);
       else if (el.dataset.acc === 'link' || el.dataset.acc === 'unlink') vincular(i, el.dataset.carpeta, el.dataset.acc, el);

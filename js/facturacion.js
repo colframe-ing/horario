@@ -1208,10 +1208,15 @@
    */
   function validarCierreLocal(ev, motivo, nota, motivos, umbral) {
     if (!motivo || !(motivos || {})[motivo]) return 'Elige el motivo de la diferencia.';
+    // Redondo: no hay diferencia que explicar, y lo cobrado es el total, no un anticipo.
+    if (motivo === 'SIN_DIFERENCIA') return ev.exacto ? null : 'Hay una diferencia: elige el motivo que la explica.';
     if ((motivo === 'OTRO' || motivo === 'REDUCIDO') && !String(nota || '').trim()) {
       return 'Con este motivo hay que escribir una nota.';
     }
-    if (!ev.todoDespachado && motivo !== 'REDUCIDO') {
+    // Solo puede ser anticipo si falta material Y falta plata (1-oct). Un backend
+    // anterior no manda `anticipo`: ahí manda la regla de antes.
+    var anticipo = ev.anticipo != null ? ev.anticipo : !ev.todoDespachado;
+    if (anticipo && motivo !== 'REDUCIDO') {
       return 'Todavía hay material sin despachar: lo cobrado puede ser un anticipo. ' +
              'Solo se puede cerrar como "' + (motivos.REDUCIDO || 'reducido o cancelado') + '".';
     }
@@ -1410,6 +1415,7 @@
     var r = c.resumen, ev = c.evaluacion || {};
     var motivos = _datos.motivosCierre || {};
     var umbral = _datos.umbralCierre || 0.005;
+    var anticipo = ev.anticipo != null ? ev.anticipo : !ev.todoDespachado;
     modal('<h4>Cerrar el cobro</h4>' +
       '<div class="explica"><strong>Cerrar</strong> es decir que <strong>' + esc(c.proyecto || c.archivo) +
         '</strong> ya terminó de cobrarse, y por qué la factura final no coincidió con la cotización. ' +
@@ -1421,16 +1427,25 @@
         '<tr><td>Despachado</td><td>' + num(r.unidadesDespachadas) + '/' + num(r.unidades) +
           (ev.todoDespachado ? '' : ' <span class="neg">— falta material</span>') + '</td></tr>' +
       '</table>' +
-      (ev.cuadra ? '<div class="ayuda ok">Cabe en el ' + String(umbral * 100).replace('.', ',') +
-                   ' %: es un ajuste al peso.</div>' : '') +
-      '<div class="campo"><label>Motivo de la diferencia</label><select id="cMotivo">' +
-        '<option value="">— elige —</option>' +
-        Object.keys(motivos).map(function (k) {
-          var bloqueado = !ev.todoDespachado && k !== 'REDUCIDO';
-          return '<option value="' + esc(k) + '"' + (ev.sugerido === k ? ' selected' : '') +
-                 (bloqueado ? ' disabled' : '') + '>' + esc(motivos[k]) + '</option>';
-        }).join('') + '</select></div>' +
-      '<div class="campo"><label>Nota</label>' +
+      (!ev.todoDespachado && !anticipo && !ev.exacto
+        ? '<div class="ayuda">Según las remisiones falta material, pero ya se facturó lo aprobado o más: ' +
+          'no es un anticipo y se puede cerrar con cualquier motivo. Si salió sin remisión, regístralo en la ' +
+          'hoja de vida del proyecto (<em>Despacho sin remisión</em>).</div>' : '') +
+      // Redondo (1-oct): no hay diferencia que explicar, así que no se pide motivo.
+      (ev.exacto
+        ? '<input type="hidden" id="cMotivo" value="SIN_DIFERENCIA">' +
+          '<div class="ayuda ok">Cuadra exacto: no hay diferencia que explicar.</div>'
+        : (ev.cuadra ? '<div class="ayuda ok">Cabe en el ' + String(umbral * 100).replace('.', ',') +
+                       ' %: es un ajuste al peso.</div>' : '') +
+          '<div class="campo"><label>Motivo de la diferencia</label><select id="cMotivo">' +
+            '<option value="">— elige —</option>' +
+            Object.keys(motivos).map(function (k) {
+              if (k === 'SIN_DIFERENCIA') return '';               // solo para los redondos
+              var bloqueado = anticipo && k !== 'REDUCIDO';
+              return '<option value="' + esc(k) + '"' + (ev.sugerido === k ? ' selected' : '') +
+                     (bloqueado ? ' disabled' : '') + '>' + esc(motivos[k]) + '</option>';
+            }).join('') + '</select></div>') +
+      '<div class="campo"><label>Nota' + (ev.exacto ? ' (opcional)' : '') + '</label>' +
         '<textarea id="cNota" maxlength="500" rows="3" placeholder="qué adicional, qué acordó el cliente, qué cambió…"></textarea>' +
         '<div class="ayuda">Obligatoria con "Otro" y con "Proyecto reducido o cancelado".</div></div>' +
       '<div id="cErr" class="tope excede"></div>' +

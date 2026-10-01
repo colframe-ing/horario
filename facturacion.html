@@ -313,7 +313,15 @@
     /* ── Vista 3 · Por proyecto ───────────────────────────────────────────
        Un REPORTE: se mira, no se opera. Por eso es una tabla densa con totales
        y no una lista de tarjetas con botones. */
-    .tabla-wrap { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto; }
+    /* EL ENCABEZADO SE QUEDA (1-oct). Con `overflow-x:auto` solo, el `sticky` de
+       las cabeceras se anclaba a esta caja —que no se desplaza en vertical— y
+       nunca a la ventana: bajando, se perdía qué era cada columna. Ahora la caja
+       tiene el alto de la pantalla y se desplaza por dentro: las cabeceras quedan
+       arriba, el total abajo, y la barra horizontal siempre a la vista (antes
+       quedaba al final de la tabla, y la última columna se veía cortada sin
+       aviso de que había más). 60px es el encabezado azul de la página. */
+    .tabla-wrap { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); overflow:auto;
+                  max-height:calc(100vh - 60px - 24px); }
     .fact-table { width:100%; border-collapse:collapse; font-size:0.79rem; }
     .fact-table th, .fact-table td { padding:8px 11px; text-align:right; border-bottom:1px solid var(--cf-gray-mid); white-space:nowrap; }
     .fact-table th:first-child, .fact-table td:first-child { text-align:left; white-space:normal; }
@@ -321,6 +329,16 @@
                            color:var(--cf-gray-text); font-weight:800; background:#F8FAFC; }
     .fact-table tbody tr:hover { background:#F8FAFC; }
     .fact-table tfoot td { font-weight:800; border-top:2px solid var(--cf-dark); border-bottom:none; }
+    /* Fijos: las dos filas de cabecera arriba, el total abajo, y el nombre del
+       proyecto a la izquierda al desplazar de lado. Con `border-collapse` el
+       borde de una celda fija no viaja con ella: la raya va como sombra. */
+    .fact-table thead { position:sticky; top:0; z-index:3; }
+    .fact-table thead tr:last-child th { box-shadow:inset 0 -1px 0 var(--cf-gray-mid); }
+    .fact-table tfoot td { position:sticky; bottom:0; z-index:2; background:#fff;
+                           box-shadow:inset 0 2px 0 var(--cf-dark); }
+    .fact-table tbody td:first-child { position:sticky; left:0; z-index:1; background:#fff; }
+    .fact-table tbody tr:hover td:first-child { background:#F8FAFC; }
+    .fact-table thead th:first-child, .fact-table tfoot td:first-child { position:sticky; left:0; z-index:4; }
     .fact-table td.n { font-variant-numeric:tabular-nums; }
     /* LOS DOS BLOQUES. La raya vertical es el punto entero del cambio: lo de la
        izquierda se compara contra el valor aprobado y lo de la derecha no,
@@ -373,7 +391,7 @@
        cabía, y el sobrante quedaba escondido detrás del scroll horizontal de
        `.tabla-wrap` — "Cobrado sin salir", "Despachado" y el botón se veían
        cortados, sin barra a la vista que dijera que había más. */
-    .admin-main { max-width:1280px; }
+    .admin-main { max-width:1560px; }
     .leyenda strong { color:var(--cf-dark); }
 
     .vacio { text-align:center; color:var(--cf-gray-text); font-size:0.8rem; padding:26px 0; }
@@ -407,8 +425,11 @@
     .tope.desconocido { color:var(--cf-gray-text); font-weight:600; }
     /* ── Cierre de cobro ─────────────────────────────────────────────── */
     .fact-table tr.cerrada td { background:#F8FAFC; }
+    /* Los botones, uno debajo del otro: lado a lado, la columna era la más
+       ancha de la tabla y la que se cortaba. */
     .fact-table td.acc { white-space:nowrap; }
-    .fact-table td.acc .btn-mini + .btn-mini { margin-left:4px; }
+    .fact-table td.acc .btn-mini { display:block; width:100%; }
+    .fact-table td.acc .btn-mini + .btn-mini { margin-top:4px; }
     .cerr-linea { font-size:0.68rem; font-weight:700; color:#0E7490; margin-top:3px; white-space:normal; }
     .cerr-nota { font-weight:500; color:var(--cf-gray-text); font-style:italic; }
     .cerr-dif { color:var(--cf-gray-text); font-weight:700; }
@@ -456,14 +477,14 @@
   </header>
 
   <nav id="modNav" class="mod-nav hidden">
-    <a href="cotizaciones.html" class="mod-nav-link">Cotizaciones</a>
-    <a href="programacion.html" class="mod-nav-link">Programación</a>
-    <a href="produccion.html"   class="mod-nav-link">Producción</a>
-    <a href="remisiones.html"   class="mod-nav-link">Remisiones</a>
-    <a href="facturacion.html"  class="mod-nav-link active">Facturación</a>
+    <a href="cotizaciones.html"   class="mod-nav-link">Cotizaciones</a>
+    <a href="programacion.html"   class="mod-nav-link">Programación</a>
+    <a href="produccion.html"     class="mod-nav-link">Producción</a>
+    <a href="remisiones.html"     class="mod-nav-link">Remisiones</a>
+    <a href="facturacion.html"    class="mod-nav-link active">Facturación</a>
     <span class="mod-nav-sep" aria-hidden="true"></span>
-    <a href="admin.html"        class="mod-nav-link">Asistencia</a>
-    <a href="inventario.html"   class="mod-nav-link">Inventario</a>
+    <a href="admin.html"          class="mod-nav-link">Asistencia</a>
+    <a href="inventario.html"     class="mod-nav-link">Inventario</a>
   </nav>
 
   <div class="admin-main admin-panel">

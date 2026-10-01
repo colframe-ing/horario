@@ -1791,6 +1791,8 @@
     REMISION_FACTURADA:         { txt: 'Remisión facturada',        color: '#16A34A', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_DESFACTURADA:      { txt: 'Factura quitada',           color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ANTIGUA_AGREGADA:  { txt: 'Remisión antigua registrada', color: '#475569', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    DESPACHO_SIN_REMISION:      { txt: 'Despacho sin remisión',      color: '#B45309', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    DESPACHO_SIN_REMISION_ANULADO: { txt: 'Despacho sin remisión quitado', color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ANTIGUA_ANULADA:   { txt: 'Remisión antigua quitada',  color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEMS_AJUSTADOS:   { txt: 'Ítems ajustados',            color: '#D97706', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ITEM_DIVIDIDO:     { txt: 'Ítem dividido en cajas',     color: '#64748B', g: 'Remisiones (hoja AuditoriaRemisiones)' },
