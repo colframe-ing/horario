@@ -114,6 +114,12 @@
     .rem-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
     .rem-head h2 { flex:1; min-width:160px; margin:0; }
     .oculto { display:none !important; }
+    /* Mientras guarda, el editor queda inerte (bloquearEditor): se ve atenuado,
+       con el aviso fijo arriba, para que no parezca que la pantalla se colgó. */
+    #vistaEditor.guardando { opacity:0.6; cursor:progress; }
+    #vistaEditor.guardando::before { content:'Guardando… espera un momento antes de seguir'; display:block;
+      position:sticky; top:0; z-index:5; margin:-4px 0 10px; padding:8px 12px; border-radius:6px;
+      background:var(--cf-blue); color:#fff; font-weight:600; font-size:0.85rem; text-align:center; }
     /* Pista de "escribe para buscar" junto a la etiqueta del campo. */
     .pista { font-weight:600; font-size:0.66rem; color:var(--cf-blue); text-transform:none; letter-spacing:0; }
     /* Campo con buscador: la flecha indica que hay lista desplegable. */
@@ -184,8 +190,9 @@
             <option value="ANULADA">Anulada</option>
           </select>
         </div>
-        <div class="filter-group"><label for="fDesde">Desde</label><input type="date" id="fDesde"></div>
-        <div class="filter-group"><label for="fHasta">Hasta</label><input type="date" id="fHasta"></div>
+        <!-- Las fechas filtran la historia: borradores y por conciliar salen siempre (remList, 2-oct). -->
+        <div class="filter-group" title="Las remisiones en borrador o por conciliar se muestran siempre, sin importar la fecha"><label for="fDesde">Desde</label><input type="date" id="fDesde"></div>
+        <div class="filter-group" title="Las remisiones en borrador o por conciliar se muestran siempre, sin importar la fecha"><label for="fHasta">Hasta</label><input type="date" id="fHasta"></div>
         <div class="filter-group" style="flex:1;min-width:180px;">
           <label for="fBuscar">Buscar</label>
           <input type="text" id="fBuscar" placeholder="Consecutivo, cliente, proyecto, placa…">

@@ -2343,6 +2343,20 @@
       .indexOf(String(doc.estado || '').toUpperCase()) !== -1;
   }
 
+  /** El editor, quieto mientras se guarda (reportado el 2-oct). `guardarAhora`
+   *  manda una FOTO del formulario y al volver repinta la pantalla desde ella y
+   *  la marca limpia: lo tecleado en el intervalo desaparecía de la cabecera sin
+   *  guardarse, o quedaba en las líneas sin guardar y sin aviso al salir.
+   *  `inert` impide escribir, hacer clic y enfocar —también "Volver"—; la clase
+   *  pone el aviso. Solo el editor: el resto del sistema sigue igual. */
+  function bloquearEditor(si) {
+    const ed = $('vistaEditor');
+    if (!ed) return;
+    ed.inert = !!si;
+    ed.classList.toggle('guardando', !!si);
+    ed.setAttribute('aria-busy', si ? 'true' : 'false');
+  }
+
   // UN SOLO GUARDADO A LA VEZ. ⊞ Dividir, Enviar y Conciliar guardan antes con
   // `guardar(true)`, y sus botones no se apagan mientras tanto: un doble toque
   // lanzaba dos guardados en paralelo. Sobre una remisión nueva cada uno creaba
@@ -2390,6 +2404,10 @@
     const btn = $('btnGuardar');
     const etiqueta = btn.textContent;
     btn.disabled = true; btn.textContent = 'Guardando…';
+    // El formulario no se toca hasta que vuelva (2-oct): lo de abajo manda una
+    // FOTO y al volver repinta desde ella. Va después del motivo, que es un modal
+    // fuera del editor.
+    bloquearEditor(true);
     try {
       // LA CABECERA SE GUARDA EN UNA VARIABLE PORQUE HAY QUE VOLCARLA A `doc`.
       //
@@ -2450,7 +2468,7 @@
       pintarEditor();
       return true;
     } catch (e) { manejarError(e, 'guardar'); return false; }
-    finally { btn.disabled = false; btn.textContent = etiqueta; }
+    finally { bloquearEditor(false); btn.disabled = false; btn.textContent = etiqueta; }
   }
 
   $('btnEnviar').addEventListener('click', async () => {
