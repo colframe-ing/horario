@@ -714,6 +714,8 @@
     // apretarlo.
     $('btnGuardar').classList.toggle('oculto', !editable);
     $('btnGuardar').textContent = esFirme() ? 'Guardar corrección' : 'Guardar borrador';
+    // Agrupar reordena, y el orden solo lo guarda el botón de arriba.
+    $('btnAgruparCajas').classList.toggle('oculto', !puedeAgrupar());
     $('btnEnviar').classList.toggle('oculto', !puedeEnviar);
     $('btnConciliar').classList.toggle('oculto', !puedeConciliar);
     $('btnRechazar').classList.toggle('oculto', !(M.esAdmin && est === 'POR_CONCILIAR'));
@@ -1600,6 +1602,32 @@
 
   function divLinea() { return divIdx == null ? null : doc._detalle[divIdx]; }
 
+  /** Deja el documento listo para partir `linea` en el servidor. `true` si se
+   *  puede abrir el modal.
+   *
+   *  Dividir trabaja sobre la HOJA y la pantalla se queda con el detalle que el
+   *  servidor devuelve. Así que nada puede quedar sin guardar: antes solo se
+   *  guardaba si el documento era nuevo o la línea nunca se había guardado, y
+   *  sobre una remisión ya guardada y vuelta a editar se perdían las otras
+   *  cantidades, las líneas nuevas o quitadas y el orden de "Agrupar por caja"
+   *  —reportado el 2-oct—. Donde el formulario no se guarda entero (ya no es
+   *  borrador), no se parte con cambios pendientes: se pide guardarlos antes. */
+  async function prepararDividir(linea) {
+    if (!dirty && doc.docId && linea.item != null) return true;
+    if (doc._puedeEditar === false) {
+      toast('Hay cambios sin guardar en esta remisión. Guárdalos antes de dividir (Guardar cajas, ' +
+            'Guardar cambios en ítems o Guardar transportador): dividir trabaja sobre lo guardado.', 'warning', 6000);
+      return false;
+    }
+    return await guardar(true);
+  }
+
+  /** "Agrupar por caja" solo cambia el ORDEN, y el orden solo lo guarda
+   *  "Guardar": donde ese botón no está, el reacomodo se perdería. */
+  function puedeAgrupar() {
+    return doc._puedeEditar !== false;
+  }
+
   function abrirModalDividir(i) {
     const l = doc._detalle[i];
     if (!l) return;
@@ -1934,11 +1962,12 @@
         //
         // `filter` conserva las referencias, así que la línea se vuelve a
         // ubicar por identidad.
+        //
+        // Y GUARDAR SI HAY CUALQUIER CAMBIO, no solo si la línea es nueva: ver
+        // `prepararDividir`.
         const linea = doc._detalle[i];
         if (!linea) return;
-        if (!doc.docId || linea.item == null) {
-          if (!await guardar(true)) return;
-        }
+        if (!await prepararDividir(linea)) return;
         const j = doc._detalle.indexOf(linea);
         if (j < 0) return;   // la quitó el guardado: no hay nada que partir
         abrirModalDividir(j);
@@ -2192,6 +2221,7 @@
   // falta "Guardar" después para que el PDF salga en este orden — reordenar
   // no escribe la hoja por sí solo.
   onClick('btnAgruparCajas', () => {
+    if (!puedeAgrupar()) return;
     const conCaja = doc._detalle.filter(l => parseInt(l.cajaNum) > 0);
     const sinCaja = doc._detalle.filter(l => !(parseInt(l.cajaNum) > 0));
     if (!conCaja.length) { toast('Ningún ítem tiene caja asignada todavía.', 'info'); return; }
@@ -2313,7 +2343,20 @@
       .indexOf(String(doc.estado || '').toUpperCase()) !== -1;
   }
 
+  // UN SOLO GUARDADO A LA VEZ. ⊞ Dividir, Enviar y Conciliar guardan antes con
+  // `guardar(true)`, y sus botones no se apagan mientras tanto: un doble toque
+  // lanzaba dos guardados en paralelo. Sobre una remisión nueva cada uno creaba
+  // su borrador (dos duplicados); sobre una guardada, el segundo mandaba la
+  // huella vieja y podía saltar el aviso falso de "alguien más la cambió". El
+  // segundo llamado espera al que está en curso y devuelve lo mismo.
+  let guardando = null;
   async function guardar(silencioso) {
+    if (guardando) return guardando;
+    guardando = guardarAhora(silencioso);
+    try { return await guardando; } finally { guardando = null; }
+  }
+
+  async function guardarAhora(silencioso) {
     const quitadas = quitarPrecargadasVacias();
     if (quitadas) {
       editandoDesc.clear();
