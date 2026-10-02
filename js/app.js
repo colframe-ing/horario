@@ -122,6 +122,9 @@
   // ── Marcar entrada / salida ──
   markBtn.addEventListener('click', async () => {
     hideAlert();
+    // Lo que dice el botón AL TOCARLO (R11-07). Sin estado cargado no se manda,
+    // y el servidor decide como antes.
+    const tipoEsperado = estadoActual ? (estadoActual.tieneEntradaAbierta ? 'SALIDA' : 'ENTRADA') : undefined;
     setMarkLoading(true);
     setGeoStatus('Obteniendo ubicación GPS...', '');
 
@@ -137,7 +140,7 @@
 
       setGeoStatus('📍 Ubicación confirmada (' + distancia + ' m de la planta, precisión ±' + precision + ' m)', 'ok');
 
-      const res = await apiMarcar(session.token, lat, lng);
+      const res = await apiMarcar(session.token, lat, lng, null, tipoEsperado);
       const emoji = res.tipo === 'ENTRADA' ? '✅' : '🏁';
       showAlert(emoji + ' ' + res.tipo + ' registrada a las ' + res.hora, 'success');
       estadoActual = {
@@ -153,6 +156,11 @@
       const msg = (err && err.name === 'ApiError') ? err.message : (err.message || 'Error inesperado.');
       showAlert(msg, 'error');
       setGeoStatus('', '');
+      // R11-07: el botón tiene que decir lo que de verdad sigue. Si el servidor
+      // rechazó porque la marcación ya estaba, trae el estado real; si se perdió
+      // la respuesta, quizá SÍ se escribió: se vuelve a preguntar.
+      if (err && err.datos && err.datos.estado) estadoActual = err.datos.estado;
+      else if (err && err.tipo === 'red') cargarEstado();
     } finally {
       setMarkLoading(false);
     }
@@ -315,7 +323,7 @@
       svGpsMsg.textContent  = '📍 Ubicación confirmada (' + distancia + ' m)';
       svBtnConf.textContent = 'Registrando...';
 
-      await apiMarcar(session.token, lat, lng, { fecha, hora: hora + ':00' });
+      await apiMarcar(session.token, lat, lng, { fecha, hora: hora + ':00' }, 'SALIDA');
 
       modalSV.style.display = 'none';
       showAlert('✅ Salida del ' + fecha + ' a las ' + hora + ' registrada correctamente.', 'success');
@@ -326,6 +334,8 @@
       const msg = (err && err.name === 'ApiError') ? err.message : (err.message || 'Error al registrar. Intenta de nuevo.');
       mostrarSvError(msg);
       svGpsMsg.style.display = 'none';
+      // Si la salida ya estaba (R11-07), el estado real corrige el botón de atrás.
+      if (err && err.datos && err.datos.estado) { estadoActual = err.datos.estado; actualizarUI(); }
     } finally {
       svBtnConf.disabled    = false;
       svBtnConf.textContent = 'Confirmar salida';

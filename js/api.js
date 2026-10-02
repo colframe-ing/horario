@@ -258,12 +258,16 @@ async function apiEstado(token) {
   return apiCall('estado', { token });
 }
 // override: { fecha: 'YYYY-MM-DD', hora: 'HH:mm:ss' } — para corregir salidas olvidadas
-async function apiMarcar(token, lat, lng, override) {
+// `tipoEsperado` es lo que dice el botón (R11-07): si el servidor ya tiene
+// escrita esa marcación —un reintento tras perder la respuesta—, no escribe la
+// contraria y devuelve el estado real en `err.datos.estado`.
+async function apiMarcar(token, lat, lng, override, tipoEsperado) {
   const payload = { token, lat, lng };
   if (override) {
     if (override.fecha) payload.fechaOverride = override.fecha;
     if (override.hora)  payload.horaOverride  = override.hora;
   }
+  if (tipoEsperado) payload.tipoEsperado = tipoEsperado;
   return apiCall('marcar', payload);
 }
 async function apiHistorial(token) {

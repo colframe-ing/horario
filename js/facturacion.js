@@ -2558,6 +2558,31 @@
                razon: 'Es el subtotal completo: la nota de la factura menciona este proyecto ' +
                       'y ning\u00fan otro.' };
     }
+    // Una NOTA CR\u00c9DITO descuenta: lo que le falta por cobrar al proyecto no dice
+    // nada de cu\u00e1nto devolverle (R11-11). Manda la propuesta del backend, que ya
+    // mide contra lo que la factura corregida le asign\u00f3; sin propuesta, no se
+    // inventa.
+    var ref = factura.corrigeA ? ' ' + factura.corrigeA : '';
+    if (p && p.montoOrigen === 'ANULACION') {
+      return { monto: r2(Number(p.monto)),
+               razon: 'La nota anula lo que la factura' + ref + ' le asign\u00f3 a este proyecto: ' +
+                      'se descuenta lo mismo.' };
+    }
+    if (p && p.montoOrigen === 'TOPE') {
+      return { monto: r2(Number(p.monto)),
+               razon: 'Es lo que la factura' + ref + ' le dio a este proyecto (menos lo que otras notas ' +
+                      'ya descontaron). La nota vale m\u00e1s: el resto corrige una parte que nunca se reparti\u00f3.' };
+    }
+    if (p && p.montoOrigen === 'PROPORCIONAL') {
+      return { monto: r2(Number(p.monto)),
+               razon: 'La factura' + ref + ' solo cobr\u00f3 a este proyecto: la nota va entera aqu\u00ed.' };
+    }
+    if (factura.notaCredito) {
+      return { monto: null,
+               razon: 'Es una nota cr\u00e9dito: el monto es lo que se le devuelve a este proyecto, y eso ' +
+                      'no sale de lo que le falta por cobrar. Escr\u00edbelo t\u00fa, mirando la nota y la ' +
+                      'factura que corrige.' };
+    }
 
     // 3 — lo que falta por los dos lados.
     var resto = r2(Number(factura.sinAsignar) || 0);

@@ -1718,6 +1718,7 @@
     OPERARIO_ACTUALIZADO:       { txt: 'Operario actualizado',       color: '#2563EB', g: 'Operarios y asistencia' },
     OPERARIO_ROL_CAMBIADO:      { txt: 'Rol cambiado',               color: '#7C3AED', g: 'Operarios y asistencia' },
     CLAVE_CAMBIADA:             { txt: 'Clave cambiada',             color: '#0F766E', g: 'Operarios y asistencia' },
+    CLAVE_BLOQUEADA_AL_CAMBIAR: { txt: 'Bloqueo al cambiar la clave', color: '#DC2626', g: 'Operarios y asistencia' },
     CLAVE_TEMPORAL:             { txt: 'Clave temporal generada',    color: '#B45309', g: 'Operarios y asistencia' },
     CLAVE_CODIGO_PEDIDO:        { txt: 'Código de clave pedido',     color: '#0369A1', g: 'Operarios y asistencia' },
     CLAVE_CODIGO_FALLIDO:       { txt: 'Código de clave fallido',    color: '#DC2626', g: 'Operarios y asistencia' },

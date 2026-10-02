@@ -2438,7 +2438,10 @@
     try {
       const res = await apiRemConciliar(token, doc.docId);
       if (res.yaConciliada) toast('Ya estaba conciliada como ' + res.consecutivo, 'info');
-      else toast(`✓ ${res.consecutivo} despachada · ${res.movimientos} movimiento(s) de inventario`, 'success', 5000);
+      else toast(`✓ ${res.consecutivo} despachada · ${res.movimientos} movimiento(s) de inventario` +
+                 // R11-12: la remisión reemplazó al despacho sin remisión de su envío.
+                 ((res.reemplazados || []).length ? ' · reemplazó el despacho sin remisión de este envío' : ''),
+                 'success', 5000);
       await abrirRemision(doc.docId);
     } catch (e) { manejarError(e, 'conciliar'); }
     finally { btn.disabled = false; btn.textContent = '✓ Conciliar y despachar'; }
