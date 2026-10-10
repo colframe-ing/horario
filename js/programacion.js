@@ -416,9 +416,16 @@
             : etiquetaUnidad(it2)+' — planeado '+fechaCorta(it2.inicio)+' → '+fechaCorta(it2.fin);
         var extraCls = it2.finalizado ? ' fin' : (it2.enProduccion ? ' prod' : '');
         var prefijo  = it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '');
-        inner += '<div class="cal-casa'+extraCls+'" style="background:'+it2.color+';" title="'+esc(tip)+'">'+
-                 prefijo+esc(it2.proyecto||'')+
-                 (it2.cantidad>1?' <small>×'+it2.cantidad+'</small>':'')+'</div>';
+        var contenido = prefijo+esc(it2.proyecto||'')+(it2.cantidad>1?' <small>×'+it2.cantidad+'</small>':'');
+        // Un finalizado abre su hoja de vida, con la cotización abierta: es el
+        // camino al historial del proyecto (remisiones, cobro) una vez terminado.
+        if(it2.finalizado && it2.consecutivo){
+          inner += '<a class="cal-casa'+extraCls+' cal-casa-link" style="background:'+it2.color+';"'+
+                   ' href="proyecto.html?cb='+encodeURIComponent(it2.consecutivo)+'&archivo='+encodeURIComponent(it2.archivo||'')+'"'+
+                   ' target="_blank" rel="noopener" title="'+esc(tip+' · Clic: hoja de vida')+'">'+contenido+'</a>';
+        } else {
+          inner += '<div class="cal-casa'+extraCls+'" style="background:'+it2.color+';" title="'+esc(tip)+'">'+contenido+'</div>';
+        }
       }
       if(its.length>3) inner += '<div class="cal-nolab-tag">+'+(its.length-3)+' más</div>';
       cells += '<div class="'+cls+'" data-dia="'+iso+'">'+inner+'</div>';
@@ -427,6 +434,11 @@
     body.innerHTML = cells;
     body.querySelectorAll('.cal-cell[data-dia]').forEach(function(c){
       c.addEventListener('click', function(){ toggleDia(c.getAttribute('data-dia')); });
+    });
+    // El clic en el enlace abre la hoja de vida y NO llega a la celda: si no,
+    // de paso marcaría el día laborable / no laborable.
+    body.querySelectorAll('.cal-casa-link').forEach(function(a){
+      a.addEventListener('click', function(e){ e.stopPropagation(); });
     });
   }
 
@@ -518,8 +530,26 @@
       });
       inp.addEventListener('keydown', function(e){ if(e.key==='Enter') inp.blur(); });
     });
+    // El campo de fecha avisa `change` con cada dígito del año que forme una
+    // fecha (0002-10-19, 0020-10-19…), y guardar redibuja la cola: el campo se
+    // reemplazaba a media escritura y no dejaba terminar el año (R12-31). Se
+    // guarda solo una fecha completa y razonable; vaciar o dejar un año que no
+    // puede ser se resuelve al salir del campo.
     body.querySelectorAll('[data-entrega]').forEach(function(inp){
-      inp.addEventListener('change', function(){ cambiarEntrega(inp.getAttribute('data-entrega'), inp.value); });
+      var uid = inp.getAttribute('data-entrega');
+      inp.addEventListener('change', function(){
+        if(fechaEntregaValida(inp.value)) cambiarEntrega(uid, inp.value);
+      });
+      inp.addEventListener('blur', function(){
+        var item = _data.cola.filter(function(c){ return c.uid===uid; })[0];
+        var guardada = (item && item.fechaEntrega) || '';
+        if(inp.value === guardada) return;
+        if(inp.value === '') { cambiarEntrega(uid, ''); return; }
+        if(!fechaEntregaValida(inp.value)){
+          inp.value = guardada;
+          toast('Fecha de entrega no válida: el año va entre 2020 y 2100', 'error');
+        }
+      });
     });
     body.querySelectorAll('[data-sacar]').forEach(function(b){
       b.addEventListener('click', function(){ sacarDeCola(b.getAttribute('data-sacar')); });
@@ -1647,6 +1677,11 @@
   }
 
   // ── Fecha de entrega (optimista, coalescida por unidad) ──
+  // El mismo tope que `_fechaEntregaOk` en el backend: un año entre 2020 y 2100.
+  function fechaEntregaValida(v){
+    var m = /^(\d{4})-\d{2}-\d{2}$/.exec(v || '');
+    return !!m && +m[1] >= 2020 && +m[1] <= 2100;
+  }
   function cambiarEntrega(uid, fecha){
     if(SOLO_LECTURA) return;
     var item = _data.cola.filter(function(c){ return c.uid===uid; })[0];
