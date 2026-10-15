@@ -28,7 +28,10 @@
 // nunca se cachea.
 // ════════════════════════════════════════════════════════════════════════════
 
-const CACHE = 'colframe-v64';
+// v65 (13-oct, R13-16): no por la regla vieja del bump —ya no hace falta—
+// sino para que `activate` borre la v64, que guardaba una copia de la página
+// por cada `?cb=` visitado.
+const CACHE = 'colframe-v65';
 
 // Cuánto se le da a la red antes de servir del cache. Suficiente para un 3G
 // flojo, poco para que se sienta colgado.
@@ -103,19 +106,27 @@ self.addEventListener('fetch', e => {
           // Se refresca el cache con lo que sí llegó, para que el respaldo de
           // offline sea la última versión buena y no la del primer día.
           // `clone()` antes de devolver: el body se consume una sola vez.
+          // Una página se guarda SIN sus parámetros: es la misma página para
+          // cualquier `?cb=`, y guardarla por URL hacía crecer el cache con una
+          // copia por proyecto visitado (R13-16).
           if (res && res.ok) {
             const copia = res.clone();
-            e.waitUntil(caches.open(CACHE).then(c => c.put(req, copia)));
+            const llave = req.mode === 'navigate' ? req.url.split('?')[0] : req;
+            e.waitUntil(caches.open(CACHE).then(c => c.put(llave, copia)));
           }
           return res;
         })
         .catch(() =>
           caches.match(req).then((cached) => {
             if (cached) return cached;
-            // Una navegación sin cache propio cae al login, que es la puerta
-            // del sistema — mejor eso que el error del navegador.
-            if (req.mode === 'navigate') return caches.match('./index.html');
-            return Response.error();
+            if (req.mode !== 'navigate') return Response.error();
+            // Una página con parámetros (`proyecto.html?cb=312`) sale de su
+            // copia sin ellos: la página los lee sola (R13-16). Antes caía al
+            // login teniendo la página en cache.
+            return caches.match(req, { ignoreSearch: true }).then((pagina) =>
+              // Una navegación sin cache propio cae al login, que es la puerta
+              // del sistema — mejor eso que el error del navegador.
+              pagina || caches.match('./index.html'));
           })
         )
     );

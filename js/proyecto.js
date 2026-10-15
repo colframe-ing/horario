@@ -197,7 +197,16 @@
     cots.forEach(function (c) { unidades = unidades.concat(c.unidades || []); });
     var min = function (xs) { xs = xs.filter(Boolean).sort(); return xs.length ? xs[0] : null; };
     var max = function (xs) { xs = xs.filter(Boolean).sort(); return xs.length ? xs[xs.length - 1] : null; };
-    var solo = function (v) { return v ? String(v).substring(0, 10) : null; };
+    // El día de Bogotá. `aprobadaTs` es un instante en UTC: recortar el texto
+    // daba el día siguiente si se aprobó después de las 7 p. m. (R13-13). Las
+    // fechas solas (aaaa-mm-dd) ya son un día y no se mueven.
+    var solo = function (v) {
+      if (!v) return null;
+      var s = String(v);
+      if (s.length <= 10) return s;
+      var d = new Date(s);
+      return isNaN(d.getTime()) ? s.substring(0, 10) : d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    };
 
     var aprob = min(cots.filter(function (c) { return c.aprobada; })
                         .map(function (c) { return solo(c.aprobadaTs); }));

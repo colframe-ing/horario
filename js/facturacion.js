@@ -1403,7 +1403,15 @@
   }
 
   /** YYYY-MM-DD de un timestamp, sin hora. */
-  function fecha10(ts) { return String(ts || '').substring(0, 10); }
+  // El día de Bogotá de un instante ISO en UTC: recortar el texto daba el día
+  // UTC, el siguiente después de las 7 p. m. (R13-13, el patrón de R12-30). Una
+  // fecha sola (aaaa-mm-dd) ya es un día y no se mueve.
+  function fecha10(ts) {
+    var s = String(ts || '');
+    if (s.length <= 10) return s;
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? s.substring(0, 10) : d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
 
   /** El formulario de cerrar el cobro de UNA cotización. */
   function abrirCerrar(archivo) {

@@ -1037,21 +1037,10 @@
 
     bodyAsistencia.innerHTML = filas.map(g => {
       const horas     = g.sesiones.reduce((s, r) => s + (r.horas || 0), 0);
-      // Base del control legal: horas LIMPIAS — se excluyen mispunches evidentes
-      // (sesiones ≥16h = salida del día siguiente; <2 min = marcación duplicada)
-      // para no declarar un "exceso de jornada" por un error de marcación.
-      let horasLimpias = 0, turnosLimpios = 0;
-      g.sesiones.forEach(r => {
-        const h = r.horas || 0;
-        if (h >= 16 || h * 60 < 2) return;
-        horasLimpias += h; turnosLimpios++;
-      });
-      // Jornada ordinaria = presencia limpia − 15 min de alimentación por turno
-      // (la pausa no computa como jornada; así 43,5h de presencia = 42h ordinarias).
-      const horasOrdin = horasLimpias - turnosLimpios * PAUSA_ALIMENTACION_H;
+      const { horasLimpias, diasPausa, horasOrdin } = jornadaOrdinariaSemana(g.sesiones, PAUSA_ALIMENTACION_H);
       const maxLegal   = jornadaMaxSemanal(g.fechaRef);
       const exceso     = horasOrdin - maxLegal;
-      const desglose   = `${horasLimpias.toFixed(1)}h de presencia − ${(turnosLimpios * PAUSA_ALIMENTACION_H * 60).toFixed(0)} min de alimentación = ${horasOrdin.toFixed(1)}h ordinarias`;
+      const desglose   = `${horasLimpias.toFixed(1)}h de presencia − ${(diasPausa * PAUSA_ALIMENTACION_H * 60).toFixed(0)} min de alimentación = ${horasOrdin.toFixed(1)}h ordinarias`;
       const jornadaLabel = exceso > 0.05
         ? `<span style="color:#DC2626;font-weight:800;" title="${desglose}. Lo que excede el máximo legal es trabajo suplementario (Ley 2101).">+${exceso.toFixed(1)}h sobre el máx.</span>`
         : `<span style="color:#16A34A;font-weight:700;" title="${desglose}">✓ dentro</span>`;
@@ -1078,6 +1067,24 @@
   // Con los turnos actuales (7,5h L-V + 6h sáb = 43,5h de presencia), descontando
   // la pausa quedan exactamente 42h ordinarias — el máximo legal vigente.
   const PAUSA_ALIMENTACION_H = 0.25;
+
+  // La jornada ordinaria de una semana, para el control legal. Base: horas
+  // LIMPIAS — se excluyen mispunches evidentes (sesiones ≥16h = salida del día
+  // siguiente; <2 min = marcación duplicada) para no declarar un "exceso de
+  // jornada" por un error de marcación. Jornada ordinaria = presencia limpia −
+  // la pausa de alimentación UNA vez por día trabajado, no por sesión: salir y
+  // volver a entrar el mismo día no es otra pausa, y contarla así escondía
+  // exceso (+3,8h en vez de +5,0h con cada día partido en dos, R13-11).
+  function jornadaOrdinariaSemana(sesiones, pausaH) {
+    let horasLimpias = 0;
+    const dias = new Set();
+    sesiones.forEach(r => {
+      const h = r.horas || 0;
+      if (h >= 16 || h * 60 < 2) return;
+      horasLimpias += h; dias.add(r.fecha);
+    });
+    return { horasLimpias, diasPausa: dias.size, horasOrdin: horasLimpias - dias.size * pausaH };
+  }
 
   // Ley 2101 de 2021 — jornada máxima legal semanal (espejo de getJornadaMaxSemanal
   // en Code.gs; fechas fijadas por la ley, última fase: 42h desde 15-jul-2026).

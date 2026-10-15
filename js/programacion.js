@@ -543,12 +543,9 @@
       inp.addEventListener('blur', function(){
         var item = _data.cola.filter(function(c){ return c.uid===uid; })[0];
         var guardada = (item && item.fechaEntrega) || '';
-        if(inp.value === guardada) return;
-        if(inp.value === '') { cambiarEntrega(uid, ''); return; }
-        if(!fechaEntregaValida(inp.value)){
-          inp.value = guardada;
-          toast('Fecha de entrega no válida: el año va entre 2020 y 2100', 'error');
-        }
+        var d = entregaAlSalir(inp.value, inp.validity.badInput, guardada);
+        if(d.accion === 'quitar' || d.accion === 'guardar') cambiarEntrega(uid, d.accion === 'quitar' ? '' : inp.value);
+        if(d.accion === 'revertir'){ inp.value = guardada; toast(d.aviso, 'error'); }
       });
     });
     body.querySelectorAll('[data-sacar]').forEach(function(b){
@@ -1681,6 +1678,18 @@
   function fechaEntregaValida(v){
     var m = /^(\d{4})-\d{2}-\d{2}$/.exec(v || '');
     return !!m && +m[1] >= 2020 && +m[1] <= 2100;
+  }
+  // Qué hacer al salir del campo de la fecha de entrega. Con un segmento
+  // borrado (dd/mm/aaaa a medias) el navegador da `value === ''` y marca
+  // `badInput`: eso NO es "quitar la fecha" —un Backspace para corregir el año
+  // y un clic afuera borraban el compromiso con el cliente (R13-02)—; se vuelve
+  // a la guardada. Solo un campo vacío de verdad la quita.
+  function entregaAlSalir(valor, incompleta, guardada){
+    if(incompleta) return { accion:'revertir', aviso:'Fecha de entrega incompleta: se dejó la que estaba' };
+    if(valor === guardada) return { accion:'nada' };
+    if(valor === '') return { accion:'quitar' };
+    if(!fechaEntregaValida(valor)) return { accion:'revertir', aviso:'Fecha de entrega no válida: el año va entre 2020 y 2100' };
+    return { accion:'guardar' };
   }
   function cambiarEntrega(uid, fecha){
     if(SOLO_LECTURA) return;
