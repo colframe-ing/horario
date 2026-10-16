@@ -256,6 +256,7 @@
       case 'PROD_COLA_FINALIZAR':  return 'Producción terminada' + (d.fechaReal ? ' (' + fechaCorta(d.fechaReal) + ')' : '');
       case 'PROD_COLA_REABRIR':    return 'Se reabrió la producción';
       case 'PROD_ENTREGA':         return d.fecha ? 'Fecha de entrega: ' + fechaCorta(d.fecha) : 'Se quitó la fecha de entrega';
+      case 'PROD_COLA_MAQUINA':    return d.maquina ? 'Se produce en ' + d.maquina : 'Vuelve a la máquina por defecto';
       case 'PROD_ENVIOS_SET':      return d.n ? 'Partida en ' + d.n + ' envíos' : 'Se quitaron los envíos';
       case 'PROD_ENVIO_PARTIR':    return 'Envío partido en ' + (d.partes || '?');
       case 'PROD_COLA_NOTA':       return 'Nota: ' + (d.notaEnvio || d.nota || '(borrada)');

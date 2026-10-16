@@ -477,6 +477,14 @@ async function apiProdColaConfig(token, ritmo, fechaInicio) {
 async function apiProdColaEntrega(token, archivo, fechaEntrega) {
   return apiCall('prod_cola_entrega', { token, archivo, fechaEntrega });
 }
+// PLAN_MAQUINAS: en qué máquina va una unidad ('' = la por defecto), y el
+// ritmo / la activación de una máquina (escribe la hoja `Maquinas`).
+async function apiProdColaMaquina(token, archivo, maquina) {
+  return apiCall('prod_cola_maquina', { token, archivo, maquina });
+}
+async function apiProdMaquinaSet(token, idMaquina, cambios) {
+  return apiCall('prod_maquina_set', Object.assign({ token, idMaquina }, cambios || {}));
+}
 async function apiProdCalExcepcion(token, fecha, laborable, accion, nota) {
   return apiCall('prod_cal_excepcion', { token, fecha, laborable, accion, nota });
 }

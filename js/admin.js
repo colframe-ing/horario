@@ -1764,6 +1764,8 @@
     PROYECTO_CIERRE_AUTO:       { txt: 'Carpeta cerrada/reabierta sola', color: '#0891B2', g: 'Producción y cola' },
     ERROR_CIERRE_CARPETAS:      { txt: 'Falló el cierre de carpetas',  color: '#DC2626', g: 'Producción y cola' },
     PROD_ENTREGA:               { txt: 'Fecha de entrega',           color: '#2563EB', g: 'Producción y cola' },
+    PROD_COLA_MAQUINA:          { txt: 'Máquina de una unidad',      color: '#2563EB', g: 'Producción y cola' },
+    PROD_MAQUINA_SET:           { txt: 'Ritmo o activación de máquina', color: '#2563EB', g: 'Producción y cola' },
     PROD_CAL_EXCEPCION:         { txt: 'Excepción de calendario',    color: '#D97706', g: 'Producción y cola' },
     // — Facturación (PLAN_FACTURACION.md) —
     // Asignar es la decisión humana del módulo: la factura no dice a qué

@@ -74,6 +74,9 @@
     .cola-nota { font-size:0.72rem; color:#7C3AED; font-style:italic; margin-top:2px; white-space:normal; word-break:break-word; }
     /* Nota específica de un envío: se distingue de la del proyecto */
     .cola-nota.env { color:#0891B2; }
+    .cola-maquina { display:flex; flex-direction:column; gap:2px; align-items:flex-end; }
+    .cola-maquina select { padding:4px 6px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.72rem; font-family:inherit; background:#fff; }
+    .maq-nota { font-size:0.66rem; color:var(--cf-gray-text); white-space:nowrap; }
     .cola-entrega { display:flex; flex-direction:column; gap:2px; align-items:flex-end; }
     .cola-entrega input { padding:4px 6px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.72rem; font-family:inherit; }
     .cola-atraso { font-size:0.64rem; font-weight:800; color:#fff; background:#DC2626; padding:1px 6px; border-radius:999px; }
@@ -224,10 +227,12 @@
 
     <!-- Config -->
     <div class="cfg-bar">
-      <div class="cfg-field">
+      <div class="cfg-field" id="cfgRitmoCampo">
         <label>Ritmo (ML / día hábil)</label>
         <input id="cfgRitmo" type="number" min="1" step="1" style="width:120px;">
       </div>
+      <!-- Con la hoja Maquinas, el ritmo es de cada máquina (PLAN_MAQUINAS) -->
+      <div id="cfgMaquinas" style="display:contents;"></div>
       <div class="cfg-field">
         <label>Inicio de la cola</label>
         <input id="cfgInicio" type="date">
@@ -235,6 +240,11 @@
       <button id="btnCfgGuardar" class="btn btn-dark btn-sm">Guardar</button>
       <span id="saveStatus" class="save-status"></span>
       <div id="ritmoRealInfo" class="ritmo-real-info"></div>
+      <!-- Ver solo una máquina: cola, calendario y leyenda (con dos o más) -->
+      <label id="filtroMaquinaCampo" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--cf-gray-text);align-self:center;white-space:nowrap;">
+        Ver máquina
+        <select id="filtroMaquina" style="padding:4px 6px;border:1.5px solid var(--cf-gray-mid);border-radius:6px;font-size:0.72rem;font-family:inherit;background:#fff;"></select>
+      </label>
       <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--cf-gray-text);align-self:center;cursor:pointer;white-space:nowrap;">
         <input type="checkbox" id="cfgVerFinalizados" style="cursor:pointer;">
         Mostrar finalizados

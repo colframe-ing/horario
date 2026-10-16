@@ -69,8 +69,67 @@
         (rr.diasPausados ? '\n('+rr.diasPausados+' día(s) pausado(s) descontado(s).)' : '')+
         (rr.sinFechaInicio ? '\n('+rr.sinFechaInicio+' unidad(es) sin fecha de inicio quedaron fuera del cálculo.)' : '')
       : base+'\n⚠ Medido por salida de planta entre la primera y la última finalización: incluye tiempos muertos, así que SUBESTIMA el ritmo. Marca "Iniciar producción" en los proyectos para medirlo por duración real.';
-    el.textContent = 'Ritmo real: '+fmtNum(rr.valor,0)+' ML/día'+(pct!=null?' ('+pct+'% del configurado)':'')+
-                     (rr.metodo === 'throughput' ? ' ~' : '');
+    // Con varias máquinas, el de cada una (PLAN_MAQUINAS §8): el de arriba es el
+    // de la por defecto, y las demás se agregan con su propio configurado.
+    var otras = '';
+    var porMaq = _data.config.ritmoRealPorMaquina || {};
+    var def = _data.config.maquinaDefecto || '';
+    Object.keys(porMaq).forEach(function(id){
+      if(id === def || !porMaq[id]) return;
+      var m = (_data.config.maquinas||[]).filter(function(x){ return x.id === id; })[0];
+      var p2 = (m && m.ritmoMlDia > 0) ? Math.round(porMaq[id].valor/m.ritmoMlDia*100) : null;
+      otras += ' · '+id+': '+fmtNum(porMaq[id].valor,0)+' ML/día'+(p2!=null?' ('+p2+'%)':'');
+    });
+    el.textContent = 'Ritmo real'+(def?' '+def:'')+': '+fmtNum(rr.valor,0)+' ML/día'+(pct!=null?' ('+pct+'% del configurado)':'')+
+                     (rr.metodo === 'throughput' ? ' ~' : '') + otras;
+  }
+  // ── Máquinas (PLAN_MAQUINAS pasos 3 y 4) ──
+  // Las que se pueden elegir: activas, con ritmo y del perfil del Gantt. Con
+  // una sola no hay nada que elegir y la pantalla queda como antes.
+  function maquinasAsignables(){
+    return ((_data && _data.config && _data.config.maquinas) || []).filter(function(m){ return m.asignable; });
+  }
+  // El filtro "ver solo una máquina": cola, calendario y leyenda. Se recuerda en
+  // este navegador. '' = todas.
+  var _filtroMaquina = (function(){ try { return localStorage.getItem('cf_prog_maquina') || ''; } catch(e){ return ''; } })();
+  function filtrarPorMaquina(lista, id){
+    return id ? (lista||[]).filter(function(c){ return c.maquina === id; }) : (lista||[]);
+  }
+  // Una máquina que dejó de poder agendarse (se desactivó), o con una sola
+  // máquina: no hay filtro que valga, se ve todo.
+  function filtroMaquinaVigente(){
+    var asig = maquinasAsignables();
+    if(asig.length < 2) return '';
+    return asig.some(function(m){ return m.id === _filtroMaquina; }) ? _filtroMaquina : '';
+  }
+  function renderFiltroMaquina(){
+    var campo = document.getElementById('filtroMaquinaCampo');
+    var sel = document.getElementById('filtroMaquina');
+    if(!campo || !sel) return;
+    var asig = maquinasAsignables();
+    campo.classList.toggle('hidden', asig.length < 2);
+    sel.innerHTML = '<option value="">Todas</option>' + asig.map(function(m){
+      return '<option value="'+esc(m.id)+'">'+esc(m.nombre||m.id)+'</option>';
+    }).join('');
+    sel.value = filtroMaquinaVigente();
+  }
+  function maquinaHtml(c){
+    var asig = maquinasAsignables();
+    if(asig.length < 2) return '';
+    var elegida = String(c.maquinaElegida||'').toUpperCase();
+    // Lo elegido ya no se puede agendar (inactiva, de otro perfil): se dice,
+    // en vez de mostrar en silencio la por defecto como si se hubiera elegido.
+    var aviso = (elegida && elegida !== c.maquina)
+      ? ' title="Se eligió '+esc(elegida)+', que no se puede agendar ahora: va en '+esc(c.maquina)+'"' : ' title="En qué máquina se produce"';
+    return '<div class="cola-maquina">'+
+      '<span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--cf-gray-text);">Máquina</span>'+
+      '<select data-maquina="'+esc(c.uid)+'"'+(SOLO_LECTURA?' disabled':'')+aviso+'>'+
+        asig.map(function(m){
+          return '<option value="'+esc(m.id)+'"'+(m.id===c.maquina?' selected':'')+'>'+esc(m.nombre||m.id)+'</option>';
+        }).join('')+
+      '</select>'+
+      ((elegida && elegida !== c.maquina) ? '<span class="cola-atraso">'+esc(elegida)+' no disponible</span>' : '')+
+    '</div>';
   }
   function metaAjustes(c){
     var s = '';
@@ -174,8 +233,22 @@
     (pausas||[]).forEach(function(p){ if(p && p.hasta && p.hasta > out) out = p.hasta; });
     return out;
   }
+  // Espejo de `_maquinasAgenda().carril`: la máquina elegida si se puede
+  // agendar en ella; si no, la por defecto ('' sin la hoja Maquinas).
+  function carrilDe(it){
+    var cfg = (_data && _data.config) || {};
+    var e = String(it.maquinaElegida == null ? '' : it.maquinaElegida).trim().toUpperCase();
+    var puede = (cfg.maquinas||[]).some(function(m){ return m.asignable && m.id === e; });
+    return (e && puede) ? e : (cfg.maquinaDefecto || '');
+  }
   function computarLocal(items, inicioISO){
-    var ritmoG = (_data && _data.config && _data.config.ritmoMlDia) || 300;
+    var cfg = (_data && _data.config) || {};
+    var ritmoG = cfg.ritmoGlobal || cfg.ritmoMlDia || 300;
+    // El ritmo de cada carril: el de su máquina; sin máquinas, el global.
+    function ritmoCarril(id){
+      var m = (cfg.maquinas||[]).filter(function(x){ return x.asignable && x.id === id; })[0];
+      return m ? m.ritmoMlDia : ritmoG;
+    }
     var day0 = nextLaborable(inicioISO);
     var idxCache = [day0];
     function fechaDeIdx(d){
@@ -197,13 +270,16 @@
       while(count < n && guard++ < 4000){ cur = nextLaborable(isoAddDays(cur,1)); count++; }
       return cur;
     }
-    var EPS = 1e-9, dayCursor = 0, cola = [];
+    // Un cursor por máquina, como en el backend (PLAN_MAQUINAS paso 4).
+    var EPS = 1e-9, cursores = {}, cola = [];
     items.forEach(function(it, idx){
       var color   = PALETA_GANTT[idx % PALETA_GANTT.length];
+      var carril  = carrilDe(it);
+      var dayCursor = cursores[carril] || 0;
       // OJO: resolver siempre desde ritmoOvr (crudo), no desde it.ritmo (ya
       // resuelto en el cálculo anterior) — si no, un cambio de ritmo global no
       // se reflejaría en los proyectos SIN ritmo propio (quedarían pegados).
-      var ritmo   = (it.ritmoOvr && it.ritmoOvr > 0) ? it.ritmoOvr : ritmoG;
+      var ritmo   = (it.ritmoOvr && it.ritmoOvr > 0) ? it.ritmoOvr : ritmoCarril(carril);
       // mlTotal ya es el ML de la UNIDAD (mlUnidad para envíos; mlCasa×cantidad
       // para proyecto entero) y es invariante al ritmo → usarlo directo.
       var totalML = (it.mlTotal != null) ? it.mlTotal : (it.mlCasa||0) * (it.cantidad||1);
@@ -224,7 +300,7 @@
         while(cp && finCot && cp <= finCot && gp++ < 800){ if(esLaborable(cp)) diasSpan++; cp = isoAddDays(cp,1); }
         if(diasSpan < 1) diasSpan = 1;
         cola.push(Object.assign({}, it, {
-          inicio: iniCot, fin: finCot, atrasado: false,
+          inicio: iniCot, fin: finCot, atrasado: false, maquina: carril,
           orden: idx+1, color: color, ritmo: ritmo, enProduccion: false, pausada: true,
           pausadaDesde: desdePausa,
           mlTotal: Math.round(totalML*100)/100,
@@ -260,9 +336,10 @@
         iniCot = fechaDeIdx(dStart); finCot = fechaDeIdx(dEnd);
         diasSpan = dEnd - dStart + 1;
       }
+      cursores[carril] = dayCursor;
 
       cola.push(Object.assign({}, it, {
-        inicio: iniCot, fin: finCot,
+        inicio: iniCot, fin: finCot, maquina: carril,
         atrasado: !!(it.fechaEntrega && finCot && finCot > it.fechaEntrega),
         orden: idx+1, color: color, ritmo: ritmo, enProduccion: enProd, pausada: false,
         mlTotal: Math.round(totalML*100)/100, mlFalta: Math.round(pend*100)/100,
@@ -274,11 +351,13 @@
   // Índice día ISO → [proyectos que tocan ese día]. Un día puede tener varios.
   function indexarDias(){
     _dayItems = {};
-    var fuentes = (_data.cola||[]).slice();
+    // Con el filtro de máquina, el calendario muestra solo esa máquina.
+    var filtro = filtroMaquinaVigente();
+    var fuentes = filtrarPorMaquina(_data.cola, filtro).slice();
     // Los finalizados traen su tramo REAL (inicio/fin capturados en planta).
     // Si no se capturó la fecha de inicio, el backend deja inicio = fin, así que
     // se marca solo el día de término — sin inventar duración.
-    if(_verFinalizados) fuentes = fuentes.concat(_data.finalizados||[]);
+    if(_verFinalizados) fuentes = fuentes.concat(filtrarPorMaquina(_data.finalizados, filtro));
     fuentes.forEach(function(c){
       if(!c.inicio || !c.fin) return;
       var d = c.inicio, guard=0;
@@ -368,6 +447,8 @@
     document.getElementById('cfgInicio').value = resp.config.fechaInicioCola || '';
     document.getElementById('cfgInicio').min = todayISO();   // la cola nunca arranca en el pasado
     if(SOLO_LECTURA){ document.getElementById('cfgRitmo').disabled = true; document.getElementById('cfgInicio').disabled = true; }
+    renderMaquinasCfg();
+    renderFiltroMaquina();
     renderRitmoReal();
     // primer render: ir al mes del primer proyecto (o de la fecha de inicio, o hoy)
     if(_mesY===0){
@@ -414,8 +495,11 @@
           : it2.enProduccion
             ? 'En producción — inició '+fechaCorta(it2.fechaRealInicio)+', fin estimado '+fechaCorta(it2.fin)
             : etiquetaUnidad(it2)+' — planeado '+fechaCorta(it2.inicio)+' → '+fechaCorta(it2.fin);
+        // Con dos máquinas, el día puede tener una en cada una: la casa dice en cuál.
+        var enMaq = (!it2.finalizado && it2.maquina && maquinasAsignables().length > 1) ? it2.maquina : '';
+        if(enMaq) tip += ' · '+enMaq;
         var extraCls = it2.finalizado ? ' fin' : (it2.enProduccion ? ' prod' : '');
-        var prefijo  = it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '');
+        var prefijo  = (it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '')) + (enMaq ? esc(enMaq)+' · ' : '');
         var contenido = prefijo+esc(it2.proyecto||'')+(it2.cantidad>1?' <small>×'+it2.cantidad+'</small>':'');
         // Un finalizado abre su hoja de vida, con la cotización abierta: es el
         // camino al historial del proyecto (remisiones, cobro) una vez terminado.
@@ -444,8 +528,9 @@
 
   function renderLeyenda(){
     var cont = document.getElementById('calLeyenda');
-    if(!_data.cola || !_data.cola.length){ cont.innerHTML=''; return; }
-    cont.innerHTML = _data.cola.map(function(c){
+    var cola = filtrarPorMaquina(_data.cola, filtroMaquinaVigente());
+    if(!cola.length){ cont.innerHTML=''; return; }
+    cont.innerHTML = cola.map(function(c){
       return '<div class="leg-item"><span class="leg-dot" style="background:'+c.color+';"></span>'+esc(etiquetaUnidad(c))+'</div>';
     }).join('');
   }
@@ -453,25 +538,32 @@
   // ── Cola de producción ──
   function renderCola(){
     var body = document.getElementById('colaBody');
-    var cola = _data.cola || [];
+    var todas = _data.cola || [];
+    var filtro = filtroMaquinaVigente();
+    var cola = filtrarPorMaquina(todas, filtro);
     // Carga de trabajo pendiente en la cola (ML y días estimados de producción).
+    // Con el filtro, la de esa máquina: es lo que la tiene ocupada.
     var totML = cola.reduce(function(s,c){ return s + (Number(c.mlTotal)||0); }, 0);
     var totDias = cola.reduce(function(s,c){ return s + (Number(c.durDias)||0); }, 0);
     document.getElementById('colaResumen').textContent = cola.length
-      ? '· '+cola.length+(cola.length===1?' proyecto':' proyectos')+' · '+fmtNum(totML,0)+' ML · ≈'+fmtDias(Math.round(totDias*10)/10)
+      ? '· '+(filtro ? filtro+': ' : '')+cola.length+(cola.length===1?' proyecto':' proyectos')+' · '+fmtNum(totML,0)+' ML · ≈'+fmtDias(Math.round(totDias*10)/10)
       : '';
     if(!cola.length){
-      body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--cf-gray-text);font-size:0.85rem;">No hay cotizaciones aprobadas. Aprueba cotizaciones para armar la cola.</div>';
+      body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--cf-gray-text);font-size:0.85rem;">'+
+        (filtro ? 'No hay nada en la cola de '+esc(filtro)+'.' : 'No hay cotizaciones aprobadas. Aprueba cotizaciones para armar la cola.')+'</div>';
       return;
     }
-    body.innerHTML = cola.map(function(c,i){
+    body.innerHTML = cola.map(function(c){
+      // El puesto es el de la cola ENTERA, también con el filtro: es la
+      // prioridad, y escribir un número reordena contra la cola completa.
+      var gi = todas.indexOf(c);
       var atraso = c.atrasado ? '<span class="cola-atraso">Atrasado</span>' :
                    (c.fechaEntrega ? '<span class="cola-ok">A tiempo</span>' : '');
       var rango = fechaCorta(c.inicio)+' → '+fechaCorta(c.fin);
       return '<div class="cola-row" data-uid="'+esc(c.uid)+'">'+
         '<div class="cola-orden">'+
-          '<input type="number" class="orden-input" data-orden="'+i+'" min="1" max="'+cola.length+'" '+
-                 'value="'+(i+1)+'"'+(SOLO_LECTURA?' disabled':'')+' title="Escribe el puesto al que quieres mover este proyecto y presiona Enter">'+
+          '<input type="number" class="orden-input" data-orden="'+gi+'" min="1" max="'+todas.length+'" '+
+                 'value="'+(gi+1)+'"'+(SOLO_LECTURA?' disabled':'')+' title="'+(filtro ? 'Puesto en la cola completa (todas las máquinas). ' : '')+'Escribe el puesto al que quieres mover este proyecto y presiona Enter">'+
           '<span class="cola-drag-handle" draggable="true" data-uid="'+esc(c.uid)+'" title="Arrastrar para reordenar">⠿</span>'+
         '</div>'+
         '<div class="cola-color" style="background:'+c.color+';"></div>'+
@@ -491,6 +583,7 @@
           notasHtml(c)+
           '<div class="cola-fechas">'+rango+'</div>'+
         '</div>'+
+        maquinaHtml(c)+
         '<div class="cola-entrega">'+
           '<span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--cf-gray-text);">Entrega</span>'+
           '<input type="date" value="'+esc(c.fechaEntrega)+'" data-entrega="'+esc(c.uid)+'"'+(SOLO_LECTURA?' disabled':'')+' title="Fecha comprometida con el cliente">'+
@@ -547,6 +640,9 @@
         if(d.accion === 'quitar' || d.accion === 'guardar') cambiarEntrega(uid, d.accion === 'quitar' ? '' : inp.value);
         if(d.accion === 'revertir'){ inp.value = guardada; toast(d.aviso, 'error'); }
       });
+    });
+    body.querySelectorAll('[data-maquina]').forEach(function(sel){
+      sel.addEventListener('change', function(){ cambiarMaquina(sel.getAttribute('data-maquina'), sel.value); });
     });
     body.querySelectorAll('[data-sacar]').forEach(function(b){
       b.addEventListener('click', function(){ sacarDeCola(b.getAttribute('data-sacar')); });
@@ -1711,6 +1807,80 @@
     });
   }
 
+  // ── Máquina de una unidad (optimista, como la fecha de entrega) ──
+  // Cambiarla reagenda al instante: la unidad pasa al carril de la otra máquina
+  // y lo que venía detrás en la vieja se adelanta.
+  function cambiarMaquina(uid, id){
+    if(SOLO_LECTURA) return;
+    var item = _data.cola.filter(function(c){ return c.uid===uid; })[0];
+    if(!item) return;
+    var before = item.maquinaElegida || '';
+    item.maquinaElegida = id;
+    recomputarYRenderizar();
+    debounceSave('maquina_'+uid, 200, function(){
+      return apiProdColaMaquina(token, uid, id).then(function(){
+        toast('Va en '+id,'ok');
+      }).catch(function(e){
+        var it = _data.cola.filter(function(c){ return c.uid===uid; })[0];
+        if(it) it.maquinaElegida = before;
+        recomputarYRenderizar();
+        manejarError(e);
+      });
+    });
+  }
+
+  // ── Las máquinas en la configuración: ritmo y activa ──
+  // La hoja `Maquinas` es la fuente; la pantalla la lee y la escribe (decisión
+  // del 14-oct). Con máquinas, el ritmo único de la cola deja de editarse aquí:
+  // queda solo como respaldo si la hoja desaparece.
+  function renderMaquinasCfg(){
+    var cont = document.getElementById('cfgMaquinas');
+    var campoRitmo = document.getElementById('cfgRitmoCampo');
+    var ms = (_data.config && _data.config.maquinas) || [];
+    if(campoRitmo) campoRitmo.classList.toggle('hidden', ms.length > 0);
+    if(!cont) return;
+    if(!ms.length){ cont.innerHTML = ''; return; }
+    cont.innerHTML = ms.map(function(m){
+      var nota = m.asignable ? '' : (m.activa
+        ? '<span class="maq-nota" title="El Gantt programa los metros C90">no se agenda ('+esc((m.perfiles||[]).join(', ')||'sin perfil')+')</span>'
+        : '<span class="maq-nota">inactiva</span>');
+      return '<div class="cfg-field maq-cfg">'+
+        '<label>'+esc(m.nombre||m.id)+' · ML / día</label>'+
+        '<div style="display:flex;align-items:center;gap:6px;">'+
+          '<input type="number" min="1" step="1" style="width:90px;" data-maq-ritmo="'+esc(m.id)+'" value="'+esc(m.ritmoMlDia||'')+'"'+(SOLO_LECTURA?' disabled':'')+'>'+
+          '<label style="display:flex;align-items:center;gap:4px;font-size:0.72rem;cursor:pointer;">'+
+            '<input type="checkbox" data-maq-activa="'+esc(m.id)+'"'+(m.activa?' checked':'')+(SOLO_LECTURA?' disabled':'')+'> activa</label>'+
+          nota+
+        '</div>'+
+      '</div>';
+    }).join('');
+    cont.querySelectorAll('[data-maq-ritmo]').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var v = Number(inp.value);
+        if(!(v > 0)){ toast('El ritmo debe ser mayor a 0','error'); renderMaquinasCfg(); return; }
+        cambiarMaquinaCfg(inp.getAttribute('data-maq-ritmo'), { ritmoMlDia: v });
+      });
+    });
+    cont.querySelectorAll('[data-maq-activa]').forEach(function(chk){
+      chk.addEventListener('change', function(){ cambiarMaquinaCfg(chk.getAttribute('data-maq-activa'), { activa: chk.checked }); });
+    });
+  }
+  // Se espera la respuesta antes de reagendar: activar o desactivar cambia qué
+  // máquinas se pueden agendar, y esa regla vive en el servidor.
+  function cambiarMaquinaCfg(id, cambios){
+    if(SOLO_LECTURA) return;
+    beginSave();
+    apiProdMaquinaSet(token, id, cambios).then(function(resp){
+      _data.config.maquinas = resp.maquinas || [];
+      _data.config.maquinaDefecto = resp.maquinaDefecto || '';
+      var def = _data.config.maquinas.filter(function(m){ return m.id === _data.config.maquinaDefecto; })[0];
+      if(def) _data.config.ritmoMlDia = def.ritmoMlDia;
+      renderMaquinasCfg(); renderFiltroMaquina(); renderRitmoReal();
+      recomputarYRenderizar();
+      toast('Máquina '+id+' guardada','ok');
+    }).catch(function(e){ renderMaquinasCfg(); manejarError(e); }).finally(endSave);
+  }
+
   // ── Marcar día laborable/no laborable (optimista, coalescido por día) ──
   var _excBefore = {}; // ISO → snapshot antes del primer clic de una ráfaga sobre ese día
   function toggleDia(iso){
@@ -1745,13 +1915,17 @@
   // así que se puede recalcular todo localmente sin esperar al servidor. ──
   function guardarConfig(){
     if(SOLO_LECTURA) return;
-    var ritmoStr  = document.getElementById('cfgRitmo').value;
+    // Con máquinas, el ritmo se edita en cada una (renderMaquinasCfg): el campo
+    // único está escondido y no se manda.
+    var conMaquinas = ((_data.config && _data.config.maquinas) || []).length > 0;
+    var ritmoStr  = conMaquinas ? '' : document.getElementById('cfgRitmo').value;
     var inicioStr = document.getElementById('cfgInicio').value;
     if(ritmoStr && !(Number(ritmoStr) > 0)){ toast('El ritmo debe ser mayor a 0','error'); return; }
 
-    var before = { ritmoMlDia: _data.config.ritmoMlDia, fechaInicioCola: _data.config.fechaInicioCola };
+    var before = { ritmoMlDia: _data.config.ritmoMlDia, ritmoGlobal: _data.config.ritmoGlobal, fechaInicioCola: _data.config.fechaInicioCola };
     var hoy = todayISO();
-    if(ritmoStr)  _data.config.ritmoMlDia = Number(ritmoStr);
+    // Sin máquinas, el global es el ritmo del único carril (`computarLocal`).
+    if(ritmoStr)  _data.config.ritmoMlDia = _data.config.ritmoGlobal = Number(ritmoStr);
     if(inicioStr) _data.config.fechaInicioCola = inicioStr < hoy ? hoy : inicioStr;   // mismo tope que el backend
     recomputarYRenderizar();
 
@@ -1760,6 +1934,7 @@
       toast('Configuración guardada','ok');
     }).catch(function(e){
       _data.config.ritmoMlDia = before.ritmoMlDia;
+      _data.config.ritmoGlobal = before.ritmoGlobal;
       _data.config.fechaInicioCola = before.fechaInicioCola;
       document.getElementById('cfgRitmo').value = before.ritmoMlDia || '';
       document.getElementById('cfgInicio').value = before.fechaInicioCola || '';
@@ -1818,6 +1993,12 @@
     document.getElementById('cfgVerFinalizados').addEventListener('change', function(){
       _verFinalizados = this.checked;
       indexarDias(); renderCalendario();   // solo afecta al calendario, no re-agenda nada
+    });
+    // Ver una sola máquina: tampoco reagenda nada, solo filtra lo que se ve.
+    document.getElementById('filtroMaquina').addEventListener('change', function(){
+      _filtroMaquina = this.value;
+      try { localStorage.setItem('cf_prog_maquina', _filtroMaquina); } catch(e) {}
+      indexarDias(); renderCalendario(); renderLeyenda(); renderCola();
     });
     document.getElementById('higieneRefrescar').addEventListener('click', function(e){
       e.preventDefault(); e.stopPropagation();   // el botón vive dentro de <summary>: no debe togglear el panel
