@@ -165,6 +165,9 @@
     .higiene-titulo { font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); margin:10px 0 6px; }
     .higiene-titulo:first-child { margin-top:0; }
     .envio-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#7C3AED; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    /* El C140 (S Pauta): otra etiqueta, para que no se lea como un envío del C90. */
+    .c140-badge { font-size:0.6rem; font-weight:800; color:#92400E; background:#FEF3C7; border:1px solid #FDE68A; padding:0 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    .maq-fija { font-size:0.72rem; font-weight:700; color:var(--cf-dark); padding:4px 8px; border:1.5px solid var(--cf-gray-mid); border-left-width:4px; border-radius:6px; background:#fff; white-space:nowrap; }
     .env-row select, .env-row input { padding:6px 8px; border:1.5px solid var(--cf-gray-mid); border-radius:6px; font-size:0.82rem; font-family:inherit; }
     /* Envío ya producido: tamaño en solo lectura. El freno se ve antes de
        intentar el cambio, en vez de aparecer como error al guardar. */
@@ -482,7 +485,7 @@
         <h2 id="ajTitle" style="font-size:1rem;">Ajustes del proyecto</h2>
       </div>
       <div id="ajProyectoNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:14px;"></div>
-      <div class="cfg-field" style="margin-bottom:12px;">
+      <div class="cfg-field" id="ajCampoRitmo" style="margin-bottom:12px;">
         <label>Ritmo propio (ML / día hábil)</label>
         <input id="ajRitmo" type="number" min="1" step="1" placeholder="Usar el ritmo global">
       </div>

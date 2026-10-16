@@ -211,8 +211,14 @@
     var aprob = min(cots.filter(function (c) { return c.aprobada; })
                         .map(function (c) { return solo(c.aprobadaTs); }));
     var inicio = min(unidades.map(function (u) { return solo(u.fechaRealInicio); }));
-    var todas = unidades.length > 0 && unidades.every(function (u) { return u.seccion === 'finalizada'; });
-    var fin = todas ? max(unidades.map(function (u) { return solo(u.fechaReal); })) : null;
+    // Termina cuando termina TODO: el C90 y los pedidos de C140 (16-oct, "para
+    // acabarlo tengo que acabar ambos"). El fin es el último de los dos.
+    var pedidos = [];
+    cots.forEach(function (c) { pedidos = pedidos.concat(c.pedidosC140 || []); });
+    var todas = unidades.length > 0 && unidades.every(function (u) { return u.seccion === 'finalizada'; }) &&
+                pedidos.every(function (p) { return String(p.estado || '').toUpperCase() === 'FINALIZADA'; });
+    var fin = todas ? max(unidades.map(function (u) { return solo(u.fechaReal); })
+                            .concat(pedidos.map(function (p) { return solo(p.fechaReal); }))) : null;
     var FIRMES = { DESPACHADA: 1, ENTREGADA: 1, FACTURADA: 1 };
     var desp = min(((d && d.remisiones) || []).filter(function (r) { return FIRMES[r.estado]; })
                                               .map(function (r) { return solo(r.fecha); }));
@@ -359,6 +365,20 @@
       '<td>' + despachoUnidad(u) + '</td></tr>';
   }
 
+  // Un pedido de C140 (S Pauta) en la tabla de la cotización: no se despacha
+  // solo —sale con su envío—, así que en esa columna no dice nada.
+  function filaPedidoC140(p) {
+    var est = String(p.estado || '').toUpperCase();
+    var prod = est === 'FINALIZADA' ? '✓ Recibido de Pauta' + (p.fechaReal ? ' el ' + fechaCorta(p.fechaReal) : '')
+             : p.fechaRealInicio ? '📤 Pedido enviado el ' + fechaCorta(p.fechaRealInicio)
+             : est === 'SIN_COLA' ? 'Sin cola' : 'Por pedir a Pauta';
+    return '<tr class="hv-c140"><td>C140' + (p.de > 1 ? ' · pedido ' + p.pedido + ' de ' + p.de : '') +
+        (p.nota ? '<div class="hv-nota">📝 ' + esc(p.nota) + '</div>' : '') + '</td>' +
+      '<td>' + esc(fmtNum(p.ml) + ' ML de C140') + '</td>' +
+      '<td>' + esc(prod) + (p.fechaEntrega && est !== 'FINALIZADA' ? '<div class="hv-nota">Entrega ' + esc(fechaCorta(p.fechaEntrega)) + '</div>' : '') + '</td>' +
+      '<td>—</td></tr>';
+  }
+
   // ════════════════════════════════════════════════════════════════════════
   // El proyecto (CB): encabezado, etapas, tarjetas, facturas
   // ════════════════════════════════════════════════════════════════════════
@@ -367,7 +387,8 @@
     var t = d.totales;
     var hayAprob = t.aprobadas > 0;
     var hayProd  = d.estadoGlobal === 'EN_PRODUCCION' || t.finalizadas > 0;
-    var todoFin  = t.unidades > 0 && t.finalizadas === t.unidades;
+    // Y los pedidos de C140 recibidos: sin ellos la producción no terminó.
+    var todoFin  = t.unidades > 0 && t.finalizadas === t.unidades && !t.c140Pendientes;
     var hayDesp  = t.unidadesDespachadas > 0;
     var todoDesp = t.unidades > 0 && t.unidadesDespachadas === t.unidades;
     // Cobrado del todo: no queda nada por facturar y algo se facturó. El
@@ -749,7 +770,7 @@
       ? '<h4 class="sub-h">Producción y despacho</h4>'+
         '<div style="overflow-x:auto;"><table class="cmp-tabla"><thead><tr>'+
           '<th>Unidad</th><th>Tamaño</th><th>Producción</th><th>Despachado (kg)</th>'+
-        '</tr></thead><tbody>'+c.unidades.map(filaUnidad).join('')+'</tbody></table></div>'
+        '</tr></thead><tbody>'+c.unidades.map(filaUnidad).join('')+(c.pedidosC140 || []).map(filaPedidoC140).join('')+'</tbody></table></div>'
       : '';
 
     return '<div class="card-sec cot-bloque'+(c.archivo===_archivoPedido?' pedida':'')+'" id="cot-'+i+'">'+

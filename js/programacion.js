@@ -71,8 +71,14 @@
   // Un color por máquina, en el orden de la hoja: el mismo en la tarjeta, el
   // filtro, la fila de la cola y la tabla de configuración.
   var MAQ_COLORES = ['#0072CE','#16A34A','#D97706','#7C3AED','#0891B2'];
+  // Los carriles que se ven: las máquinas del C90 que se agendan y, si la cola
+  // trae C140, el de S Pauta. Es lo que filtran las tarjetas y las píldoras.
+  function maquinasCarriles(){
+    var cfg = (_data && _data.config) || {};
+    return maquinasAsignables().concat(cfg.maquinaC140 ? [cfg.maquinaC140] : []);
+  }
   function colorMaquina(id){
-    var i = maquinasAsignables().map(function(m){ return m.id; }).indexOf(id);
+    var i = maquinasCarriles().map(function(m){ return m.id; }).indexOf(id);
     return i < 0 ? '#94A3B8' : MAQ_COLORES[i % MAQ_COLORES.length];
   }
 
@@ -88,9 +94,9 @@
   // Una máquina que dejó de poder agendarse (se desactivó), o con una sola
   // máquina: no hay filtro que valga, se ve todo.
   function filtroMaquinaVigente(){
-    var asig = maquinasAsignables();
-    if(asig.length < 2) return '';
-    return asig.some(function(m){ return m.id === _filtroMaquina; }) ? _filtroMaquina : '';
+    var carriles = maquinasCarriles();
+    if(carriles.length < 2) return '';
+    return carriles.some(function(m){ return m.id === _filtroMaquina; }) ? _filtroMaquina : '';
   }
   // Sin tildes y en minúscula: "fernández" encuentra FERNANDEZ.
   function sinTildes(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
@@ -122,7 +128,7 @@
   function renderFiltros(){
     var cont = document.getElementById('chipsMaquina');
     if(!cont || !_data) return;
-    var asig = maquinasAsignables(), cola = _data.cola || [], filtro = filtroMaquinaVigente();
+    var asig = maquinasCarriles(), cola = _data.cola || [], filtro = filtroMaquinaVigente();
     cont.innerHTML = asig.length < 2 ? '' :
       '<button type="button" class="fchip" data-fmaq="" aria-pressed="'+(filtro==='')+'">Todas <span class="n-chip">'+cola.length+'</span></button>'+
       asig.map(function(m){
@@ -143,8 +149,10 @@
     var cont = document.getElementById('progCortes');
     if(!cont || !_data) return;
     var cfg = _data.config || {}, cola = _data.cola || [];
-    var asig = maquinasAsignables(), filtro = filtroMaquinaVigente(), clic = asig.length > 1;
-    var carriles = asig.length ? asig : [{ id: '', nombre: 'Planta', ritmoMlDia: cfg.ritmoMlDia }];
+    var asig = maquinasAsignables(), filtro = filtroMaquinaVigente();
+    var carriles = (asig.length ? asig : [{ id: '', nombre: 'Planta', ritmoMlDia: cfg.ritmoMlDia }])
+      .concat(cfg.maquinaC140 ? [cfg.maquinaC140] : []);
+    var clic = carriles.length > 1;
     var html = carriles.map(function(m){
       var its = cola.filter(function(c){ return (c.maquina||'') === m.id; });
       var ml = its.reduce(function(s,c){ return s + (Number(c.mlFalta != null ? c.mlFalta : c.mlTotal)||0); }, 0);
@@ -181,6 +189,14 @@
     if(bAtr) bAtr.addEventListener('click', function(){ _soloAtrasados = !_soloAtrasados; aplicarFiltros(); });
   }
   function maquinaHtml(c){
+    // El C140 no se elige: va en S Pauta.
+    if(c.esC140){
+      var mc = (_data.config && _data.config.maquinaC140) || {};
+      return '<div class="cola-maquina">'+
+        '<span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--cf-gray-text);">Máquina</span>'+
+        '<span class="maq-fija" style="border-left-color:'+colorMaquina(c.maquina)+';">'+esc(mc.nombre || c.maquina)+'</span>'+
+      '</div>';
+    }
     var asig = maquinasAsignables();
     if(asig.length < 2) return '';
     var elegida = String(c.maquinaElegida||'').toUpperCase();
@@ -205,8 +221,11 @@
     return s;
   }
   // ── Helpers de unidad (proyecto entero o envío) ──
-  function envioBadge(c){ return c.esEnvio ? ' <span class="envio-badge">Envío '+c.envioIdx+'/'+c.enviosTotal+'</span>' : ''; }
-  function etiquetaUnidad(c){ return (c.proyecto||'') + (c.esEnvio ? ' — Envío '+c.envioIdx+'/'+c.enviosTotal : ''); }
+  function envioBadge(c){
+    if(c.esC140) return ' <span class="c140-badge" title="Lo produce S Pauta (servicio externo)">C140'+(c.enviosTotal>1 ? ' '+c.pedidoIdx+'/'+c.enviosTotal : '')+'</span>';
+    return c.esEnvio ? ' <span class="envio-badge">Envío '+c.envioIdx+'/'+c.enviosTotal+'</span>' : '';
+  }
+  function etiquetaUnidad(c){ return (c.proyecto||'') + (c.esC140 ? ' — C140'+(c.enviosTotal>1 ? ' '+c.pedidoIdx+'/'+c.enviosTotal : '') : (c.esEnvio ? ' — Envío '+c.envioIdx+'/'+c.enviosTotal : '')); }
   function nUnidades(n){ return n+(n>1?' unidades':' unidad'); }
   // Un tramo de pausa sin cerrar. En una PAUSADA es lo normal; fuera de ella es
   // el dato roto de R10-07 (se sacó de la cola estando pausada), y "Reanudar" lo
@@ -249,7 +268,7 @@
   function notasHtml(c){
     var s = '';
     if(c.notas)     s += '<div class="cola-nota">📝 '+esc(c.notas)+'</div>';
-    if(c.notaEnvio) s += '<div class="cola-nota env">📝 <strong>E'+c.envioIdx+':</strong> '+esc(c.notaEnvio)+'</div>';
+    if(c.notaEnvio) s += '<div class="cola-nota env">📝 <strong>'+(c.esC140 ? 'C140' : 'E'+c.envioIdx)+':</strong> '+esc(c.notaEnvio)+'</div>';
     return s;
   }
   // Duración real vs la estimada (solo si se capturó la fecha de inicio).
@@ -261,6 +280,7 @@
     return ' · <span style="color:'+color+';">'+fmtDias(c.diasReales)+' reales vs '+fmtDias(estim)+' estimados</span>';
   }
   function tamanoUnidad(c){
+    if(c.esC140) return fmtNum(c.mlTotal,0)+' ML de C140';
     if(c.esEnvio){
       if(c.tipoEnvio==='metros') return fmtNum(c.mlTotal,0)+' ML';
       return nUnidades(c.valorEnvio)+' · '+fmtNum(c.mlTotal,0)+' ML';
@@ -304,6 +324,8 @@
   // agendar en ella; si no, la por defecto ('' sin la hoja Maquinas).
   function carrilDe(it){
     var cfg = (_data && _data.config) || {};
+    // El C140 va siempre en el carril de S Pauta (`carrilDe` del backend).
+    if(it.esC140) return (cfg.maquinaC140 && cfg.maquinaC140.id) || '';
     var e = String(it.maquinaElegida == null ? '' : it.maquinaElegida).trim().toUpperCase();
     var puede = (cfg.maquinas||[]).some(function(m){ return m.asignable && m.id === e; });
     return (e && puede) ? e : (cfg.maquinaDefecto || '');
@@ -313,6 +335,7 @@
     var ritmoG = cfg.ritmoGlobal || cfg.ritmoMlDia || 300;
     // El ritmo de cada carril: el de su máquina; sin máquinas, el global.
     function ritmoCarril(id){
+      if(cfg.maquinaC140 && cfg.maquinaC140.id === id) return cfg.maquinaC140.ritmoMlDia;
       var m = (cfg.maquinas||[]).filter(function(x){ return x.asignable && x.id === id; })[0];
       return m ? m.ritmoMlDia : ritmoG;
     }
@@ -346,7 +369,8 @@
       // OJO: resolver siempre desde ritmoOvr (crudo), no desde it.ritmo (ya
       // resuelto en el cálculo anterior) — si no, un cambio de ritmo global no
       // se reflejaría en los proyectos SIN ritmo propio (quedarían pegados).
-      var ritmo   = (it.ritmoOvr && it.ritmoOvr > 0) ? it.ritmoOvr : ritmoCarril(carril);
+      // El C140 va al ritmo de S Pauta: el ritmo propio del proyecto es del C90.
+      var ritmo   = (!it.esC140 && it.ritmoOvr && it.ritmoOvr > 0) ? it.ritmoOvr : ritmoCarril(carril);
       // mlTotal ya es el ML de la UNIDAD (mlUnidad para envíos; mlCasa×cantidad
       // para proyecto entero) y es invariante al ritmo → usarlo directo.
       var totalML = (it.mlTotal != null) ? it.mlTotal : (it.mlCasa||0) * (it.cantidad||1);
@@ -564,7 +588,7 @@
             ? 'En producción — inició '+fechaCorta(it2.fechaRealInicio)+', fin estimado '+fechaCorta(it2.fin)
             : etiquetaUnidad(it2)+' — planeado '+fechaCorta(it2.inicio)+' → '+fechaCorta(it2.fin);
         // Con dos máquinas, el día puede tener una en cada una: la casa dice en cuál.
-        var enMaq = (!it2.finalizado && it2.maquina && maquinasAsignables().length > 1) ? it2.maquina : '';
+        var enMaq = (!it2.finalizado && it2.maquina && maquinasCarriles().length > 1) ? it2.maquina : '';
         if(enMaq) tip += ' · '+enMaq;
         var extraCls = it2.finalizado ? ' fin' : (it2.enProduccion ? ' prod' : '');
         var prefijo  = (it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '')) + (enMaq ? '<span class="cal-maq">'+esc(enMaq)+'</span>' : '');
@@ -660,25 +684,29 @@
         rowMenu(
           '<a class="menu-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'" target="_blank" rel="noopener">📋 Hoja de vida</a>'+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
-          '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción')+'</button>'+
+          // El C140 lo produce S Pauta: "iniciar" es mandarle el pedido y
+          // "finalizar" es recibirlo. No se parte ni se pausa desde aquí.
+          '<button data-iniciar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">'+
+            (c.esC140 ? '📤 '+(c.fechaRealInicio?'Editar fecha del pedido':'Pedido enviado a Pauta')
+                      : '▶ '+(c.fechaRealInicio?'Editar inicio real':'Iniciar producción'))+'</button>'+
           // Pausar / reanudar. Solo tiene sentido sobre algo que ya arrancó: lo
           // que no arrancó se saca de la cola, que es otra operación.
           ((c.pausada || tienePausaAbierta(c))
             ? '<button data-reanudar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ Reanudar producción</button>'
-            : (c.fechaRealInicio
+            : ((c.fechaRealInicio && !c.esC140)
                 ? '<button data-pausar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⏸ Pausar producción</button>'
                 : ''))+
-          '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
+          (c.esC140 ? '' : '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>')+
           // Partir ESTE envío, no el proyecto entero. Solo si es un envío y no
           // arrancó: con producción encima habría que decidir a cuál parte
           // pertenece lo ya fabricado, y eso no se puede adivinar.
-          ((c.esEnvio && !c.fechaRealInicio)
-            ? '<button data-partir-envio="'+esc(c.uid)+'">✂ Partir este envío en partes</button>' : '')+
-          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
+          (((c.esEnvio || c.esC140) && !c.fechaRealInicio)
+            ? '<button data-partir-envio="'+esc(c.uid)+'">✂ '+(c.esC140 ? 'Partir este pedido de C140' : 'Partir este envío en partes')+'</button>' : '')+
+          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ '+(c.esC140 ? 'Fecha mínima del pedido' : 'Ritmo / fecha de inicio')+'</button>'+
           '<div class="menu-sep"></div>'+
           // A una pausada no se le ofrece sacarla (R10-07): primero se reanuda o se finaliza.
           (c.pausada ? '' : '<button data-sacar="'+esc(c.uid)+'">Sacar de la cola</button>')+
-          '<button class="danger" data-finalizar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">Finalizar</button>'
+          '<button class="danger" data-finalizar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">'+(c.esC140 ? '📥 Recibido de Pauta' : 'Finalizar')+'</button>'
         )+
       '</div>';
     }).join('');
@@ -769,13 +797,13 @@
           (tienePausaAbierta(c)
             ? '<button data-reanudar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">▶ Cerrar la pausa abierta</button>' : '')+
           '<button data-nota="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">📝 '+((c.notas||c.notaEnvio)?'Editar nota':'Agregar nota')+'</button>'+
-          '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>'+
+          (c.esC140 ? '' : '<button data-partir="'+esc(c.archivo)+'">✂ Partir en envíos</button>')+
           // Partir ESTE envío, no el proyecto entero. Solo si es un envío y no
           // arrancó: con producción encima habría que decidir a cuál parte
           // pertenece lo ya fabricado, y eso no se puede adivinar.
-          ((c.esEnvio && !c.fechaRealInicio)
-            ? '<button data-partir-envio="'+esc(c.uid)+'">✂ Partir este envío en partes</button>' : '')+
-          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ Ritmo / fecha de inicio</button>'+
+          (((c.esEnvio || c.esC140) && !c.fechaRealInicio)
+            ? '<button data-partir-envio="'+esc(c.uid)+'">✂ '+(c.esC140 ? 'Partir este pedido de C140' : 'Partir este envío en partes')+'</button>' : '')+
+          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ '+(c.esC140 ? 'Fecha mínima del pedido' : 'Ritmo / fecha de inicio')+'</button>'+
           '<div class="menu-sep"></div>'+
           '<button class="danger" data-finalizar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">Finalizar</button>'
         )+
@@ -895,14 +923,15 @@
     cerrarMenus();
     _notaUid = uid;
     var item = buscarItem(uid);
-    var esEnvio = !!(item && item.esEnvio);
+    // El C140 tiene su nota propia, como un envío (el pedido a Pauta).
+    var esEnvio = !!(item && (item.esEnvio || item.esC140));
     document.getElementById('notaProyectoNombre').textContent = nombre || '';
     document.getElementById('notaTexto').value = (item && item.notas) || '';
     // El campo de envío solo aparece si la unidad ES un envío.
     document.getElementById('notaEnvioWrap').style.display = esEnvio ? '' : 'none';
-    document.getElementById('notaAlcanceProy').textContent = esEnvio ? '(se ve en todos sus envíos)' : '';
+    document.getElementById('notaAlcanceProy').textContent = esEnvio ? '(se ve en todas sus unidades)' : '';
     if(esEnvio){
-      document.getElementById('notaEnvioLabel').textContent = 'envío '+item.envioIdx+'/'+item.enviosTotal;
+      document.getElementById('notaEnvioLabel').textContent = item.esC140 ? 'pedido de C140' : 'envío '+item.envioIdx+'/'+item.enviosTotal;
       document.getElementById('notaEnvioTexto').value = item.notaEnvio || '';
     }
     document.getElementById('modalNota').classList.remove('hidden');
@@ -916,7 +945,7 @@
     var uid = _notaUid;
     if(!uid) return;
     var item = buscarItem(uid);
-    var esEnvio = !!(item && item.esEnvio);
+    var esEnvio = !!(item && (item.esEnvio || item.esC140));
     var nota = document.getElementById('notaTexto').value.trim();
     var notaEnvio = esEnvio ? document.getElementById('notaEnvioTexto').value.trim() : undefined;
     cerrarNota();
@@ -1126,7 +1155,9 @@
     var item = buscarItem(uid);
     var ritmoG = (_data.config && _data.config.ritmoMlDia) || 300;
     document.getElementById('ajProyectoNombre').textContent = nombre || '';
-    document.getElementById('ajRitmo').value = (item && item.ritmoOvr) ? item.ritmoOvr : '';
+    // El C140 va al ritmo de S Pauta (configuración): aquí solo la fecha mínima.
+    document.getElementById('ajCampoRitmo').classList.toggle('hidden', !!(item && item.esC140));
+    document.getElementById('ajRitmo').value = (item && item.ritmoOvr && !item.esC140) ? item.ritmoOvr : '';
     document.getElementById('ajRitmo').placeholder = 'Usar el global ('+fmtNum(ritmoG,0)+' ML/d)';
     document.getElementById('ajFechaMin').value = (item && item.fechaInicioMin) ? item.fechaInicioMin : '';
     document.getElementById('modalAjustes').classList.remove('hidden');
@@ -1165,8 +1196,11 @@
     var ritmoG = (_data.config && _data.config.ritmoMlDia) || 300;
     var ritmoEfectivo = (ritmoOvr && ritmoOvr>0) ? ritmoOvr : ritmoG;
     var archivo = item.archivo;
+    // El ritmo propio es del C90 del proyecto: el C140 no lo recibe, y desde el
+    // C140 no se cambia (el backend lo ignora igual).
+    if(item.esC140) ritmoOvr = null;
     // snapshot para revertir
-    var hermanos = _data.cola.concat(_data.backlog||[]).filter(function(c){return c.archivo===archivo;});
+    var hermanos = item.esC140 ? [] : _data.cola.concat(_data.backlog||[]).filter(function(c){return c.archivo===archivo && !c.esC140;});
     var before = hermanos.map(function(c){ return { c:c, ritmoOvr:c.ritmoOvr||null, ritmo:c.ritmo, durDias:c.durDias }; });
     var beforeFecha = { fechaInicioMin: item.fechaInicioMin||'' };
 
@@ -1531,7 +1565,7 @@
     cerrarMenus();
     var c = _data.cola.concat(_data.backlog||[]).filter(function(x){ return x.uid===uid; })[0];
     if(!c){ toast('No se encontró el envío','error'); return; }
-    if(!c.esEnvio){ toast('Este proyecto no está partido en envíos: usa "Partir en envíos"','error'); return; }
+    if(!c.esEnvio && !c.esC140){ toast('Este proyecto no está partido en envíos: usa "Partir en envíos"','error'); return; }
     if(c.fechaRealInicio){
       toast('Este envío ya arrancó su producción: no se puede partir','error');
       return;
@@ -1547,7 +1581,7 @@
       : { tipo:'metros', valor:'', fechaEntrega:'' }];
     document.getElementById('parEnvioNombre').textContent = _parEnvio.etiqueta;
     document.getElementById('parTotalInfo').textContent =
-      'Este envío: '+fmtNum(_parEnvio.ml,0)+' ML'+
+      (c.esC140 ? 'Este pedido de C140: ' : 'Este envío: ')+fmtNum(_parEnvio.ml,0)+' ML'+
       (c.tipoEnvio!=='metros' ? ' ('+nUnidades(c.valorEnvio)+')' : '')+
       ' — las partes tienen que sumar exactamente eso.';
     document.getElementById('parPartesUnidad').textContent = porUnidades ? 'partes iguales' : 'partes iguales (por metros)';
@@ -1911,7 +1945,7 @@
     if(res){
       var cfg = _data.config || {};
       res.textContent = (ms.length
-        ? '· '+maquinasAsignables().map(function(m){ return (m.nombre||m.id)+' '+fmtNum(m.ritmoMlDia,0); }).join(' · ')+' ML/día'
+        ? '· '+maquinasCarriles().map(function(m){ return (m.nombre||m.id)+' '+fmtNum(m.ritmoMlDia,0); }).join(' · ')+' ML/día'
         : '· '+fmtNum(cfg.ritmoMlDia,0)+' ML/día') + (cfg.fechaInicioCola ? ' · cola desde el '+fechaCorta(cfg.fechaInicioCola) : '');
     }
     if(!cont) return;
@@ -1922,6 +1956,7 @@
       '</tr></thead><tbody>'+
       ms.map(function(m){
         var estado = m.asignable ? '<span class="maq-estado si">Se agenda</span>'
+          : m.carrilC140 ? '<span class="maq-estado si" title="Agenda el C140 de cada proyecto, en fila">Se agenda (C140)</span>'
           : (m.activa ? '<span class="maq-estado no" title="El Gantt programa los metros C90">No: es '+esc((m.perfiles||[]).join(', ')||'otro perfil')+'</span>'
                       : '<span class="maq-estado no">No: inactiva</span>');
         var rr = rrs[m.id];
@@ -1947,19 +1982,16 @@
       chk.addEventListener('change', function(){ cambiarMaquinaCfg(chk.getAttribute('data-maq-activa'), { activa: chk.checked }); });
     });
   }
-  // Se espera la respuesta antes de reagendar: activar o desactivar cambia qué
-  // máquinas se pueden agendar, y esa regla vive en el servidor.
+  // Después de guardar se recarga la cola del servidor, en vez de reagendar
+  // aquí: activar o desactivar una máquina cambia qué se puede agendar —y si
+  // hay unidades de C140, que existen solo con S Pauta activa—, y esa regla
+  // vive en el servidor. Cambiar una máquina es raro: la recarga no estorba.
   function cambiarMaquinaCfg(id, cambios){
     if(SOLO_LECTURA) return;
     beginSave();
-    apiProdMaquinaSet(token, id, cambios).then(function(resp){
-      _data.config.maquinas = resp.maquinas || [];
-      _data.config.maquinaDefecto = resp.maquinaDefecto || '';
-      var def = _data.config.maquinas.filter(function(m){ return m.id === _data.config.maquinaDefecto; })[0];
-      if(def) _data.config.ritmoMlDia = def.ritmoMlDia;
-      renderMaquinasCfg();
-      recomputarYRenderizar();
+    apiProdMaquinaSet(token, id, cambios).then(function(){
       toast('Máquina '+id+' guardada','ok');
+      return cargar();
     }).catch(function(e){ renderMaquinasCfg(); manejarError(e); }).finally(endSave);
   }
 
