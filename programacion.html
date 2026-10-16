@@ -30,6 +30,60 @@
     .ritmo-real-info.ok { color:#065F46; background:#D1FAE5; }
     .ritmo-real-info.alto { color:#1D4ED8; background:#DBEAFE; }
 
+    /* Resumen por máquina: la misma tarjeta que los cortes de Facturación. Con
+       dos máquinas es un botón: un clic filtra esa máquina. */
+    .prog-cortes { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; margin-bottom:12px; }
+    .corte { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:12px 14px;
+             border:none; border-left:4px solid var(--cf-gray-mid); text-align:left; font-family:inherit; color:inherit; }
+    button.corte { cursor:pointer; transition:box-shadow .15s; }
+    button.corte:hover { box-shadow:0 0 0 2px var(--cf-blue) inset, var(--shadow); }
+    button.corte[aria-pressed="true"] { box-shadow:0 0 0 2px var(--cf-dark) inset, var(--shadow); }
+    .corte .lbl { font-size:0.64rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
+    .corte .val { font-size:1.1rem; font-weight:800; color:var(--cf-dark); margin-top:3px; font-variant-numeric:tabular-nums; }
+    .corte .sub { font-size:0.68rem; color:var(--cf-gray-text); margin-top:2px; line-height:1.35; }
+    .corte.b { border-left-color:var(--cf-success); }
+    .corte.d { border-left-color:#DC2626; }
+    .corte.d .val { color:#B91C1C; }
+    .pct { font-weight:800; padding:0 6px; border-radius:999px; }
+    .pct.bajo { color:#92400E; background:#FEF3C7; }
+    .pct.ok { color:#065F46; background:#D1FAE5; }
+    .pct.alto { color:#1D4ED8; background:#DBEAFE; }
+
+    /* La barra de filtros de Facturación: buscador y píldoras. */
+    .barra-f { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .chips-grupo { display:contents; }
+    .buscar { flex:1 1 220px; min-width:170px; padding:8px 12px; font-family:inherit; font-size:0.85rem;
+              border:1.5px solid var(--cf-gray-mid); border-radius:var(--radius-sm); color:var(--cf-dark); background:#fff; }
+    .buscar:focus { outline:none; border-color:var(--cf-blue); }
+    .fchip { font-family:inherit; font-size:0.75rem; font-weight:700; cursor:pointer;
+             padding:7px 13px; border-radius:999px; border:1.5px solid var(--cf-gray-mid);
+             background:#fff; color:var(--cf-gray-text); display:inline-flex; align-items:center; gap:6px; }
+    .fchip:hover { border-color:var(--cf-blue); color:var(--cf-blue); }
+    .fchip[aria-pressed="true"] { background:var(--cf-dark); border-color:var(--cf-dark); color:#fff; }
+    .n-chip { font-weight:800; opacity:0.7; }
+    .maq-dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+
+    /* Configuración plegada. */
+    .cfg-card > summary { font-size:0.82rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-dark); }
+    /* Más específico que `.cola-card > summary` (que reparte a los extremos): la
+       flecha y el título van juntos, a la izquierda. */
+    .cola-card.cfg-card > summary { justify-content:flex-start; }
+    .cola-card.cfg-card[open] > summary { margin-bottom:12px; }
+    .cfg-fila { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-top:12px; }
+    .maq-tabla { width:100%; border-collapse:collapse; font-size:0.8rem; }
+    .maq-tabla th { text-align:left; font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;
+                    color:var(--cf-gray-text); padding:6px 8px; border-bottom:1.5px solid var(--cf-gray-mid); }
+    .maq-tabla td { padding:8px; border-bottom:1px solid var(--cf-gray-mid); vertical-align:middle; }
+    .maq-tabla tr:last-child td { border-bottom:none; }
+    .maq-tabla input[type=number] { width:96px; padding:6px 8px; border:1.5px solid var(--cf-gray-mid); border-radius:8px; font-size:0.85rem; font-family:inherit; }
+    .maq-tabla small { color:var(--cf-gray-text); }
+    .maq-estado { font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+    .maq-estado.si { color:#065F46; background:#D1FAE5; }
+    .maq-estado.no { color:var(--cf-gray-text); background:#F1F5F9; }
+    .cal-hint { font-size:0.7rem; color:var(--cf-gray-text); text-align:right; margin:6px 2px 0; }
+    .cal-maq { background:rgba(255,255,255,0.3); border-radius:4px; padding:0 4px; margin-right:3px; font-size:0.58rem; font-weight:800; }
+    .maq-sel { border-left-width:4px !important; }
+
     .cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:10px; }
     .cal-title { font-size:1.05rem; font-weight:800; color:var(--cf-dark); text-transform:capitalize; }
     .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
@@ -225,33 +279,38 @@
       <div id="higieneSinCotizacion"></div>
     </details>
 
-    <!-- Config -->
-    <div class="cfg-bar">
-      <div class="cfg-field" id="cfgRitmoCampo">
-        <label>Ritmo (ML / día hábil)</label>
-        <input id="cfgRitmo" type="number" min="1" step="1" style="width:120px;">
-      </div>
-      <!-- Con la hoja Maquinas, el ritmo es de cada máquina (PLAN_MAQUINAS) -->
-      <div id="cfgMaquinas" style="display:contents;"></div>
-      <div class="cfg-field">
-        <label>Inicio de la cola</label>
-        <input id="cfgInicio" type="date">
-      </div>
-      <button id="btnCfgGuardar" class="btn btn-dark btn-sm">Guardar</button>
-      <span id="saveStatus" class="save-status"></span>
-      <div id="ritmoRealInfo" class="ritmo-real-info"></div>
-      <!-- Ver solo una máquina: cola, calendario y leyenda (con dos o más) -->
-      <label id="filtroMaquinaCampo" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--cf-gray-text);align-self:center;white-space:nowrap;">
-        Ver máquina
-        <select id="filtroMaquina" style="padding:4px 6px;border:1.5px solid var(--cf-gray-mid);border-radius:6px;font-size:0.72rem;font-family:inherit;background:#fff;"></select>
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--cf-gray-text);align-self:center;cursor:pointer;white-space:nowrap;">
-        <input type="checkbox" id="cfgVerFinalizados" style="cursor:pointer;">
-        Mostrar finalizados
-      </label>
-      <div style="flex:1;"></div>
-      <div style="font-size:0.72rem;color:var(--cf-gray-text);align-self:center;">Clic en un día para marcarlo laborable / no laborable</div>
+    <!-- Resumen por máquina, como los cortes de Facturación. Con dos máquinas,
+         un clic en una tarjeta filtra esa máquina. -->
+    <div class="prog-cortes" id="progCortes"></div>
+
+    <!-- Filtros: solo muestran, no reagendan ni guardan -->
+    <div class="barra-f">
+      <input id="colaBuscar" class="buscar" type="search" placeholder="Buscar proyecto, CB o nota…" aria-label="Buscar en la cola">
+      <span id="chipsMaquina" class="chips-grupo"></span>
+      <button type="button" class="fchip" id="chipAtrasados" aria-pressed="false">Atrasados</button>
+      <button type="button" class="fchip" id="chipFinalizados" aria-pressed="false" title="Pinta en el calendario lo ya producido">Finalizados en el calendario</button>
+      <span id="saveStatus" class="save-status" style="margin-left:auto;"></span>
     </div>
+
+    <!-- Configuración: se toca poco, así que va plegada -->
+    <details class="cola-card cfg-card" id="cfgCard">
+      <summary>
+        <span>⚙ Máquinas y calendario <span id="cfgResumen" class="sec-resumen"></span></span>
+      </summary>
+      <!-- Con la hoja Maquinas, el ritmo es de cada máquina (PLAN_MAQUINAS) -->
+      <div id="cfgMaquinas"></div>
+      <div class="cfg-fila">
+        <div class="cfg-field" id="cfgRitmoCampo">
+          <label>Ritmo (ML / día hábil)</label>
+          <input id="cfgRitmo" type="number" min="1" step="1" style="width:120px;">
+        </div>
+        <div class="cfg-field">
+          <label>Inicio de la cola</label>
+          <input id="cfgInicio" type="date">
+        </div>
+        <button id="btnCfgGuardar" class="btn btn-dark btn-sm">Guardar</button>
+      </div>
+    </details>
 
     <!-- Calendario -->
     <div class="cal-head">
@@ -266,6 +325,7 @@
       </div>
     </div>
 
+    <div class="cal-hint">Clic en un día para marcarlo laborable / no laborable</div>
     <div class="leg" id="calLeyenda"></div>
 
     <!-- Cola -->

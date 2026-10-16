@@ -48,40 +48,19 @@
   function fmtNum(n,d){ if(n==null||n==='')return '—'; var v=Number(n); if(isNaN(v))return '—'; return v.toLocaleString('es-CO',{minimumFractionDigits:d||0,maximumFractionDigits:d||0}); }
   function fechaCorta(iso){ if(!iso)return '—'; var p=String(iso).substring(0,10).split('-'); if(p.length<3)return '—'; return parseInt(p[2])+' '+MESES_COR[parseInt(p[1])-1]; }
   function fmtDias(n){ var v=Number(n); if(isNaN(v))return '—'; return v.toLocaleString('es-CO',{maximumFractionDigits:1})+(v===1?' día':' días'); }
-  // Ritmo real (throughput de las últimas unidades finalizadas) vs el configurado.
-  // Ayuda a saber si el ritmo con el que se calcula el Gantt es realista.
-  function renderRitmoReal(){
-    var el = document.getElementById('ritmoRealInfo');
-    if(!el) return;
-    var rr = _data.config && _data.config.ritmoReal;
-    if(!rr){ el.textContent=''; el.className='ritmo-real-info'; return; }
-    var configurado = _data.config.ritmoMlDia;
-    var pct = configurado>0 ? Math.round(rr.valor/configurado*100) : null;
-    var cls = 'ritmo-real-info' + (pct==null ? '' : pct<85 ? ' bajo' : pct>115 ? ' alto' : ' ok');
-    el.className = cls;
+  // Ritmo real (throughput de las últimas unidades finalizadas): el detalle de
+  // la medición, para el `title` de la tarjeta de cada máquina.
+  function ritmoRealTitulo(rr){
     // "días de producción" = días hábiles DISTINTOS con alguna unidad abierta. No
     // es la suma de los tramos: varios proyectos comparten días, y sumarlos
     // inflaba el divisor y hundía el ritmo (medido: 894 contra 1.191 ML/día).
     var base = 'Últimas '+rr.n+' unidades finalizadas ('+fechaCorta(rr.desde)+' → '+fechaCorta(rr.hasta)+'): '+
                fmtNum(rr.ml,0)+' ML en '+rr.dias+' días de producción.';
-    el.title = (rr.metodo === 'duracion')
+    return (rr.metodo === 'duracion')
       ? base+'\nDías de producción = días hábiles distintos con alguna unidad abierta; un día con varios proyectos a la vez cuenta una sola vez.'+
         (rr.diasPausados ? '\n('+rr.diasPausados+' día(s) pausado(s) descontado(s).)' : '')+
         (rr.sinFechaInicio ? '\n('+rr.sinFechaInicio+' unidad(es) sin fecha de inicio quedaron fuera del cálculo.)' : '')
       : base+'\n⚠ Medido por salida de planta entre la primera y la última finalización: incluye tiempos muertos, así que SUBESTIMA el ritmo. Marca "Iniciar producción" en los proyectos para medirlo por duración real.';
-    // Con varias máquinas, el de cada una (PLAN_MAQUINAS §8): el de arriba es el
-    // de la por defecto, y las demás se agregan con su propio configurado.
-    var otras = '';
-    var porMaq = _data.config.ritmoRealPorMaquina || {};
-    var def = _data.config.maquinaDefecto || '';
-    Object.keys(porMaq).forEach(function(id){
-      if(id === def || !porMaq[id]) return;
-      var m = (_data.config.maquinas||[]).filter(function(x){ return x.id === id; })[0];
-      var p2 = (m && m.ritmoMlDia > 0) ? Math.round(porMaq[id].valor/m.ritmoMlDia*100) : null;
-      otras += ' · '+id+': '+fmtNum(porMaq[id].valor,0)+' ML/día'+(p2!=null?' ('+p2+'%)':'');
-    });
-    el.textContent = 'Ritmo real'+(def?' '+def:'')+': '+fmtNum(rr.valor,0)+' ML/día'+(pct!=null?' ('+pct+'% del configurado)':'')+
-                     (rr.metodo === 'throughput' ? ' ~' : '') + otras;
   }
   // ── Máquinas (PLAN_MAQUINAS pasos 3 y 4) ──
   // Las que se pueden elegir: activas, con ritmo y del perfil del Gantt. Con
@@ -89,9 +68,20 @@
   function maquinasAsignables(){
     return ((_data && _data.config && _data.config.maquinas) || []).filter(function(m){ return m.asignable; });
   }
-  // El filtro "ver solo una máquina": cola, calendario y leyenda. Se recuerda en
-  // este navegador. '' = todas.
+  // Un color por máquina, en el orden de la hoja: el mismo en la tarjeta, el
+  // filtro, la fila de la cola y la tabla de configuración.
+  var MAQ_COLORES = ['#0072CE','#16A34A','#D97706','#7C3AED','#0891B2'];
+  function colorMaquina(id){
+    var i = maquinasAsignables().map(function(m){ return m.id; }).indexOf(id);
+    return i < 0 ? '#94A3B8' : MAQ_COLORES[i % MAQ_COLORES.length];
+  }
+
+  // ── Los filtros de la vista (la barra de arriba, como en Facturación) ──
+  // Solo muestran: no reagendan ni guardan nada. El puesto de cada fila sigue
+  // siendo el de la cola entera. La máquina se recuerda en este navegador.
   var _filtroMaquina = (function(){ try { return localStorage.getItem('cf_prog_maquina') || ''; } catch(e){ return ''; } })();
+  var _buscar = '';
+  var _soloAtrasados = false;
   function filtrarPorMaquina(lista, id){
     return id ? (lista||[]).filter(function(c){ return c.maquina === id; }) : (lista||[]);
   }
@@ -102,16 +92,93 @@
     if(asig.length < 2) return '';
     return asig.some(function(m){ return m.id === _filtroMaquina; }) ? _filtroMaquina : '';
   }
-  function renderFiltroMaquina(){
-    var campo = document.getElementById('filtroMaquinaCampo');
-    var sel = document.getElementById('filtroMaquina');
-    if(!campo || !sel) return;
-    var asig = maquinasAsignables();
-    campo.classList.toggle('hidden', asig.length < 2);
-    sel.innerHTML = '<option value="">Todas</option>' + asig.map(function(m){
-      return '<option value="'+esc(m.id)+'">'+esc(m.nombre||m.id)+'</option>';
+  // Sin tildes y en minúscula: "fernández" encuentra FERNANDEZ.
+  function sinTildes(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
+  // FUNCIÓN PURA: lo que queda de `lista` con los filtros `f` = { maquina,
+  // buscar, atrasados }. Cada palabra buscada tiene que estar en el proyecto,
+  // el CB o las notas.
+  function filtrarCola(lista, f){
+    var palabras = sinTildes(f.buscar).split(/\s+/).filter(Boolean);
+    return filtrarPorMaquina(lista, f.maquina).filter(function(c){
+      if(f.atrasados && !c.atrasado) return false;
+      if(!palabras.length) return true;
+      var t = sinTildes((c.proyecto||'')+' cb'+(c.consecutivo||'')+' '+(c.notas||'')+' '+(c.notaEnvio||''));
+      return palabras.every(function(p){ return t.indexOf(p) !== -1; });
+    });
+  }
+  function vista(lista){
+    return filtrarCola(lista, { maquina: filtroMaquinaVigente(), buscar: _buscar, atrasados: _soloAtrasados });
+  }
+  function hayFiltro(){ return !!(filtroMaquinaVigente() || _buscar.trim() || _soloAtrasados); }
+  function fijarFiltroMaquina(id){
+    _filtroMaquina = id || '';
+    try { localStorage.setItem('cf_prog_maquina', _filtroMaquina); } catch(e) {}
+    aplicarFiltros();
+  }
+  function aplicarFiltros(){
+    indexarDias(); renderCalendario(); renderLeyenda(); renderCola(); renderFiltros(); renderCortes();
+  }
+  // Las píldoras: una por máquina (con dos o más), con cuántas unidades tiene.
+  function renderFiltros(){
+    var cont = document.getElementById('chipsMaquina');
+    if(!cont || !_data) return;
+    var asig = maquinasAsignables(), cola = _data.cola || [], filtro = filtroMaquinaVigente();
+    cont.innerHTML = asig.length < 2 ? '' :
+      '<button type="button" class="fchip" data-fmaq="" aria-pressed="'+(filtro==='')+'">Todas <span class="n-chip">'+cola.length+'</span></button>'+
+      asig.map(function(m){
+        var n = filtrarPorMaquina(cola, m.id).length;
+        return '<button type="button" class="fchip" data-fmaq="'+esc(m.id)+'" aria-pressed="'+(filtro===m.id)+'">'+
+          '<span class="maq-dot" style="background:'+colorMaquina(m.id)+';"></span>'+esc(m.nombre||m.id)+' <span class="n-chip">'+n+'</span></button>';
+      }).join('');
+    var nAtr = cola.filter(function(c){ return c.atrasado; }).length;
+    var bA = document.getElementById('chipAtrasados');
+    if(bA){ bA.setAttribute('aria-pressed', String(_soloAtrasados)); bA.innerHTML = 'Atrasados <span class="n-chip">'+nAtr+'</span>'; }
+    var bF = document.getElementById('chipFinalizados');
+    if(bF) bF.setAttribute('aria-pressed', String(_verFinalizados));
+  }
+  // Las tarjetas de arriba: una por máquina —qué tiene en cola, hasta cuándo
+  // está ocupada, qué produce y su ritmo real contra el configurado— y la de
+  // las entregas. Sin la hoja Maquinas, una sola: la planta.
+  function renderCortes(){
+    var cont = document.getElementById('progCortes');
+    if(!cont || !_data) return;
+    var cfg = _data.config || {}, cola = _data.cola || [];
+    var asig = maquinasAsignables(), filtro = filtroMaquinaVigente(), clic = asig.length > 1;
+    var carriles = asig.length ? asig : [{ id: '', nombre: 'Planta', ritmoMlDia: cfg.ritmoMlDia }];
+    var html = carriles.map(function(m){
+      var its = cola.filter(function(c){ return (c.maquina||'') === m.id; });
+      var ml = its.reduce(function(s,c){ return s + (Number(c.mlFalta != null ? c.mlFalta : c.mlTotal)||0); }, 0);
+      var hasta = its.reduce(function(x,c){ return (!c.pausada && c.fin && c.fin > x) ? c.fin : x; }, '');
+      var prod = its.filter(function(c){ return c.enProduccion; })[0];
+      var rr = m.id ? (cfg.ritmoRealPorMaquina || {})[m.id] : cfg.ritmoReal;
+      var pct = (rr && m.ritmoMlDia > 0) ? Math.round(rr.valor / m.ritmoMlDia * 100) : null;
+      var tag = clic ? 'button' : 'div';
+      return '<'+tag+(clic ? ' type="button" data-corte-maq="'+esc(m.id)+'" aria-pressed="'+(filtro===m.id)+'" title="Ver solo '+esc(m.nombre||m.id)+'"' : '')+
+          ' class="corte" style="border-left-color:'+colorMaquina(m.id)+';">'+
+        '<div class="lbl">'+esc(m.nombre||m.id)+' · '+fmtNum(m.ritmoMlDia,0)+' ML/día</div>'+
+        '<div class="val">'+(its.length ? its.length+(its.length===1?' unidad':' unidades')+' · '+fmtNum(ml,0)+' ML' : 'Libre')+'</div>'+
+        '<div class="sub">'+(prod ? '▶ '+esc(prod.proyecto)+' · ' : '')+(hasta ? 'ocupada hasta el '+fechaCorta(hasta) : 'sin nada en cola')+'</div>'+
+        (rr ? '<div class="sub" title="'+esc(ritmoRealTitulo(rr))+'">Ritmo real: '+fmtNum(rr.valor,0)+' ML/día'+
+              (pct != null ? ' <span class="pct '+(pct<85?'bajo':pct>115?'alto':'ok')+'">'+pct+'%</span>' : '')+
+              (rr.metodo === 'throughput' ? ' ~' : '')+'</div>' : '')+
+      '</'+tag+'>';
     }).join('');
-    sel.value = filtroMaquinaVigente();
+    var conFecha = cola.filter(function(c){ return c.fechaEntrega; });
+    var atr = conFecha.filter(function(c){ return c.atrasado; });
+    html += '<button type="button" class="corte '+(atr.length?'d':'b')+'" data-corte-atrasados aria-pressed="'+_soloAtrasados+'" title="Ver solo lo atrasado">'+
+      '<div class="lbl">Entregas comprometidas</div>'+
+      '<div class="val">'+(atr.length ? atr.length+(atr.length===1?' atrasada':' atrasadas') : (conFecha.length ? 'Todas a tiempo' : 'Sin fechas'))+'</div>'+
+      '<div class="sub">'+conFecha.length+(conFecha.length===1?' unidad':' unidades')+' de la cola con fecha de entrega</div>'+
+    '</button>';
+    cont.innerHTML = html;
+    cont.querySelectorAll('[data-corte-maq]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-corte-maq');
+        fijarFiltroMaquina(filtroMaquinaVigente() === id ? '' : id);
+      });
+    });
+    var bAtr = cont.querySelector('[data-corte-atrasados]');
+    if(bAtr) bAtr.addEventListener('click', function(){ _soloAtrasados = !_soloAtrasados; aplicarFiltros(); });
   }
   function maquinaHtml(c){
     var asig = maquinasAsignables();
@@ -123,7 +190,7 @@
       ? ' title="Se eligió '+esc(elegida)+', que no se puede agendar ahora: va en '+esc(c.maquina)+'"' : ' title="En qué máquina se produce"';
     return '<div class="cola-maquina">'+
       '<span style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--cf-gray-text);">Máquina</span>'+
-      '<select data-maquina="'+esc(c.uid)+'"'+(SOLO_LECTURA?' disabled':'')+aviso+'>'+
+      '<select class="maq-sel" style="border-left-color:'+colorMaquina(c.maquina)+';" data-maquina="'+esc(c.uid)+'"'+(SOLO_LECTURA?' disabled':'')+aviso+'>'+
         asig.map(function(m){
           return '<option value="'+esc(m.id)+'"'+(m.id===c.maquina?' selected':'')+'>'+esc(m.nombre||m.id)+'</option>';
         }).join('')+
@@ -351,13 +418,12 @@
   // Índice día ISO → [proyectos que tocan ese día]. Un día puede tener varios.
   function indexarDias(){
     _dayItems = {};
-    // Con el filtro de máquina, el calendario muestra solo esa máquina.
-    var filtro = filtroMaquinaVigente();
-    var fuentes = filtrarPorMaquina(_data.cola, filtro).slice();
+    // Con los filtros (máquina, búsqueda, atrasados), el calendario muestra lo mismo que la cola.
+    var fuentes = vista(_data.cola).slice();
     // Los finalizados traen su tramo REAL (inicio/fin capturados en planta).
     // Si no se capturó la fecha de inicio, el backend deja inicio = fin, así que
     // se marca solo el día de término — sin inventar duración.
-    if(_verFinalizados) fuentes = fuentes.concat(filtrarPorMaquina(_data.finalizados, filtro));
+    if(_verFinalizados) fuentes = fuentes.concat(vista(_data.finalizados));
     fuentes.forEach(function(c){
       if(!c.inicio || !c.fin) return;
       var d = c.inicio, guard=0;
@@ -380,6 +446,8 @@
     _data.cola = computarLocal(_data.cola, inicio).cola;
     indexarDias();
     renderCalendario(); renderLeyenda(); renderCola(); renderBacklog(); renderFinalizados();
+    // Las tarjetas y los conteos de las píldoras cambian con cada reagendado.
+    renderFiltros(); renderCortes();
   }
 
   // ── Guardado en segundo plano ──
@@ -448,8 +516,8 @@
     document.getElementById('cfgInicio').min = todayISO();   // la cola nunca arranca en el pasado
     if(SOLO_LECTURA){ document.getElementById('cfgRitmo').disabled = true; document.getElementById('cfgInicio').disabled = true; }
     renderMaquinasCfg();
-    renderFiltroMaquina();
-    renderRitmoReal();
+    renderFiltros();
+    renderCortes();
     // primer render: ir al mes del primer proyecto (o de la fecha de inicio, o hoy)
     if(_mesY===0){
       var ref = (resp.cola&&resp.cola.length&&resp.cola[0].inicio)? resp.cola[0].inicio : (resp.config.fechaInicioCola || todayISO());
@@ -499,7 +567,7 @@
         var enMaq = (!it2.finalizado && it2.maquina && maquinasAsignables().length > 1) ? it2.maquina : '';
         if(enMaq) tip += ' · '+enMaq;
         var extraCls = it2.finalizado ? ' fin' : (it2.enProduccion ? ' prod' : '');
-        var prefijo  = (it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '')) + (enMaq ? esc(enMaq)+' · ' : '');
+        var prefijo  = (it2.finalizado ? '✓ ' : (it2.enProduccion ? '▶ ' : '')) + (enMaq ? '<span class="cal-maq">'+esc(enMaq)+'</span>' : '');
         var contenido = prefijo+esc(it2.proyecto||'')+(it2.cantidad>1?' <small>×'+it2.cantidad+'</small>':'');
         // Un finalizado abre su hoja de vida, con la cotización abierta: es el
         // camino al historial del proyecto (remisiones, cobro) una vez terminado.
@@ -528,7 +596,7 @@
 
   function renderLeyenda(){
     var cont = document.getElementById('calLeyenda');
-    var cola = filtrarPorMaquina(_data.cola, filtroMaquinaVigente());
+    var cola = vista(_data.cola);
     if(!cola.length){ cont.innerHTML=''; return; }
     cont.innerHTML = cola.map(function(c){
       return '<div class="leg-item"><span class="leg-dot" style="background:'+c.color+';"></span>'+esc(etiquetaUnidad(c))+'</div>';
@@ -539,18 +607,18 @@
   function renderCola(){
     var body = document.getElementById('colaBody');
     var todas = _data.cola || [];
-    var filtro = filtroMaquinaVigente();
-    var cola = filtrarPorMaquina(todas, filtro);
+    var filtro = hayFiltro();
+    var cola = vista(todas);
     // Carga de trabajo pendiente en la cola (ML y días estimados de producción).
-    // Con el filtro, la de esa máquina: es lo que la tiene ocupada.
+    // Con filtros, la de lo que se ve, y dice de cuántas.
     var totML = cola.reduce(function(s,c){ return s + (Number(c.mlTotal)||0); }, 0);
     var totDias = cola.reduce(function(s,c){ return s + (Number(c.durDias)||0); }, 0);
     document.getElementById('colaResumen').textContent = cola.length
-      ? '· '+(filtro ? filtro+': ' : '')+cola.length+(cola.length===1?' proyecto':' proyectos')+' · '+fmtNum(totML,0)+' ML · ≈'+fmtDias(Math.round(totDias*10)/10)
+      ? '· '+cola.length+(filtro ? ' de '+todas.length : '')+(((filtro ? todas : cola).length)===1?' unidad':' unidades')+' · '+fmtNum(totML,0)+' ML · ≈'+fmtDias(Math.round(totDias*10)/10)
       : '';
     if(!cola.length){
       body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--cf-gray-text);font-size:0.85rem;">'+
-        (filtro ? 'No hay nada en la cola de '+esc(filtro)+'.' : 'No hay cotizaciones aprobadas. Aprueba cotizaciones para armar la cola.')+'</div>';
+        (filtro ? 'Nada de la cola coincide con los filtros.' : 'No hay cotizaciones aprobadas. Aprueba cotizaciones para armar la cola.')+'</div>';
       return;
     }
     body.innerHTML = cola.map(function(c){
@@ -1838,22 +1906,36 @@
     var campoRitmo = document.getElementById('cfgRitmoCampo');
     var ms = (_data.config && _data.config.maquinas) || [];
     if(campoRitmo) campoRitmo.classList.toggle('hidden', ms.length > 0);
+    // El resumen de la cabecera plegada: lo que se agenda, sin abrirla.
+    var res = document.getElementById('cfgResumen');
+    if(res){
+      var cfg = _data.config || {};
+      res.textContent = (ms.length
+        ? '· '+maquinasAsignables().map(function(m){ return (m.nombre||m.id)+' '+fmtNum(m.ritmoMlDia,0); }).join(' · ')+' ML/día'
+        : '· '+fmtNum(cfg.ritmoMlDia,0)+' ML/día') + (cfg.fechaInicioCola ? ' · cola desde el '+fechaCorta(cfg.fechaInicioCola) : '');
+    }
     if(!cont) return;
     if(!ms.length){ cont.innerHTML = ''; return; }
-    cont.innerHTML = ms.map(function(m){
-      var nota = m.asignable ? '' : (m.activa
-        ? '<span class="maq-nota" title="El Gantt programa los metros C90">no se agenda ('+esc((m.perfiles||[]).join(', ')||'sin perfil')+')</span>'
-        : '<span class="maq-nota">inactiva</span>');
-      return '<div class="cfg-field maq-cfg">'+
-        '<label>'+esc(m.nombre||m.id)+' · ML / día</label>'+
-        '<div style="display:flex;align-items:center;gap:6px;">'+
-          '<input type="number" min="1" step="1" style="width:90px;" data-maq-ritmo="'+esc(m.id)+'" value="'+esc(m.ritmoMlDia||'')+'"'+(SOLO_LECTURA?' disabled':'')+'>'+
-          '<label style="display:flex;align-items:center;gap:4px;font-size:0.72rem;cursor:pointer;">'+
-            '<input type="checkbox" data-maq-activa="'+esc(m.id)+'"'+(m.activa?' checked':'')+(SOLO_LECTURA?' disabled':'')+'> activa</label>'+
-          nota+
-        '</div>'+
-      '</div>';
-    }).join('');
+    var rrs = (_data.config && _data.config.ritmoRealPorMaquina) || {};
+    cont.innerHTML = '<table class="maq-tabla"><thead><tr>'+
+        '<th>Máquina</th><th>Perfil</th><th>ML / día</th><th>Activa</th><th>En el Gantt</th><th>Ritmo real</th>'+
+      '</tr></thead><tbody>'+
+      ms.map(function(m){
+        var estado = m.asignable ? '<span class="maq-estado si">Se agenda</span>'
+          : (m.activa ? '<span class="maq-estado no" title="El Gantt programa los metros C90">No: es '+esc((m.perfiles||[]).join(', ')||'otro perfil')+'</span>'
+                      : '<span class="maq-estado no">No: inactiva</span>');
+        var rr = rrs[m.id];
+        return '<tr>'+
+          '<td><span class="maq-dot" style="background:'+colorMaquina(m.id)+';margin-right:6px;"></span><strong>'+esc(m.nombre||m.id)+'</strong>'+
+            (m.serial ? ' <small>· '+esc(m.serial)+'</small>' : '')+'</td>'+
+          '<td>'+esc((m.perfiles||[]).join(', ')||'—')+'</td>'+
+          '<td><input type="number" min="1" step="1" data-maq-ritmo="'+esc(m.id)+'" value="'+esc(m.ritmoMlDia||'')+'"'+(SOLO_LECTURA?' disabled':'')+' aria-label="Ritmo de '+esc(m.nombre||m.id)+'"></td>'+
+          '<td><input type="checkbox" data-maq-activa="'+esc(m.id)+'"'+(m.activa?' checked':'')+(SOLO_LECTURA?' disabled':'')+' aria-label="'+esc(m.nombre||m.id)+' activa"></td>'+
+          '<td>'+estado+'</td>'+
+          '<td'+(rr ? ' title="'+esc(ritmoRealTitulo(rr))+'"' : '')+'>'+(rr ? fmtNum(rr.valor,0)+' ML/día'+(rr.metodo==='throughput'?' ~':'') : '<small>sin medición</small>')+'</td>'+
+        '</tr>';
+      }).join('')+
+    '</tbody></table>';
     cont.querySelectorAll('[data-maq-ritmo]').forEach(function(inp){
       inp.addEventListener('change', function(){
         var v = Number(inp.value);
@@ -1875,7 +1957,7 @@
       _data.config.maquinaDefecto = resp.maquinaDefecto || '';
       var def = _data.config.maquinas.filter(function(m){ return m.id === _data.config.maquinaDefecto; })[0];
       if(def) _data.config.ritmoMlDia = def.ritmoMlDia;
-      renderMaquinasCfg(); renderFiltroMaquina(); renderRitmoReal();
+      renderMaquinasCfg();
       recomputarYRenderizar();
       toast('Máquina '+id+' guardada','ok');
     }).catch(function(e){ renderMaquinasCfg(); manejarError(e); }).finally(endSave);
@@ -1990,15 +2072,20 @@
     document.getElementById('iniConfirmar').addEventListener('click', confirmarIniciar);
     document.getElementById('iniQuitar').addEventListener('click', quitarInicio);
     document.getElementById('modalIniciar').addEventListener('click', function(e){ if(e.target.id==='modalIniciar') cerrarIniciar(); });
-    document.getElementById('cfgVerFinalizados').addEventListener('change', function(){
-      _verFinalizados = this.checked;
-      indexarDias(); renderCalendario();   // solo afecta al calendario, no re-agenda nada
+    // La barra de filtros: ninguno reagenda nada, solo filtra lo que se ve.
+    document.getElementById('chipFinalizados').addEventListener('click', function(){
+      _verFinalizados = !_verFinalizados;
+      indexarDias(); renderCalendario(); renderFiltros();   // solo afecta al calendario
     });
-    // Ver una sola máquina: tampoco reagenda nada, solo filtra lo que se ve.
-    document.getElementById('filtroMaquina').addEventListener('change', function(){
-      _filtroMaquina = this.value;
-      try { localStorage.setItem('cf_prog_maquina', _filtroMaquina); } catch(e) {}
-      indexarDias(); renderCalendario(); renderLeyenda(); renderCola();
+    document.getElementById('chipAtrasados').addEventListener('click', function(){
+      _soloAtrasados = !_soloAtrasados; aplicarFiltros();
+    });
+    document.getElementById('chipsMaquina').addEventListener('click', function(e){
+      var b = e.target.closest('[data-fmaq]');
+      if(b) fijarFiltroMaquina(b.getAttribute('data-fmaq'));
+    });
+    document.getElementById('colaBuscar').addEventListener('input', function(){
+      _buscar = this.value; aplicarFiltros();
     });
     document.getElementById('higieneRefrescar').addEventListener('click', function(e){
       e.preventDefault(); e.stopPropagation();   // el botón vive dentro de <summary>: no debe togglear el panel
