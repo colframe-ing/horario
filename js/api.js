@@ -439,8 +439,9 @@ async function apiProdColaReanudar(token, archivo) {
 async function apiProdColaReabrir(token, archivo) {
   return apiCall('prod_cola_reabrir', { token, archivo });
 }
-async function apiProdColaAjustesSet(token, archivo, ritmo, fechaInicioMin) {
-  return apiCall('prod_cola_ajustes_set', { token, archivo, ritmo, fechaInicioMin });
+// `esperaC90` solo para un pedido de C140 (undefined = no se toca).
+async function apiProdColaAjustesSet(token, archivo, ritmo, fechaInicioMin, esperaC90) {
+  return apiCall('prod_cola_ajustes_set', { token, archivo, ritmo, fechaInicioMin, esperaC90 });
 }
 // archivo = proyecto (no uid). envios = [{id?, tipo:'casas'|'metros', valor, fechaEntrega?}]; [] = unir.
 // Parte UN envío en varias partes, conservando su puesto en la cola. Distinto de

@@ -32,6 +32,37 @@
     .rem-alerta strong { font-weight:800; }
     .rem-alerta .btn { margin-left:auto; }
 
+    /* La lista con la forma de Programación y Facturación (16-oct): tarjetas,
+       barra de filtros con píldoras y el total de lo que se ve. */
+    .rem-cortes { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin-bottom:12px; }
+    .corte { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:12px 14px;
+             border:none; border-left:4px solid var(--cf-gray-mid); text-align:left; font-family:inherit; color:inherit; cursor:pointer; transition:box-shadow .15s; }
+    .corte:hover { box-shadow:0 0 0 2px var(--cf-blue) inset, var(--shadow); }
+    .corte[aria-pressed="true"] { box-shadow:0 0 0 2px var(--cf-dark) inset, var(--shadow); }
+    .corte .lbl { font-size:0.64rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--cf-gray-text); }
+    .corte .val { font-size:1.1rem; font-weight:800; color:var(--cf-dark); margin-top:3px; font-variant-numeric:tabular-nums; }
+    .corte .sub { font-size:0.68rem; color:var(--cf-gray-text); margin-top:2px; line-height:1.35; }
+    .corte.a { border-left-color:var(--cf-blue); }
+    .corte.b { border-left-color:var(--cf-success); }
+    .corte.c { border-left-color:#D97706; }
+    .corte.d { border-left-color:#DC2626; }
+    .corte.d .val { color:#B91C1C; }
+    .barra-f { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    .chips-grupo { display:contents; }
+    .buscar { flex:1 1 220px; min-width:170px; padding:8px 12px; font-family:inherit; font-size:0.85rem;
+              border:1.5px solid var(--cf-gray-mid); border-radius:var(--radius-sm); color:var(--cf-dark); background:#fff; }
+    .buscar:focus { outline:none; border-color:var(--cf-blue); }
+    .fchip { font-family:inherit; font-size:0.75rem; font-weight:700; cursor:pointer;
+             padding:7px 13px; border-radius:999px; border:1.5px solid var(--cf-gray-mid);
+             background:#fff; color:var(--cf-gray-text); display:inline-flex; align-items:center; gap:6px; }
+    .fchip:hover { border-color:var(--cf-blue); color:var(--cf-blue); }
+    .fchip[aria-pressed="true"] { background:var(--cf-dark); border-color:var(--cf-dark); color:#fff; }
+    .n-chip { font-weight:800; opacity:0.7; }
+    .rango { display:inline-flex; align-items:center; gap:6px; margin-left:auto; font-size:0.72rem; font-weight:700; color:var(--cf-gray-text); }
+    .rango input { padding:6px 8px; border:1.5px solid var(--cf-gray-mid); border-radius:8px; font-size:0.8rem; font-family:inherit; }
+    .rem-total { font-size:0.78rem; color:var(--cf-gray-text); margin:0 2px; }
+    .rem-total strong { color:var(--cf-dark); font-weight:800; }
+
     /* ── Tabla ── */
     .rem-tabla { width:100%; border-collapse:collapse; font-size:0.84rem; }
     .rem-tabla th { text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); padding:8px 10px; border-bottom:2px solid var(--cf-gray-mid); white-space:nowrap; }
@@ -175,36 +206,26 @@
         <button id="btnNueva" class="btn btn-primary btn-sm">+ Nueva remisión</button>
       </div>
 
-      <div id="alertaConciliar" class="rem-alerta oculto"></div>
+      <!-- Lo pendiente y el cobro, como los cortes de Facturación. Un clic filtra. -->
+      <div class="rem-cortes" id="remCortes"></div>
 
-      <div class="filter-bar">
-        <div class="filter-group">
-          <label for="fEstado">Estado</label>
-          <select id="fEstado">
-            <option value="">Todos</option>
-            <option value="BORRADOR">Borrador</option>
-            <option value="POR_CONCILIAR">Por conciliar</option>
-            <option value="DESPACHADA">Despachada</option>
-            <option value="ENTREGADA">Entregada</option>
-            <option value="FACTURADA">Facturada</option>
-            <option value="ANULADA">Anulada</option>
-          </select>
-        </div>
+      <!-- Filtros: buscar, el estado (píldoras con su conteo) y el rango -->
+      <div class="barra-f">
+        <input type="search" id="fBuscar" class="buscar" placeholder="Buscar consecutivo, cliente, proyecto, placa…" aria-label="Buscar remisiones">
+        <span id="chipsEstado" class="chips-grupo"></span>
         <!-- Las fechas filtran la historia: borradores y por conciliar salen siempre (remList, 2-oct). -->
-        <div class="filter-group" title="Las remisiones en borrador o por conciliar se muestran siempre, sin importar la fecha"><label for="fDesde">Desde</label><input type="date" id="fDesde"></div>
-        <div class="filter-group" title="Las remisiones en borrador o por conciliar se muestran siempre, sin importar la fecha"><label for="fHasta">Hasta</label><input type="date" id="fHasta"></div>
-        <div class="filter-group" style="flex:1;min-width:180px;">
-          <label for="fBuscar">Buscar</label>
-          <input type="text" id="fBuscar" placeholder="Consecutivo, cliente, proyecto, placa…">
-        </div>
-        <button id="btnBuscar" class="btn btn-primary btn-sm" style="align-self:flex-end;">Buscar</button>
+        <span class="rango" title="Las remisiones en borrador o por conciliar se muestran siempre, sin importar la fecha">
+          <label for="fDesde">Desde</label><input type="date" id="fDesde">
+          <label for="fHasta">Hasta</label><input type="date" id="fHasta">
+        </span>
       </div>
+      <div class="rem-total" id="remTotal"></div>
 
-      <div class="card" style="padding:0;overflow-x:auto;margin-top:14px;">
+      <div class="card" style="padding:0;overflow-x:auto;margin-top:10px;">
         <table class="rem-tabla">
           <thead>
             <tr>
-              <th>Remisión</th><th>Fecha</th><th>Estado</th><th>Cliente</th>
+              <th id="thRemision" style="cursor:pointer;user-select:none;white-space:nowrap;">Remisión ↓</th><th>Fecha</th><th>Estado</th><th>Cliente</th>
               <th>Destinatario</th><th>Proyecto</th>
               <th class="rem-num">Peso kg</th><th class="rem-num">Cajas</th><th></th>
             </tr>

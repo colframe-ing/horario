@@ -218,6 +218,7 @@
     var s = '';
     if(c.ritmoOvr) s += ' · ritmo propio '+fmtNum(c.ritmoOvr,0)+' ML/d';
     if(c.fechaInicioMin) s += ' · no antes de '+fechaCorta(c.fechaInicioMin);
+    if(c.esC140 && c.esperaC90) s += ' · espera a que arranque el C90';
     return s;
   }
   // ── Helpers de unidad (proyecto entero o envío) ──
@@ -362,7 +363,10 @@
     }
     // Un cursor por máquina, como en el backend (PLAN_MAQUINAS paso 4).
     var EPS = 1e-9, cursores = {}, cola = [];
-    items.forEach(function(it, idx){
+    // Dos pasadas, como el backend: primero el C90, después el C140, que puede
+    // esperar a que arranque el C90 de su proyecto (`inicioC90`).
+    var inicioC90 = {};
+    function agendar(it, idx){
       var color   = PALETA_GANTT[idx % PALETA_GANTT.length];
       var carril  = carrilDe(it);
       var dayCursor = cursores[carril] || 0;
@@ -398,6 +402,7 @@
           mlFalta: Math.round(pend*100)/100,
           durDias: Math.round(durDias*100)/100, dias: diasSpan,
         }));
+        if(!it.esC140 && iniCot && (!inicioC90[it.archivo] || iniCot < inicioC90[it.archivo])) inicioC90[it.archivo] = iniCot;
         return;
       }
 
@@ -419,6 +424,11 @@
           var minDay = diaIndiceDe(it.fechaInicioMin);
           if(minDay > dayCursor) dayCursor = minDay;
         }
+        // El C140 que espera a su C90: no antes del día en que arranca.
+        if(it.esC140 && it.esperaC90 && inicioC90[it.archivo]){
+          var c90Day = diaIndiceDe(inicioC90[it.archivo]);
+          if(c90Day > dayCursor) dayCursor = c90Day;
+        }
         var startDay = dayCursor, endDay = dayCursor + durDias;
         dayCursor = endDay;
         var dStart = Math.floor(startDay + EPS);
@@ -436,7 +446,11 @@
         mlTotal: Math.round(totalML*100)/100, mlFalta: Math.round(pend*100)/100,
         durDias: Math.round(durDias*100)/100, dias: diasSpan,
       }));
-    });
+      if(!it.esC140 && iniCot && (!inicioC90[it.archivo] || iniCot < inicioC90[it.archivo])) inicioC90[it.archivo] = iniCot;
+    }
+    items.forEach(function(it, idx){ if(!it.esC140) agendar(it, idx); });
+    items.forEach(function(it, idx){ if(it.esC140) agendar(it, idx); });
+    cola.sort(function(a, b){ return a.orden - b.orden; });   // de vuelta al orden de la cola
     return { cola: cola };
   }
   // Índice día ISO → [proyectos que tocan ese día]. Un día puede tener varios.
@@ -1157,6 +1171,9 @@
     document.getElementById('ajProyectoNombre').textContent = nombre || '';
     // El C140 va al ritmo de S Pauta (configuración): aquí solo la fecha mínima.
     document.getElementById('ajCampoRitmo').classList.toggle('hidden', !!(item && item.esC140));
+    // Y puede esperar a que arranque el C90 de su proyecto.
+    document.getElementById('ajCampoEspera').classList.toggle('hidden', !(item && item.esC140));
+    document.getElementById('ajEsperaC90').checked = !!(item && item.esperaC90);
     document.getElementById('ajRitmo').value = (item && item.ritmoOvr && !item.esC140) ? item.ritmoOvr : '';
     document.getElementById('ajRitmo').placeholder = 'Usar el global ('+fmtNum(ritmoG,0)+' ML/d)';
     document.getElementById('ajFechaMin').value = (item && item.fechaInicioMin) ? item.fechaInicioMin : '';
@@ -1172,14 +1189,19 @@
     var ritmoStr = document.getElementById('ajRitmo').value;
     var fechaMin = document.getElementById('ajFechaMin').value;
     if(ritmoStr && !(Number(ritmoStr) > 0)){ toast('El ritmo debe ser mayor a 0','error'); return; }
+    // La casilla solo existe en un pedido de C140: en el resto no se manda.
+    var item = buscarItem(uid);
+    var espera = (item && item.esC140) ? document.getElementById('ajEsperaC90').checked : undefined;
     cerrarAjustes();
-    aplicarAjustes(uid, ritmoStr ? Number(ritmoStr) : null, fechaMin || '');
+    aplicarAjustes(uid, ritmoStr ? Number(ritmoStr) : null, fechaMin || '', espera);
   }
   function limpiarAjustesModal(){
     var uid = _ajustesUid;
     if(!uid) return;
+    // "Quitar ajustes" también apaga la espera del C140.
+    var item = buscarItem(uid);
     cerrarAjustes();
-    aplicarAjustes(uid, null, '');
+    aplicarAjustes(uid, null, '', (item && item.esC140) ? false : undefined);
   }
   // Recalcula durDias con el ritmo dado — para ítems del backlog, que NO pasan
   // por computarLocal. mlTotal (mlUnidad) es invariante al ritmo → no se toca.
@@ -1190,7 +1212,7 @@
   // El ritmo es por PROYECTO (afecta a todos los envíos): al aplicarlo, se
   // actualiza el ritmoOvr de TODAS las unidades con el mismo archivo. El ancla
   // (fechaInicioMin) es solo de la unidad tocada.
-  function aplicarAjustes(uid, ritmoOvr, fechaInicioMin){
+  function aplicarAjustes(uid, ritmoOvr, fechaInicioMin, esperaC90){
     var item = buscarItem(uid);
     if(!item) return;
     var ritmoG = (_data.config && _data.config.ritmoMlDia) || 300;
@@ -1205,15 +1227,20 @@
     var beforeFecha = { fechaInicioMin: item.fechaInicioMin||'' };
 
     hermanos.forEach(function(c){ c.ritmoOvr = ritmoOvr; c.ritmo = ritmoEfectivo; _recalcMetricas(c, ritmoEfectivo); });
+    var beforeEspera = !!item.esperaC90;
     item.fechaInicioMin = fechaInicioMin || '';
+    if(esperaC90 !== undefined) item.esperaC90 = !!esperaC90;
     recomputarYRenderizar();
 
     beginSave();
-    apiProdColaAjustesSet(token, uid, ritmoOvr || '', fechaInicioMin || '').then(function(){
+    apiProdColaAjustesSet(token, uid, ritmoOvr || '', fechaInicioMin || '', esperaC90).then(function(){
       toast('Ajustes guardados','ok');
     }).catch(function(e){
       before.forEach(function(s){ s.c.ritmoOvr = s.ritmoOvr; s.c.ritmo = s.ritmo; s.c.durDias = s.durDias; });
-      item.fechaInicioMin = beforeFecha.fechaInicioMin;
+      // Por uid y no por referencia: el motor recrea los objetos al reagendar.
+      var it = buscarItem(uid) || item;
+      it.fechaInicioMin = beforeFecha.fechaInicioMin;
+      it.esperaC90 = beforeEspera;
       recomputarYRenderizar();
       manejarError(e);
     }).finally(endSave);

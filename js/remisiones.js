@@ -294,59 +294,166 @@
   // VISTA: LISTADO
   // ============================================================
 
-  $('btnBuscar').addEventListener('click', cargarLista);
-  $('fBuscar').addEventListener('keydown', e => { if (e.key === 'Enter') cargarLista(); });
-  $('fEstado').addEventListener('change', cargarLista);
-  $('fDesde').addEventListener('change', cargarLista);
-  $('fHasta').addEventListener('change', cargarLista);
-  // El backend ignora Desde/Hasta cuando hay texto en Buscar (remList en
-  // Remisiones.gs) — quien busca un consecutivo no piensa en de qué mes es.
-  // Se avisa acá para que no parezca que el filtro de fecha sigue aplicando.
+  // ── La lista con la forma de Programación y Facturación (16-oct) ──
+  // Tarjetas arriba (lo pendiente y el cobro), píldoras por estado con su
+  // conteo, y el total de lo que se ve. El estado se filtra AQUÍ: la lista se
+  // pide una vez —sin estado— y los conteos salen de ella. Buscar sigue yendo
+  // al servidor, que ignora las fechas cuando hay texto (remList).
+  let filtroEstado = '';
+  let buscarTimer = null;
   $('fBuscar').addEventListener('input', () => {
+    // El backend ignora Desde/Hasta cuando hay texto en Buscar (remList en
+    // Remisiones.gs) — quien busca un consecutivo no piensa en de qué mes es.
+    // Se avisa acá para que no parezca que el filtro de fecha sigue aplicando.
     const activo = !!$('fBuscar').value.trim();
     ['fDesde', 'fHasta'].forEach(id => {
       $(id).style.opacity = activo ? '0.45' : '';
       $(id).title = activo ? 'Ignorado mientras haya texto en Buscar' : '';
     });
+    clearTimeout(buscarTimer);
+    buscarTimer = setTimeout(cargarLista, 400);   // busca mientras se escribe
+  });
+  $('fBuscar').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(buscarTimer); cargarLista(); } });
+  $('fDesde').addEventListener('change', cargarLista);
+  $('fHasta').addEventListener('change', cargarLista);
+  $('chipsEstado').addEventListener('click', e => {
+    const b = e.target.closest('[data-festado]');
+    if (b) fijarFiltroEstado(b.getAttribute('data-festado'));
   });
 
   async function cargarLista() {
     $('bodyLista').innerHTML = '<tr><td colspan="9" class="empty">Cargando…</td></tr>';
     try {
       const res = await apiRemList(token, {
-        estado: $('fEstado').value, desde: $('fDesde').value,
+        estado: '', desde: $('fDesde').value,
         hasta: $('fHasta').value, buscar: $('fBuscar').value.trim(),
       });
       renderLista(res.remisiones || []);
-      renderAlerta(res.resumen || {});
     } catch (e) {
       manejarError(e, 'lista');
       $('bodyLista').innerHTML = '<tr><td colspan="9" class="empty">No se pudo cargar.</td></tr>';
     }
   }
 
-  /** Aviso de borradores esperando conciliación. Sin esto la cola se acumula
-   *  invisible y salen despachos físicos sin documento firme. */
-  function renderAlerta(r) {
-    const el = $('alertaConciliar');
-    if (!r.porConciliar) { el.classList.add('oculto'); return; }
-    let extra = '';
-    if (r.masAntiguaPorConciliar) {
-      const dias = Math.floor((new Date(hoyISO()) - new Date(r.masAntiguaPorConciliar)) / 86400000);
-      if (dias >= 2) extra = ` La más antigua lleva <strong>${dias} días</strong> esperando.`;
-    }
-    el.innerHTML = `<span>⚠</span><span><strong>${r.porConciliar}</strong> remisión(es) esperando conciliación.${extra}</span>` +
-      '<button class="btn btn-primary btn-sm" id="btnVerPend">Ver</button>';
-    el.classList.remove('oculto');
-    $('btnVerPend').onclick = () => { $('fEstado').value = 'POR_CONCILIAR'; cargarLista(); };
+  // Las píldoras. "Sin facturar" junta despachadas y entregadas: es lo que ya
+  // salió y todavía no se cobra.
+  const FILTROS_ESTADO = [
+    ['', 'Todas'], ['BORRADOR', 'Borrador'], ['POR_CONCILIAR', 'Por conciliar'],
+    ['SIN_FACTURAR', 'Sin facturar'], ['FACTURADA', 'Facturada'], ['ANULADA', 'Anulada'],
+  ];
+  /** FUNCIÓN PURA: las remisiones de un filtro de estado ('' = todas). */
+  function filtrarRemisiones(rows, filtro) {
+    if (!filtro) return rows.slice();
+    if (filtro === 'SIN_FACTURAR') return rows.filter(r => r.estado === 'DESPACHADA' || r.estado === 'ENTREGADA');
+    return rows.filter(r => r.estado === filtro);
+  }
+  /** FUNCIÓN PURA: los números de las tarjetas y las píldoras. `hoy` en
+   *  aaaa-mm-dd. Los kg se leen como los escribe la hoja ("500,5" incluido). */
+  function resumenRemisiones(rows, hoy) {
+    const kg = (r) => parseFloat(String(r.pesoTotalKg == null ? '' : r.pesoTotalKg).replace(',', '.')) || 0;
+    const suma = (l) => Math.round(l.reduce((s, r) => s + kg(r), 0) * 100) / 100;
+    const porFiltro = {};
+    ['', 'BORRADOR', 'POR_CONCILIAR', 'SIN_FACTURAR', 'FACTURADA', 'ANULADA']
+      .forEach((k) => { porFiltro[k] = filtrarRemisiones(rows, k).length; });
+    const pc = filtrarRemisiones(rows, 'POR_CONCILIAR').map(r => r.fecha).filter(Boolean).sort();
+    const dias = pc.length ? Math.floor((new Date(hoy) - new Date(pc[0])) / 86400000) : null;
+    return {
+      porFiltro: porFiltro,
+      diasPorConciliar: dias,
+      kgSinFacturar: suma(filtrarRemisiones(rows, 'SIN_FACTURAR')),
+      kgFacturadas: suma(filtrarRemisiones(rows, 'FACTURADA')),
+    };
+  }
+  function fijarFiltroEstado(f) {
+    filtroEstado = f || '';
+    renderLista(ultimasRows);
+  }
+  function renderFiltrosLista(rows) {
+    const s = resumenRemisiones(rows, hoyISO());
+    $('chipsEstado').innerHTML = FILTROS_ESTADO.map(([k, txt]) =>
+      `<button type="button" class="fchip" data-festado="${k}" aria-pressed="${filtroEstado === k}">${txt} <span class="n-chip">${s.porFiltro[k]}</span></button>`
+    ).join('');
+    // Las tarjetas: lo que hay que hacer y lo que hay que cobrar. "Por
+    // conciliar" se pone roja con 2 días o más: una remisión ahí es un
+    // despacho sin documento firme (el aviso que antes era una franja).
+    const n = s.porFiltro;
+    const tarjeta = (filtro, cls, lbl, val, sub) =>
+      `<button type="button" class="corte ${cls}" data-corte-estado="${filtro}" aria-pressed="${filtroEstado === filtro}">` +
+      `<div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub}</div></button>`;
+    $('remCortes').innerHTML =
+      tarjeta('BORRADOR', n.BORRADOR ? 'a' : 'b', 'Borradores', n.BORRADOR ? n.BORRADOR + (n.BORRADOR === 1 ? ' borrador' : ' borradores') : 'Ninguno',
+              'sin enviar a conciliar') +
+      tarjeta('POR_CONCILIAR', !n.POR_CONCILIAR ? 'b' : (s.diasPorConciliar >= 2 ? 'd' : 'c'), 'Por conciliar',
+              n.POR_CONCILIAR ? n.POR_CONCILIAR + ' esperando' : 'Al día',
+              n.POR_CONCILIAR ? (s.diasPorConciliar >= 1 ? 'la más antigua, hace ' + s.diasPorConciliar + (s.diasPorConciliar === 1 ? ' día' : ' días') : 'de hoy') : 'nada esperando conciliación') +
+      tarjeta('SIN_FACTURAR', n.SIN_FACTURAR ? 'c' : 'b', 'Despachadas sin facturar',
+              n.SIN_FACTURAR ? n.SIN_FACTURAR + ' · ' + fmtNum(s.kgSinFacturar) + ' kg' : 'Ninguna', 'despachadas o entregadas, en el rango') +
+      tarjeta('FACTURADA', 'b', 'Facturadas', n.FACTURADA + ' · ' + fmtNum(s.kgFacturadas) + ' kg', 'en el rango');
+    $('remCortes').querySelectorAll('[data-corte-estado]').forEach(b => {
+      b.onclick = () => {
+        const f = b.getAttribute('data-corte-estado');
+        fijarFiltroEstado(filtroEstado === f ? '' : f);
+      };
+    });
   }
 
-  function renderLista(rows) {
+  // ── El orden de la lista: por número de remisión (16-oct) ──
+  // La lista salía en el orden en que se CREARON las filas, y el número RM- se
+  // pone al conciliar, que no va en ese orden: los números quedaban salteados.
+  // Ahora va por el número —como número, para que RM-1002 vaya después de
+  // RM-0999—. Lo sin numerar (borradores y por conciliar) es trabajo pendiente:
+  // arriba cuando van las más nuevas primero, al final al revés; entre ellas,
+  // por fecha. FUNCIÓN PURA: no toca la lista que recibe.
+  function ordenarRemisiones(rows, sentido) {
+    const asc = sentido === 'asc';
+    const num = (r) => { const m = String(r.consecutivo || '').match(/\d+/); return m ? parseInt(m[0], 10) : null; };
+    return rows.slice().sort((a, b) => {
+      const na = num(a), nb = num(b);
+      if (na === null || nb === null) {
+        if (na === null && nb === null) {
+          const f = String(a.fecha || '').localeCompare(String(b.fecha || ''));
+          return asc ? f : -f;
+        }
+        // Sin numerar: arriba con las más nuevas primero, al final al revés.
+        return (na === null) === asc ? 1 : -1;
+      }
+      return asc ? na - nb : nb - na;
+    });
+  }
+  // El sentido se recuerda en este navegador: clic en "Remisión" lo invierte.
+  let ordenLista = (() => { try { return localStorage.getItem('cf_rem_orden') === 'asc' ? 'asc' : 'desc'; } catch (e) { return 'desc'; } })();
+  let ultimasRows = [];
+  function pintarEncabezadoOrden() {
+    const th = $('thRemision');
+    if (!th) return;
+    th.textContent = 'Remisión ' + (ordenLista === 'asc' ? '↑' : '↓');
+    th.title = ordenLista === 'asc' ? 'De la más vieja a la más nueva. Clic para invertir.'
+                                    : 'De la más nueva a la más vieja. Clic para invertir.';
+  }
+  if ($('thRemision')) {
+    pintarEncabezadoOrden();
+    $('thRemision').addEventListener('click', () => {
+      ordenLista = ordenLista === 'asc' ? 'desc' : 'asc';
+      try { localStorage.setItem('cf_rem_orden', ordenLista); } catch (e) { /* sin almacenamiento: solo esta vez */ }
+      pintarEncabezadoOrden();
+      renderLista(ultimasRows);
+    });
+  }
+
+  function renderLista(todas) {
+    ultimasRows = todas;
+    renderFiltrosLista(todas);
+    const rows = filtrarRemisiones(todas, filtroEstado);
+    // El total de lo que se ve: cuántas y cuántos kg.
+    const kg = rows.reduce((s, r) => s + (parseFloat(String(r.pesoTotalKg == null ? '' : r.pesoTotalKg).replace(',', '.')) || 0), 0);
+    $('remTotal').innerHTML = rows.length
+      ? `<strong>${rows.length}</strong>${filtroEstado ? ' de ' + todas.length : ''} ${rows.length === 1 && !filtroEstado ? 'remisión' : 'remisiones'} · <strong>${fmtNum(kg)}</strong> kg`
+      : '';
     if (!rows.length) {
       $('bodyLista').innerHTML = '<tr><td colspan="9" class="empty">Sin remisiones para el filtro.</td></tr>';
       return;
     }
-    $('bodyLista').innerHTML = rows.map(r => {
+    $('bodyLista').innerHTML = ordenarRemisiones(rows, ordenLista).map(r => {
       const consec = r.consecutivo
         ? `<span class="rem-consec">${esc(r.consecutivo)}</span>`
         : '<span class="rem-consec sin">sin numerar</span>';

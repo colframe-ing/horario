@@ -493,6 +493,12 @@
         <label>No empezar antes de</label>
         <input id="ajFechaMin" type="date">
       </div>
+      <!-- Solo en un pedido de C140 (16-oct) -->
+      <label id="ajCampoEspera" class="hidden" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:0.82rem;color:var(--cf-dark);cursor:pointer;line-height:1.35;">
+        <input type="checkbox" id="ajEsperaC90" style="margin-top:2px;cursor:pointer;">
+        <span>No empezar hasta que arranque el C90 del proyecto<br>
+          <small style="color:var(--cf-gray-text);">El real si ya arrancó; si no, el que dice el Gantt. Con fecha mínima también, manda la más tardía.</small></span>
+      </label>
       <div class="modal-actions" style="justify-content:space-between;">
         <button class="btn btn-ghost btn-sm" id="ajLimpiar" title="Quita el ritmo propio y la fecha mínima">Quitar ajustes</button>
         <div style="display:flex;gap:8px;">
