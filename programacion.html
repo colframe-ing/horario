@@ -124,6 +124,12 @@
     .cola-proy-link:hover { color:var(--cf-blue); text-decoration:underline; }
     .cola-proy-link .cb { font-weight:400; color:var(--cf-gray-text); font-size:0.72rem; }
     .cola-meta { font-size:0.72rem; color:var(--cf-gray-text); }
+    .puesto-elegir { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:0.78rem; color:var(--cf-dark);
+                     margin-top:12px; padding-top:10px; border-top:1px solid var(--cf-gray-mid); }
+    .puesto-elegir span { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--cf-gray-text); }
+    .puesto-elegir label { display:inline-flex; gap:5px; align-items:center; cursor:pointer; }
+    .cola-cliente { font-size:0.74rem; color:var(--cf-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cola-cliente .sin-registro { color:var(--cf-gray-text); font-style:italic; }
     .cola-fechas { font-size:0.72rem; color:var(--cf-dark); font-weight:600; }
     .cola-nota { font-size:0.72rem; color:#7C3AED; font-style:italic; margin-top:2px; white-space:normal; word-break:break-word; }
     /* Nota específica de un envío: se distingue de la del proyecto */
@@ -288,7 +294,7 @@
 
     <!-- Filtros: solo muestran, no reagendan ni guardan -->
     <div class="barra-f">
-      <input id="colaBuscar" class="buscar" type="search" placeholder="Buscar proyecto, CB o nota…" aria-label="Buscar en la cola">
+      <input id="colaBuscar" class="buscar" type="search" placeholder="Buscar proyecto, CB, cliente o nota…" aria-label="Buscar en la cola">
       <span id="chipsMaquina" class="chips-grupo"></span>
       <button type="button" class="fchip" id="chipAtrasados" aria-pressed="false">Atrasados</button>
       <button type="button" class="fchip" id="chipFinalizados" aria-pressed="false" title="Pinta en el calendario lo ya producido">Finalizados en el calendario</button>
@@ -526,6 +532,12 @@
       <div id="envRows"></div>
       <button class="btn btn-ghost btn-sm" id="envAgregar" style="margin-top:4px;">+ Agregar envío</button>
       <div id="envResumen" style="font-size:0.8rem;font-weight:700;margin-top:12px;"></div>
+      <!-- Los envíos NUEVOS: dónde quedan en la cola. Los que ya existían no se mueven. -->
+      <div class="puesto-elegir">
+        <span>Los envíos nuevos quedan:</span>
+        <label><input type="radio" name="envPuesto" value="aqui" checked> en su puesto actual</label>
+        <label><input type="radio" name="envPuesto" value="final"> al final de la cola</label>
+      </div>
       <div class="modal-actions" style="justify-content:space-between;">
         <button class="btn btn-ghost btn-sm" id="envUnir" title="Volver a un solo bloque (sin partir)">Unir</button>
         <div style="display:flex;gap:8px;">
@@ -607,6 +619,11 @@
       <div id="parRows"></div>
       <button class="btn btn-ghost btn-sm" id="parAgregar" style="margin-top:4px;">+ Agregar parte</button>
       <div id="parResumen" style="font-size:0.8rem;font-weight:700;margin-top:12px;"></div>
+      <div class="puesto-elegir">
+        <span>Las partes quedan:</span>
+        <label><input type="radio" name="parPuesto" value="aqui" checked> en su puesto actual</label>
+        <label><input type="radio" name="parPuesto" value="final"> al final de la cola</label>
+      </div>
       <div class="modal-actions">
         <button class="btn btn-ghost btn-sm" id="parCancelar">Cancelar</button>
         <button class="btn btn-primary btn-sm" id="parGuardar">Partir</button>

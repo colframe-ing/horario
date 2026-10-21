@@ -446,11 +446,12 @@ async function apiProdColaAjustesSet(token, archivo, ritmo, fechaInicioMin, espe
 // archivo = proyecto (no uid). envios = [{id?, tipo:'casas'|'metros', valor, fechaEntrega?}]; [] = unir.
 // Parte UN envío en varias partes, conservando su puesto en la cola. Distinto de
 // apiProdEnviosSet, que redefine el reparto completo (ver PLAN_PROGRAMACION §6).
-async function apiProdEnvioPartir(token, archivo, envioId, partes) {
-  return apiCall('prod_envio_partir', { token, archivo, envioId, partes });
+// `puesto`: 'aqui' (por omisión) o 'final' — dónde quedan en la cola las partes nuevas.
+async function apiProdEnvioPartir(token, archivo, envioId, partes, puesto) {
+  return apiCall('prod_envio_partir', { token, archivo, envioId, partes, puesto: puesto || 'aqui' });
 }
-async function apiProdEnviosSet(token, archivo, envios) {
-  return apiCall('prod_envios_set', { token, archivo, envios });
+async function apiProdEnviosSet(token, archivo, envios, puesto) {
+  return apiCall('prod_envios_set', { token, archivo, envios, puesto: puesto || 'aqui' });
 }
 async function apiProdAlertasHigiene(token) {
   return apiCall('prod_alertas_higiene', { token });

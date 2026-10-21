@@ -141,13 +141,14 @@
   function sinTildes(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
   // FUNCIÓN PURA: lo que queda de `lista` con los filtros `f` = { maquina,
   // buscar, atrasados }. Cada palabra buscada tiene que estar en el proyecto,
-  // el CB o las notas.
+  // el CB, las notas o el cliente (número o nombre).
   function filtrarCola(lista, f){
     var palabras = sinTildes(f.buscar).split(/\s+/).filter(Boolean);
     return filtrarPorMaquina(lista, f.maquina).filter(function(c){
       if(f.atrasados && !c.atrasado) return false;
       if(!palabras.length) return true;
-      var t = sinTildes((c.proyecto||'')+' cb'+(c.consecutivo||'')+' '+(c.notas||'')+' '+(c.notaEnvio||''));
+      var t = sinTildes((c.proyecto||'')+' cb'+(c.consecutivo||'')+' '+(c.notas||'')+' '+(c.notaEnvio||'')+
+                        ' '+(c.codCliente||'')+' '+(c.clienteNombre||''));
       return palabras.every(function(p){ return t.indexOf(p) !== -1; });
     });
   }
@@ -302,6 +303,13 @@
     return '<a class="cola-proy-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'"'+
       ' target="_blank" rel="noopener" title="Ver hoja de vida de CB'+esc(c.consecutivo)+'">'+
       esc(c.proyecto)+' <span class="cb">CB'+esc(c.consecutivo)+'</span></a>';
+  }
+  // El cliente: número del maestro y el nombre registrado en la hoja Clientes.
+  // Sin nombre registrado se dice, en vez de dejar el número suelto.
+  function clienteHtml(c){
+    if(!c.codCliente) return '';
+    return '<div class="cola-cliente">Cliente '+esc(c.codCliente)+' · '+
+      (c.clienteNombre ? esc(c.clienteNombre) : '<span class="sin-registro">sin nombre registrado</span>')+'</div>';
   }
   // Nota del proyecto (compartida) + nota de este envío. La del envío se marca
   // con su número para que se distinga de la del proyecto.
@@ -717,6 +725,7 @@
             (c.pausada
               ? '<span class="pausa-badge" title="Pausada el '+esc(fechaCorta(c.pausadaDesde))+' — no consume días de la cola">⏸ Pausada</span>'
               : (c.fechaRealInicio?'<span class="prod-badge" title="Producción iniciada el '+esc(fechaCorta(c.fechaRealInicio))+'">▶ En producción</span>':''))+'</div>'+
+          clienteHtml(c)+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · '+
             // Con avance registrado, lo que importa es lo que FALTA: es lo que se
             // va a agendar cuando se reanude.
@@ -839,6 +848,7 @@
         '<div class="cola-color" style="background:var(--cf-gray-mid);"></div>'+
         '<div class="cola-main">'+
           '<div class="cola-nombre">'+nombreProyectoHtml(c)+envioBadge(c)+'</div>'+
+          clienteHtml(c)+
           '<div class="cola-meta">'+tamanoUnidad(c)+' · ≈'+fmtDias(c.durDias)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+metaAjustes(c)+'</div>'+
           notasHtml(c)+
         '</div>'+
@@ -901,6 +911,7 @@
       return '<div class="cola-row">'+
         '<div class="cola-main">'+
           '<div class="cola-nombre">'+nombreProyectoHtml(c)+envioBadge(c)+'</div>'+
+          clienteHtml(c)+
           '<div class="cola-meta">'+tamanoUnidad(c)+(c.vinculadas?' · 🔗'+c.vinculadas:'')+'</div>'+
           '<div class="cola-fechas">Entrega: '+(c.fechaEntrega?fechaCorta(c.fechaEntrega):'—')+' · Real: '+
             (c.fechaRealInicio ? fechaCorta(c.fechaRealInicio)+' → '+fechaCorta(c.fechaReal) : fechaCorta(c.fechaReal))+
@@ -1322,6 +1333,7 @@
     // se esconde el botón en vez de ofrecer algo que va a fallar.
     document.getElementById('envUnir').style.display = (envs.length && !hayCongelado) ? '' : 'none';
     renderEnviosRows();
+    reiniciarPuesto('envPuesto');
     document.getElementById('modalEnvios').classList.remove('hidden');
   }
   function renderEnviosRows(){
@@ -1652,6 +1664,7 @@
       ' — las partes tienen que sumar exactamente eso.';
     document.getElementById('parPartesUnidad').textContent = porUnidades ? 'partes iguales' : 'partes iguales (por metros)';
     aplicarPartirIguales();   // arranca con la propuesta de 2 mitades, que es el caso común
+    reiniciarPuesto('parPuesto');
     document.getElementById('modalPartir').classList.remove('hidden');
   }
 
@@ -1726,6 +1739,17 @@
 
   function cerrarPartir(){ document.getElementById('modalPartir').classList.add('hidden'); _parUid=null; _parEnvio=null; }
 
+  // Dónde quedan en la cola las partes nuevas: 'aqui' (por omisión) o 'final'.
+  function puestoElegido(nombre){
+    var el = document.querySelector('input[name="'+nombre+'"]:checked');
+    return (el && el.value === 'final') ? 'final' : 'aqui';
+  }
+  // Cada vez que se abre, "en su puesto": un "al final" de la vez anterior no
+  // se puede quedar puesto sin que nadie lo vea.
+  function reiniciarPuesto(nombre){
+    var el = document.querySelector('input[name="'+nombre+'"][value="aqui"]');
+    if(el) el.checked = true;
+  }
   function guardarPartir(){
     if(!_parEnvio) return;
     if(_parRows.length < 2){ toast('Para partir hay que indicar al menos 2 partes','error'); return; }
@@ -1746,10 +1770,11 @@
       return o;
     });
     var archivo = _parEnvio.archivo, envioId = _parEnvio.envioId, n = partes.length;
+    var puesto = puestoElegido('parPuesto');
     cerrarPartir();
     beginSave();
-    apiProdEnvioPartir(token, archivo, envioId, partes)
-      .then(function(){ toast('Envío partido en '+n+' partes','ok'); return cargar(); })
+    apiProdEnvioPartir(token, archivo, envioId, partes, puesto)
+      .then(function(){ toast('Envío partido en '+n+' partes'+(puesto==='final'?', al final de la cola':''),'ok'); return cargar(); })
       .catch(manejarError).finally(endSave);
   }
   function guardarEnvios(){
@@ -1765,9 +1790,10 @@
     if(sumML > _enviosProy.totalML + 0.5){ toast('Los envíos exceden el total del proyecto','error'); return; }
     if(sumUnidades > _enviosProy.cantidad){ toast('Los envíos exceden las unidades del proyecto','error'); return; }
     var payload = _enviosRows.map(function(r){ var o={ tipo:r.tipo, valor:parseFloat(r.valor), fechaEntrega:r.fechaEntrega||'' }; if(r.id) o.id=r.id; return o; });
+    var puesto = puestoElegido('envPuesto');
     cerrarEnvios();
     beginSave();
-    apiProdEnviosSet(token, archivo, payload).then(function(){ toast('Envíos guardados','ok'); return cargar(); })
+    apiProdEnviosSet(token, archivo, payload, puesto).then(function(){ toast('Envíos guardados','ok'); return cargar(); })
       .catch(manejarError).finally(endSave);
   }
   function unirEnvios(){
