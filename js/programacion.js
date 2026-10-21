@@ -22,6 +22,45 @@
     if (mainSL) mainSL.insertBefore(avisoSL, mainSL.firstChild);
   }
 
+  // ── Los guardados van de a uno (21-oct) ──
+  // Con varios cambios seguidos, cada uno salía sin esperar al anterior: se
+  // hacían fila en el candado del backend hasta el "Lock timeout", y Apps Script
+  // no los atiende en el orden en que salieron, así que un orden viejo podía
+  // guardarse encima del nuevo. Ahora toda escritura de esta pantalla pasa por
+  // una sola fila: sale cuando la anterior terminó, bien o mal.
+  function crearSerie(){
+    var cola = Promise.resolve();
+    function enSerie(fn){
+      var p = cola.then(function(){ return fn(); });
+      cola = p.catch(function(){});
+      return p;
+    }
+    enSerie.envolver = function(api){
+      return function(){ var args = arguments; return enSerie(function(){ return api.apply(null, args); }); };
+    };
+    return enSerie;
+  }
+  var enSerie = crearSerie();
+  // Estos nombres tapan, solo dentro de esta pantalla, los de api.js. Las
+  // lecturas (apiProdColaGet, apiProdAlertasHigiene) no pasan por aquí.
+  var apiProdColaReordenar  = enSerie.envolver(window.apiProdColaReordenar);
+  var apiProdColaToggle     = enSerie.envolver(window.apiProdColaToggle);
+  var apiProdColaEntrega    = enSerie.envolver(window.apiProdColaEntrega);
+  var apiProdColaMaquina    = enSerie.envolver(window.apiProdColaMaquina);
+  var apiProdColaNota       = enSerie.envolver(window.apiProdColaNota);
+  var apiProdColaIniciar    = enSerie.envolver(window.apiProdColaIniciar);
+  var apiProdColaFinalizar  = enSerie.envolver(window.apiProdColaFinalizar);
+  var apiProdColaReabrir    = enSerie.envolver(window.apiProdColaReabrir);
+  var apiProdColaPausar     = enSerie.envolver(window.apiProdColaPausar);
+  var apiProdColaReanudar   = enSerie.envolver(window.apiProdColaReanudar);
+  var apiProdColaAjustesSet = enSerie.envolver(window.apiProdColaAjustesSet);
+  var apiProdColaConfig     = enSerie.envolver(window.apiProdColaConfig);
+  var apiProdEnvioPartir    = enSerie.envolver(window.apiProdEnvioPartir);
+  var apiProdEnviosSet      = enSerie.envolver(window.apiProdEnviosSet);
+  var apiProdMaquinaSet     = enSerie.envolver(window.apiProdMaquinaSet);
+  var apiProdCalExcepcion   = enSerie.envolver(window.apiProdCalExcepcion);
+  var apiProdScanNow        = enSerie.envolver(window.apiProdScanNow);
+
   var _data = null;            // respuesta de prod_cola_get
   var _festivos = {};          // set ISO
   var _exc = {};               // ISO → {laborable, nota}
@@ -1782,25 +1821,20 @@
   }
 
   // ── Reordenar cola (optimista, coalescido) — flechas ▲▼ y arrastrar ──
-  var _colaBefore = null; // snapshot de uids-en-orden antes de la primera acción de una ráfaga
-  function reordenarSegun(uids){
-    var byUid = {}; _data.cola.forEach(function(c){ byUid[c.uid]=c; });
-    _data.cola = uids.map(function(a){ return byUid[a]; }).filter(Boolean);
-    recomputarYRenderizar();
-  }
+  // El orden que se manda es el de la pantalla en el momento en que el guardado
+  // SALE de la fila, no el de cuando se pidió: si quedaron dos reórdenes en
+  // fila, los dos mandan el último y ninguno puede devolver la cola a uno viejo.
+  function ordenActual(){ return _data.cola.map(function(c){ return c.uid; }); }
   function aplicarNuevoOrden(colaNueva){
-    if(_colaBefore===null) _colaBefore = _data.cola.map(function(c){ return c.uid; });
     _data.cola = colaNueva;
     recomputarYRenderizar();
 
-    var orden = _data.cola.map(function(c){ return c.uid; });
     debounceSave('cola_orden', 400, function(){
-      return apiProdColaReordenar(token, orden).then(function(){
-        _colaBefore = null;
-      }).catch(function(e){
-        var uidsPrevios = _colaBefore; _colaBefore = null;
-        if(uidsPrevios) reordenarSegun(uidsPrevios);
+      return apiProdColaReordenar(token, ordenActual()).catch(function(e){
+        // Si falla, la verdad es lo que tiene el servidor. Volver a una foto de
+        // antes de la ráfaga deshacía también lo que sí se había guardado.
         manejarError(e);
+        return cargar();
       });
     });
   }
