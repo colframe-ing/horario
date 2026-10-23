@@ -60,6 +60,9 @@
   var apiProdMaquinaSet     = enSerie.envolver(window.apiProdMaquinaSet);
   var apiProdCalExcepcion   = enSerie.envolver(window.apiProdCalExcepcion);
   var apiProdScanNow        = enSerie.envolver(window.apiProdScanNow);
+  // No es de producción por nombre, pero escribe en la misma hoja y con el
+  // mismo candado: corría por fuera de la fila (23-oct).
+  var apiCotizVincular      = enSerie.envolver(window.apiCotizVincular);
 
   var _data = null;            // respuesta de prod_cola_get
   var _festivos = {};          // set ISO
@@ -610,10 +613,23 @@
     }
     renderCalendario(); renderLeyenda(); renderCola(); renderBacklog(); renderFinalizados();
   }
-  // Carga explícita (inicial / tras guardar config): siempre aplica.
+  // ¿Puede una recarga pintar lo que trajo? No si mientras se pedía hubo un
+  // cambio en pantalla (`_gen` se movió), ni si hay un guardado esperando a
+  // salir: el reorden manda el orden de la pantalla CUANDO SALE, así que pintar
+  // encima una foto vieja del servidor le hacía mandar el orden viejo y el
+  // cambio se perdía (23-oct). Esa foto se descarta; la reconciliación trae la
+  // buena cuando todo se asienta.
+  function cargaVigente(genAlPedir, genAhora, guardadosEsperando){
+    return genAlPedir === genAhora && guardadosEsperando === 0;
+  }
+  // Carga explícita (inicial / tras una acción que no es optimista).
   function cargar(){
     if(_reconcileTimer){ clearTimeout(_reconcileTimer); _reconcileTimer=null; }
-    return apiProdColaGet(token).then(aplicarDatos).catch(manejarError);
+    var gen = _gen;
+    return apiProdColaGet(token).then(function(resp){
+      if(!cargaVigente(gen, _gen, Object.keys(_saveTimers).length)){ scheduleReconcile(); return; }
+      aplicarDatos(resp);
+    }).catch(manejarError);
   }
 
   // ── Calendario ──
@@ -1539,13 +1555,24 @@
     var uid = _concUid, fecha = _concFecha;
     var p = _parseUidLocal(uid);
     cerrarConciliar();
+    // Optimista, como Iniciar (23-oct): antes la unidad no salía "en producción"
+    // hasta que volvían tres viajes al servidor, y en ese rato parecía que no
+    // había pasado nada. Si algo falla, se desmarca.
+    var item = buscarItem(uid), antes = item ? (item.fechaRealInicio || '') : '';
+    if(item){ item.fechaRealInicio = fecha; item.vinculadas = (item.vinculadas || 0) + 1; recomputarYRenderizar(); }
     beginSave();
     // Vincular primero y arrancar después: si el vínculo falla, no queremos una
     // producción iniciada a medias sin carpeta, que es justo lo que se evita.
+    // Sin recarga al final: la reconciliación de endSave trae lo demás, y no
+    // pinta encima de lo que se haga mientras tanto.
     apiCotizVincular(token, p.archivo, carpetaId, 'link')
       .then(function(){ return apiProdColaIniciar(token, uid, fecha); })
-      .then(function(){ toast('Carpeta vinculada · producción iniciada','ok'); return cargar(); })
-      .catch(manejarError).finally(endSave);
+      .then(function(){ toast('Carpeta vinculada · producción iniciada','ok'); })
+      .catch(function(e){
+        var it = buscarItem(uid);
+        if(it){ it.fechaRealInicio = antes; it.vinculadas = Math.max(0, (it.vinculadas || 1) - 1); recomputarYRenderizar(); }
+        manejarError(e);
+      }).finally(endSave);
   }
 
   /** Espejo de _parseUid del backend: 'archivo#envioId' → { archivo, envioId }. */
