@@ -136,6 +136,82 @@ function clearSession() {
     }
   } catch (e) { /* sesión ilegible: no hay token que revocar */ }
   localStorage.removeItem('cf_session');
+  copiasBorrar();   // lo último que vio esta persona no se queda en el equipo
+}
+
+// ── Copias para mostrar al instante (23-oct) ──
+//
+// La hoja de vida tarda ~5 s y Programación ~2 s aun leyendo cada hoja una vez
+// (medido con diagnosticarTiempos). La pantalla guarda lo último que recibió y,
+// al abrir, lo muestra de una vez mientras pide lo nuevo. La copia es de ESTA
+// persona con ESTE rol: la hoja de vida le esconde el cobro a quien no es
+// Dirección, y en un equipo compartido no puede verlo en la copia de otro.
+// Cerrar sesión las borra. Todo en try: sin localStorage (modo privado) la
+// pantalla carga como siempre.
+var COPIA_PREF = 'cf_copia_';
+function copiaClave(nombre, s) {
+  s = s || getSession() || {};
+  return COPIA_PREF + String(s.cedula || '') + '_' + rolDeSesion(s) + '_' + nombre;
+}
+function copiaLeer(nombre) {
+  try {
+    var o = JSON.parse(localStorage.getItem(copiaClave(nombre)) || 'null');
+    return (o && o.datos && o.ts) ? o : null;
+  } catch (e) { return null; }
+}
+function copiaGuardar(nombre, datos) {
+  var clave = copiaClave(nombre), txt;
+  try { txt = JSON.stringify({ ts: Date.now(), datos: datos }); } catch (e) { return; }
+  try { localStorage.setItem(clave, txt); return; } catch (e) { /* lleno: se hace sitio abajo */ }
+  // Sin espacio: fuera las demás copias (son solo para ir más rápido) y otro intento.
+  copiasBorrar(clave);
+  try { localStorage.setItem(clave, txt); } catch (e) { /* sin copia: carga como siempre */ }
+}
+function copiasBorrar(excepto) {
+  try {
+    var claves = [];
+    for (var i = 0; i < localStorage.length; i++) claves.push(localStorage.key(i));
+    claves.forEach(function (k) { if (k && k.indexOf(COPIA_PREF) === 0 && k !== excepto) localStorage.removeItem(k); });
+  } catch (e) { /* nada que borrar */ }
+}
+/** Muestra (o quita, con `ts` vacío) el aviso de que lo que se ve es la copia.
+ *  Mientras está, el contenido queda `inert`: se ve, pero no se puede hacer
+ *  clic ni escribir —ni con el teclado—, para no editar sobre algo que puede
+ *  haber cambiado. Con `reintentar`, la actualización falló y se ofrece otra. */
+function modoCopia(ts, reintentar) {
+  var main = document.querySelector('.admin-main');
+  if (!main) return;
+  var av = document.getElementById('avisoCopia');
+  if (!ts) {
+    if (av) av.remove();
+    main.inert = false; main.classList.remove('con-copia');
+    return;
+  }
+  if (!av) {
+    av = document.createElement('div');
+    av.id = 'avisoCopia'; av.setAttribute('role', 'status');
+    main.parentNode.insertBefore(av, main);
+  }
+  av.className = 'aviso-copia' + (reintentar ? ' falla' : '');
+  av.textContent = reintentar
+    ? 'No se pudo actualizar: esto es lo que había ' + copiaEdad(ts) + ', solo para mirar.'
+    : 'Mostrando lo que había ' + copiaEdad(ts) + ' · actualizando…';
+  if (reintentar) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = 'Reintentar';
+    b.addEventListener('click', reintentar);
+    av.appendChild(b);
+  }
+  main.inert = true; main.classList.add('con-copia');
+}
+/** "hace 5 min", "hace 2 h", "el 21-oct": de cuándo es la copia. */
+function copiaEdad(ts, ahora) {
+  var min = Math.floor(((ahora || Date.now()) - ts) / 60000);
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return 'hace ' + min + ' min';
+  if (min < 24 * 60) return 'hace ' + Math.floor(min / 60) + ' h';
+  var d = new Date(ts);
+  return 'el ' + d.getDate() + '-' + ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()];
 }
 
 // ── Auth ──

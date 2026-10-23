@@ -931,6 +931,7 @@
     return apiProyectoHojaVida(token, _cb).then(function (d) {
       _datos = d;
       _det = {};
+      copiaGuardar('hv_' + _cb, d);
       render();
       Object.keys(_abiertas).forEach(function (a) { if (_abiertas[a]) cargarDetalle(a); });
     });
@@ -1016,16 +1017,35 @@
       if (el) buscarCarpetas(parseInt(el.dataset.buscar, 10), el.value);
     });
 
-    apiProyectoHojaVida(token, _cb).then(function (d) {
-      _datos = d;
-      _abiertas = abiertasIniciales(d.cotizaciones, _archivoPedido);
-      render();
-      Object.keys(_abiertas).forEach(cargarDetalle);
-    }).catch(function(e){
-      if (manejarError(e)) return;
-      document.getElementById('hvBody').innerHTML =
-        '<div class="card-sec"><p style="color:var(--cf-error);font-weight:600;margin:0;">'+esc((e&&e.message)||'Error al cargar')+'</p></div>';
-    });
+    // Lo último que se vio de este proyecto, de una vez, mientras llega lo
+    // nuevo (~5 s medidos el 23-oct). El detalle de cada cotización espera a
+    // lo nuevo: pedirlo sobre la copia sería otra vuelta al servidor de más.
+    var copia = copiaLeer('hv_' + _cb);
+    if (copia) {
+      try {
+        _datos = copia.datos;
+        _abiertas = abiertasIniciales(_datos.cotizaciones, _archivoPedido);
+        render();
+        modoCopia(copia.ts);
+      } catch (e) { copia = null; modoCopia(null); }   // una copia de otra versión no estorba
+    }
+    var primeraCarga = function () {
+      return apiProyectoHojaVida(token, _cb).then(function (d) {
+        _datos = d;
+        _det = {};
+        copiaGuardar('hv_' + _cb, d);
+        if (!copia) _abiertas = abiertasIniciales(d.cotizaciones, _archivoPedido);
+        render();
+        modoCopia(null);
+        Object.keys(_abiertas).forEach(function (a) { if (_abiertas[a]) cargarDetalle(a); });
+      }).catch(function(e){
+        if (manejarError(e)) return;
+        if (copia) { modoCopia(copia.ts, function () { modoCopia(copia.ts); primeraCarga(); }); return; }
+        document.getElementById('hvBody').innerHTML =
+          '<div class="card-sec"><p style="color:var(--cf-error);font-weight:600;margin:0;">'+esc((e&&e.message)||'Error al cargar')+'</p></div>';
+      });
+    };
+    primeraCarga();
   }
   init();
 })();

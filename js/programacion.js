@@ -574,7 +574,7 @@
     var gen = _gen;
     apiProdColaGet(token).then(function(resp){
       if(_gen !== gen || _pending !== 0) return;  // hubo actividad → ignorar esta foto
-      aplicarDatos(resp);
+      datosDelServidor(resp);
     }).catch(function(){});
   }
   // Agrupa clics repetidos sobre el mismo `key` (misma celda/fila) en una sola
@@ -628,8 +628,20 @@
     var gen = _gen;
     return apiProdColaGet(token).then(function(resp){
       if(!cargaVigente(gen, _gen, Object.keys(_saveTimers).length)){ scheduleReconcile(); return; }
-      aplicarDatos(resp);
-    }).catch(manejarError);
+      datosDelServidor(resp);
+    }).catch(function(e){
+      // Con la copia en pantalla, se queda (solo para mirar) y se ofrece otro intento.
+      if(_copiaTs && !(e && e.tipo === 'auth')) modoCopia(_copiaTs, function(){ modoCopia(_copiaTs); cargar(); });
+      manejarError(e);
+    });
+  }
+  // Lo que llega del servidor: se pinta, se guarda como la copia de la próxima
+  // vez, y si en pantalla estaba la copia, se quita el aviso (23-oct).
+  var _copiaTs = null;
+  function datosDelServidor(resp){
+    aplicarDatos(resp);
+    copiaGuardar('prog_cola', resp);
+    if(_copiaTs){ _copiaTs = null; modoCopia(null); }
   }
 
   // ── Calendario ──
@@ -2296,6 +2308,12 @@
     // Cerrar el menú ⋯ al hacer clic fuera de él, o con Escape
     document.addEventListener('click', function(e){ if(!e.target.closest('.row-actions')) cerrarMenus(); });
     document.addEventListener('keydown', function(e){ if(e.key==='Escape') cerrarMenus(); });
+    // Lo último que se vio, de una vez, mientras llega lo nuevo (~2 s medidos).
+    var copia = copiaLeer('prog_cola');
+    if(copia){
+      try { aplicarDatos(copia.datos); _copiaTs = copia.ts; modoCopia(copia.ts); }
+      catch(e){ _copiaTs = null; modoCopia(null); }   // una copia de otra versión no estorba
+    }
     cargar();
     cargarHigiene();
   }

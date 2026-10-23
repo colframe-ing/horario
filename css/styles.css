@@ -562,3 +562,13 @@ tr:last-child td { border-bottom: none; }
   .admin-panel { padding: 12px; }
   th, td { padding: 8px 10px; }
 }
+
+/* Copia mientras llega lo nuevo (api.js: modoCopia, 23-oct). El contenido se
+   ve pero no se toca (inert): no se edita sobre datos que pueden ser viejos. */
+.aviso-copia { position: sticky; top: 0; z-index: 50; margin: 0 auto 8px; max-width: 1200px;
+               background: #FFFBEB; border: 1px solid #FCD34D; color: #92400E; border-radius: 8px;
+               padding: 8px 12px; font-size: 0.82rem; font-weight: 600; display: flex; gap: 10px; align-items: center; }
+.aviso-copia.falla { background: #FEF2F2; border-color: #FCA5A5; color: #991B1B; }
+.aviso-copia button { margin-left: auto; border: 1px solid currentColor; background: none; color: inherit;
+                      border-radius: 6px; padding: 3px 10px; font: inherit; cursor: pointer; }
+.admin-main.con-copia { opacity: 0.72; }
