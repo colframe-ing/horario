@@ -42,7 +42,7 @@
   }
   var enSerie = crearSerie();
   // Estos nombres tapan, solo dentro de esta pantalla, los de api.js. Las
-  // lecturas (apiProdColaGet, apiProdAlertasHigiene) no pasan por aquí.
+  // lecturas (apiProdColaGet, apiProdAlertasHigiene, apiProdProyectosList) no pasan por aquí.
   var apiProdColaReordenar  = enSerie.envolver(window.apiProdColaReordenar);
   var apiProdColaToggle     = enSerie.envolver(window.apiProdColaToggle);
   var apiProdColaEntrega    = enSerie.envolver(window.apiProdColaEntrega);
@@ -1460,7 +1460,10 @@
           '</div>';
         }).join('');
       cont.querySelectorAll('[data-conc]').forEach(function(b){
-        b.addEventListener('click', function(){ vincularYArrancar(parseInt(b.getAttribute('data-conc'),10)); });
+        b.addEventListener('click', function(){
+          var s = _concSug[parseInt(b.getAttribute('data-conc'),10)];
+          if(s) vincularYArrancar(s.carpetaId);
+        });
       });
     } else {
       // Sin candidatas hay dos causas y conviene decir las dos: la carpeta no
@@ -1471,12 +1474,12 @@
         '<code>25082026_581.1_MALAMBO</code>).<br>Si acabas de crearla, escanea Drive y vuelve a intentar.'+
         '</div>';
     }
-    // El enlace manual apunta a ESTA cotizacion, no al listado: si alguien
-    // sale a vincular a mano, que no tenga que buscarla otra vez.
-    var p2 = _parseUidLocal(uid);
-    document.getElementById('concIrCotiz').href =
-      'cotizaciones.html?archivo=' + encodeURIComponent(p2.archivo);
+    var buscar = document.getElementById('concBuscar');
+    buscar.value = '';
+    document.getElementById('concResultados').innerHTML = '';
     document.getElementById('modalConciliar').classList.remove('hidden');
+    // Sin sugeridas, lo siguiente que hay que hacer es buscar: el cursor ya está ahí.
+    if(!_concSug.length) buscar.focus();
   }
 
   function cerrarConciliar(){
@@ -1484,15 +1487,62 @@
     _concUid = null; _concSug = [];
   }
 
-  function vincularYArrancar(i){
-    var s = _concSug[i]; if(!s || !_concUid) return;
+  // ── Buscar cualquier carpeta, en el mismo diálogo (23-oct) ──
+  // Antes, si la carpeta no estaba entre las sugeridas por código, la salida
+  // era "Vincular a mano" en otra pestaña, y eso cortaba el trabajo. La lista se
+  // pide UNA vez (la misma de la hoja de vida) y se filtra aquí; escanear Drive
+  // la descarta para que traiga lo nuevo.
+  var _concCarpetas = null;
+
+  // FUNCIÓN PURA: hasta 12 carpetas cuyo nombre tiene TODAS las palabras de `q`
+  // (sin tildes, en cualquier orden), sin las que ya salen arriba como sugeridas.
+  function filtrarCarpetas(lista, q, excluir){
+    var palabras = sinTildes(q).split(/\s+/).filter(Boolean);
+    if(palabras.join('').length < 2) return [];
+    var fuera = {}; (excluir||[]).forEach(function(id){ fuera[id] = true; });
+    return (lista||[]).filter(function(c){
+      if(fuera[c.carpetaId]) return false;
+      var n = sinTildes(c.nombre);
+      return palabras.every(function(p){ return n.indexOf(p) !== -1; });
+    }).slice(0, 12);
+  }
+  function pintarBusquedaCarpetas(q){
+    var cont = document.getElementById('concResultados');
+    var res = filtrarCarpetas(_concCarpetas, q, _concSug.map(function(s){ return s.carpetaId; }));
+    if(sinTildes(q).replace(/\s+/g,'').length < 2){ cont.innerHTML = ''; return; }
+    cont.innerHTML = !res.length
+      ? '<div class="conc-vacio">Ninguna carpeta tiene eso en el nombre. Si la acabas de crear, usa ↻ Escanear Drive.</div>'
+      : res.map(function(s){
+          return '<div class="cola-row"><div class="cola-main">'+
+            '<div class="cola-nombre">'+esc(s.nombre)+'</div>'+
+            '<div class="cola-meta">'+fechaCorta(s.fecha)+' · '+fmtNum(s.metrosTotal,0)+' ML'+(s.estado?' · '+esc(s.estado):'')+'</div>'+
+          '</div>'+
+          '<button class="btn btn-primary btn-sm" data-conc-id="'+esc(s.carpetaId)+'">Vincular y arrancar</button>'+
+          '</div>';
+        }).join('');
+    cont.querySelectorAll('[data-conc-id]').forEach(function(b){
+      b.addEventListener('click', function(){ vincularYArrancar(b.getAttribute('data-conc-id')); });
+    });
+  }
+  function buscarCarpetasConc(q){
+    if(_concCarpetas){ pintarBusquedaCarpetas(q); return; }
+    document.getElementById('concResultados').innerHTML = '<div class="conc-vacio">Cargando carpetas…</div>';
+    apiProdProyectosList(token, {}).then(function(r){
+      _concCarpetas = r.proyectos || [];
+      // Lo que se escribió mientras cargaba es lo que vale, no lo de entonces.
+      pintarBusquedaCarpetas(document.getElementById('concBuscar').value);
+    }).catch(manejarError);
+  }
+
+  function vincularYArrancar(carpetaId){
+    if(!carpetaId || !_concUid) return;
     var uid = _concUid, fecha = _concFecha;
     var p = _parseUidLocal(uid);
     cerrarConciliar();
     beginSave();
     // Vincular primero y arrancar después: si el vínculo falla, no queremos una
     // producción iniciada a medias sin carpeta, que es justo lo que se evita.
-    apiCotizVincular(token, p.archivo, s.carpetaId, 'link')
+    apiCotizVincular(token, p.archivo, carpetaId, 'link')
       .then(function(){ return apiProdColaIniciar(token, uid, fecha); })
       .then(function(){ toast('Carpeta vinculada · producción iniciada','ok'); return cargar(); })
       .catch(manejarError).finally(endSave);
@@ -2171,12 +2221,18 @@
     document.getElementById('parCancelar').addEventListener('click', cerrarPartir);
     document.getElementById('parGuardar').addEventListener('click', guardarPartir);
     document.getElementById('concCancelar').addEventListener('click', cerrarConciliar);
+    var _concTimer = null;
+    document.getElementById('concBuscar').addEventListener('input', function(){
+      var q = this.value;
+      clearTimeout(_concTimer);
+      _concTimer = setTimeout(function(){ buscarCarpetasConc(q); }, 200);
+    });
     document.getElementById('concEscanear').addEventListener('click', function(){
       var b = this; b.disabled = true; b.textContent = 'Escaneando…';
       // Reintenta el arranque después del escaneo: si la carpeta ya estaba en
       // Drive pero sin escanear, esto la encuentra y el modal se repuebla solo.
       apiProdScanNow(token)
-        .then(function(){ var u = _concUid, f = _concFecha; cerrarConciliar(); if(u) marcarInicio(u, f); })
+        .then(function(){ _concCarpetas = null; var u = _concUid, f = _concFecha; cerrarConciliar(); if(u) marcarInicio(u, f); })
         .catch(manejarError)
         .finally(function(){ b.disabled = false; b.textContent = '↻ Escanear Drive'; });
     });

@@ -124,6 +124,13 @@
     .cola-proy-link:hover { color:var(--cf-blue); text-decoration:underline; }
     .cola-proy-link .cb { font-weight:400; color:var(--cf-gray-text); font-size:0.72rem; }
     .cola-meta { font-size:0.72rem; color:var(--cf-gray-text); }
+    .conc-buscar { margin-top:14px; padding-top:12px; border-top:1px solid var(--cf-gray-mid); }
+    .conc-buscar label { display:block; font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;
+                         color:var(--cf-gray-text); margin-bottom:4px; }
+    .conc-buscar input { width:100%; box-sizing:border-box; padding:8px 10px; border:1.5px solid var(--cf-gray-mid);
+                         border-radius:6px; font-size:0.85rem; font-family:inherit; }
+    .conc-buscar .conc-vacio { font-size:0.78rem; color:var(--cf-gray-text); margin-top:8px; }
+    #concResultados { max-height:260px; overflow-y:auto; margin-top:6px; }
     .puesto-elegir { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:0.78rem; color:var(--cf-dark);
                      margin-top:12px; padding-top:10px; border-top:1px solid var(--cf-gray-mid); }
     .puesto-elegir span { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--cf-gray-text); }
@@ -559,12 +566,16 @@
       <div id="concNombre" style="font-size:0.85rem;color:var(--cf-dark);font-weight:700;margin-bottom:4px;"></div>
       <div id="concInfo" style="font-size:0.75rem;color:var(--cf-gray-text);margin-bottom:12px;"></div>
       <div id="concLista"></div>
+      <!-- Cualquier otra carpeta, buscada por nombre, sin salir de aquí (23-oct):
+           antes la salida era "Vincular a mano", en otra pestaña. -->
+      <div class="conc-buscar">
+        <label for="concBuscar">¿No está? Búscala por nombre</label>
+        <input id="concBuscar" type="search" placeholder="Ej. MALAMBO o 581" autocomplete="off">
+        <div id="concResultados"></div>
+      </div>
       <div class="modal-actions" style="justify-content:space-between;">
         <button class="btn btn-ghost btn-sm" id="concEscanear" title="Busca carpetas nuevas en Drive y vuelve a mirar">↻ Escanear Drive</button>
-        <div style="display:flex;gap:8px;">
-          <a class="btn btn-ghost btn-sm" id="concIrCotiz" href="cotizaciones.html" target="_blank" rel="noopener">Vincular a mano</a>
-          <button class="btn btn-ghost btn-sm" id="concCancelar">Cancelar</button>
-        </div>
+        <button class="btn btn-ghost btn-sm" id="concCancelar">Cancelar</button>
       </div>
     </div>
   </div>
