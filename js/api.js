@@ -547,6 +547,10 @@ async function apiRemAntiguaAgregar(token, datos) {
 async function apiRemEnvioAsignar(token, docId, envioId) {
   return apiCall('remision_envio_asignar', { token, docId, envioId });
 }
+/** Mueve una remisión a otra cotización (y su envío), sin cambiar la remisión (26-oct). */
+async function apiRemCotizacionCambiar(token, docId, archivo, envioId) {
+  return apiCall('remision_cotizacion_cambiar', { token, docId, archivo, envioId });
+}
 async function apiRemAntiguaAnular(token, antId, motivo) {
   return apiCall('remision_antigua_anular', { token, antId, motivo });
 }

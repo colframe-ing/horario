@@ -164,6 +164,8 @@
                                       text-transform:none; letter-spacing:0; color:var(--cf-dark); margin:0; }
     .envio-aviso { font-size:0.8rem; color:#92400E; background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:6px 10px; margin-top:4px; }
     .envio-acciones { display:flex; gap:8px; margin-top:6px; }
+    .mover-cotiz { margin-top:8px; padding:10px 12px; border:1px solid #BFDBFE; background:#EFF6FF; border-radius:8px;
+                   font-size:0.84rem; color:#1E40AF; }
   </style>
 </head>
 <body>
@@ -295,6 +297,17 @@
             <label for="edProyBuscar">Buscar cotización aprobada</label>
             <input type="text" id="edProyBuscar" placeholder="CB, proyecto…" autocomplete="off">
             <select id="edProySelect" size="4" style="margin-top:6px;display:none;"></select>
+            <!-- Mover una remisión ya hecha a otra cotización sin cambiar la
+                 remisión (26-oct): una casa repetida tiene varias cotizaciones
+                 y una remisión quedó amarrada a la que no era. -->
+            <button type="button" class="btn btn-ghost btn-sm oculto" id="btnMoverCotiz" style="margin-top:6px;">Mover a otra cotización</button>
+            <div id="edMover" class="mover-cotiz oculto">
+              <div id="edMoverInfo"></div>
+              <div class="envio-acciones">
+                <button type="button" class="btn btn-primary btn-sm" id="btnMoverConfirmar">Mover remisión</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnMoverCancelar">Cancelar</button>
+              </div>
+            </div>
           </div>
           <div class="form-group"><label for="edCb">CB</label><input type="text" id="edCb" readonly></div>
           <div class="form-group"><label for="edVersion">Versión</label><input type="text" id="edVersion" readonly></div>

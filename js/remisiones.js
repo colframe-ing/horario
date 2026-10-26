@@ -713,6 +713,8 @@
     // formulario sigue funcionando: el envío ya está guardado en doc.envioId.
     enviosCache = [];
     asignandoEnvio = false;
+    moviendo = false; moverA = null;
+    $('edMover').classList.add('oculto');
     pintarEnvios();
     if (doc.cotizacionArchivo && doc.cb) {
       apiRemProyectos(token, String(doc.cb)).then(res => {
@@ -847,10 +849,13 @@
     // así que aquí no se tocan sin importar cuántas veces se repinte la tabla.
     const CAMPOS_ITEM_APARTE = ['cajaNum', 'cantidad', 'pesoKg'];
     $('vistaEditor').querySelectorAll('input,select,textarea').forEach(el => {
-      if (el.id === 'edProyBuscar') return;
       if (el.dataset && CAMPOS_ITEM_APARTE.includes(el.dataset.f)) return;
       el.disabled = !editable && el.tagName !== 'BUTTON';
     });
+    // El buscador de cotización se quedaba activo en una remisión que ya no se
+    // edita, y elegir ahí cambiaba la pantalla sin guardar nada. Ahora solo se
+    // activa con "Mover a otra cotización" (26-oct).
+    pintarMover();
 
     // El transportador tiene permiso propio, más suelto que el resto del
     // documento (ver remTransportadorSet en Remisiones.gs): el vehículo o el
@@ -1097,6 +1102,7 @@
   $('edProySelect').addEventListener('change', () => {
     const p = proyectosCache[parseInt($('edProySelect').value)];
     if (!p) return;
+    if (doc._puedeEditar === false) { if (moviendo) elegirDestino(p); return; }
     $('edCb').value = p.cb; $('edVersion').value = p.version;
     $('edProyecto').value = p.proyecto;
     doc.cotizacionArchivo = p.archivo;
@@ -1152,7 +1158,7 @@
     // Asignar es para lo que ya no se edita en el formulario: Dirección o
     // Administrativo, y nunca sobre una anulada.
     const puedeAsignar = !editable && M.esAdmin && !!doc.docId && est !== 'ANULADA';
-    const activos = editable || asignandoEnvio;
+    const activos = editable || asignandoEnvio || moviendo;
     const ids = envioIdsDe(doc.envioId);
     caja.innerHTML = enviosCache.map(e =>
       `<label><input type="checkbox" value="${esc(e.id)}"${ids.indexOf(e.id) !== -1 ? ' checked' : ''}` +
@@ -1162,9 +1168,9 @@
       if (editable) marcarSucio();
       pintarAvisoEnvio();
     }));
-    btnAsig.classList.toggle('oculto', !puedeAsignar || asignandoEnvio);
+    btnAsig.classList.toggle('oculto', !puedeAsignar || asignandoEnvio || moviendo);
     btnAsig.textContent = ids.length ? 'Cambiar envío' : 'Asignar envío';
-    btnGuardarEnv.classList.toggle('oculto', !asignandoEnvio);
+    btnGuardarEnv.classList.toggle('oculto', !asignandoEnvio || moviendo);
     pintarAvisoEnvio();
   }
   function pintarAvisoEnvio() {
@@ -1193,6 +1199,86 @@
     } finally {
       btn.disabled = false; btn.textContent = 'Guardar envío';
       pintarEnvios();
+    }
+  });
+
+  // ── Mover la remisión a otra cotización (26-oct) ────────────────────────
+  // Una casa que se repite tiene varias cotizaciones (679.4, 679.5, 679.6…) y
+  // una remisión puede quedar amarrada a la que no era. Esto la mueve SIN
+  // cambiar la remisión: solo la cotización, y su envío si la nueva está
+  // partida. Dirección o Administrativo, en una que ya no se edita (en un
+  // borrador basta con elegir otra cotización y guardar).
+  let moviendo = false, moverA = null, antesDeMover = null;
+
+  function puedeMover() {
+    const est = String(doc.estado || '').toUpperCase();
+    return doc._puedeEditar === false && !!M.esAdmin && !!doc.docId && est !== 'ANULADA';
+  }
+  function pintarMover() {
+    const editable = doc._puedeEditar !== false;
+    $('edProyBuscar').disabled = !(editable || moviendo);
+    $('btnMoverCotiz').classList.toggle('oculto', !puedeMover() || moviendo);
+    $('edMover').classList.toggle('oculto', !moverA);
+  }
+  onClick('btnMoverCotiz', () => {
+    moviendo = true;
+    antesDeMover = { cotizacionArchivo: doc.cotizacionArchivo, cb: doc.cb, version: doc.version,
+                     proyecto: doc.proyecto, envioId: doc.envioId, envios: enviosCache };
+    pintarMover();
+    $('edProyBuscar').focus();
+    toast('Busca la cotización a la que pertenece esta remisión.', 'info');
+  });
+  function elegirDestino(p) {
+    moverA = p;
+    $('edProySelect').style.display = 'none';
+    $('edProyBuscar').value = '';
+    doc.envioId = '';
+    enviosCache = p.envios || [];
+    $('edMoverInfo').innerHTML =
+      'Mover <strong>' + esc(doc.consecutivo || 'esta remisión') + '</strong> de CB ' +
+      esc(antesDeMover.cb) + '.' + esc(antesDeMover.version) + ' a <strong>CB ' + esc(p.cb) + '.' +
+      esc(p.version) + ' · ' + esc(p.proyecto) + '</strong>. La remisión no cambia: solo con qué cotización se relaciona.' +
+      (enviosCache.length ? '<br>Esa cotización está partida: marca abajo el envío (o los envíos) que lleva.' : '');
+    pintarEnvios();
+    pintarMover();
+  }
+  function salirDeMover() {
+    moviendo = false; moverA = null;
+    pintarMover();
+  }
+  onClick('btnMoverCancelar', () => {
+    if (antesDeMover) {
+      Object.assign(doc, { cotizacionArchivo: antesDeMover.cotizacionArchivo, cb: antesDeMover.cb,
+                           version: antesDeMover.version, proyecto: antesDeMover.proyecto,
+                           envioId: antesDeMover.envioId });
+      enviosCache = antesDeMover.envios || [];
+    }
+    salirDeMover();
+    pintarEnvios();
+  });
+  onClick('btnMoverConfirmar', async () => {
+    if (!moverA) return;
+    const ids = envioIdsDe(doc.envioId);
+    if (enviosCache.length && !ids.length) { toast('Marca el envío que lleva esta remisión.', 'warning'); return; }
+    const btn = $('btnMoverConfirmar');
+    btn.disabled = true; btn.textContent = 'Moviendo…';
+    try {
+      const res = await apiRemCotizacionCambiar(token, doc.docId, moverA.archivo, ids.join(','));
+      Object.assign(doc, { cotizacionArchivo: res.archivo, cb: res.cb, version: res.version,
+                           proyecto: res.proyecto, envioId: res.envioId });
+      $('edCb').value = res.cb; $('edVersion').value = res.version; $('edProyecto').value = res.proyecto;
+      salirDeMover();
+      pintarEnvios();
+      toast('Remisión movida a CB ' + res.cb + '.' + res.version, 'success');
+      // La plata no se mueve sola: lo repartido de su factura sigue donde estaba.
+      if (res.facturaNumero) {
+        toast('Su factura ' + res.facturaNumero + ' sigue repartida en la cotización anterior: revísala en Facturación.',
+              'warning', 8000);
+      }
+    } catch (e) {
+      manejarError(e);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Mover remisión';
     }
   });
 
