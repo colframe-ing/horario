@@ -1102,7 +1102,7 @@
   $('edProySelect').addEventListener('change', () => {
     const p = proyectosCache[parseInt($('edProySelect').value)];
     if (!p) return;
-    if (doc._puedeEditar === false) { if (moviendo) elegirDestino(p); return; }
+    if (vinculoFijo()) { if (moviendo) elegirDestino(p); return; }
     $('edCb').value = p.cb; $('edVersion').value = p.version;
     $('edProyecto').value = p.proyecto;
     doc.cotizacionArchivo = p.archivo;
@@ -1153,19 +1153,19 @@
       return;
     }
     cont.classList.remove('oculto');
-    const editable = doc._puedeEditar !== false;
+    const libre = !vinculoFijo();
     const est = String(doc.estado || '').toUpperCase();
-    // Asignar es para lo que ya no se edita en el formulario: Dirección o
-    // Administrativo, y nunca sobre una anulada.
-    const puedeAsignar = !editable && M.esAdmin && !!doc.docId && est !== 'ANULADA';
-    const activos = editable || asignandoEnvio || moviendo;
+    // Asignar es para una remisión con el vínculo fijo (firme, o que no se
+    // edita): Dirección o Administrativo, y nunca sobre una anulada.
+    const puedeAsignar = !libre && M.esAdmin && !!doc.docId && est !== 'ANULADA';
+    const activos = libre || asignandoEnvio || moviendo;
     const ids = envioIdsDe(doc.envioId);
     caja.innerHTML = enviosCache.map(e =>
       `<label><input type="checkbox" value="${esc(e.id)}"${ids.indexOf(e.id) !== -1 ? ' checked' : ''}` +
       `${activos ? '' : ' disabled'}> ${esc(etiquetaEnvio(e))}</label>`).join('');
     caja.querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
       doc.envioId = Array.from(caja.querySelectorAll('input:checked')).map(x => x.value).join(',');
-      if (editable) marcarSucio();
+      if (libre) marcarSucio();
       pintarAvisoEnvio();
     }));
     btnAsig.classList.toggle('oculto', !puedeAsignar || asignandoEnvio || moviendo);
@@ -1178,7 +1178,7 @@
     if (!aviso) return;
     const falta = enviosCache.length && !envioIdsDe(doc.envioId).length;
     aviso.classList.toggle('oculto', !falta);
-    aviso.textContent = doc._puedeEditar === false && !asignandoEnvio
+    aviso.textContent = vinculoFijo() && !asignandoEnvio && !moviendo
       ? '⚠ Esta remisión no dice qué envío despacha: en Facturación no cuenta como despachado ninguno.'
       : 'Marca el envío (o los envíos) que lleva esta remisión.';
   }
@@ -1210,13 +1210,21 @@
   // borrador basta con elegir otra cotización y guardar).
   let moviendo = false, moverA = null, antesDeMover = null;
 
+  // EL VÍNCULO FIJO. En una remisión firme (despachada, entregada, facturada)
+  // la cotización y el envío se cambian SOLO con sus botones —Mover a otra
+  // cotización, Asignar envío—, aunque el resto se pueda corregir. Antes la
+  // regla era "si no se puede editar", y a Dirección y Administrativo el
+  // sistema les deja editar todo lo que no esté anulado: justo a quienes
+  // pueden usar los botones no les salían nunca (reportado el 26-oct).
+  function vinculoFijo() {
+    return !!doc.docId && (esFirme() || doc._puedeEditar === false);
+  }
   function puedeMover() {
     const est = String(doc.estado || '').toUpperCase();
-    return doc._puedeEditar === false && !!M.esAdmin && !!doc.docId && est !== 'ANULADA';
+    return vinculoFijo() && !!M.esAdmin && est !== 'ANULADA';
   }
   function pintarMover() {
-    const editable = doc._puedeEditar !== false;
-    $('edProyBuscar').disabled = !(editable || moviendo);
+    $('edProyBuscar').disabled = vinculoFijo() ? !moviendo : doc._puedeEditar === false;
     $('btnMoverCotiz').classList.toggle('oculto', !puedeMover() || moviendo);
     $('edMover').classList.toggle('oculto', !moverA);
   }
@@ -2632,7 +2640,9 @@
     // Proyecto partido: hay que decir qué envío(s) lleva (26-oct). El backend
     // también lo exige; aquí se dice antes de pedir el motivo o mandar nada.
     if (enviosCache.length && !envioIdsDe(doc.envioId).length) {
-      toast('Este proyecto está partido en envíos: marca cuál o cuáles despacha esta remisión.', 'warning', 5000);
+      toast(vinculoFijo()
+        ? 'Esta remisión no dice qué envío despacha: asígnaselo con "Asignar envío" antes de guardar la corrección.'
+        : 'Este proyecto está partido en envíos: marca cuál o cuáles despacha esta remisión.', 'warning', 6000);
       pintarAvisoEnvio();
       return false;
     }
