@@ -1803,6 +1803,7 @@
     REMISION_ANTIGUA_AGREGADA:  { txt: 'Remisión antigua registrada', color: '#475569', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ENVIO_ASIGNADO:    { txt: 'Envío asignado a una remisión', color: '#0891B2', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_COTIZACION_CAMBIADA: { txt: 'Remisión movida a otra cotización', color: '#0891B2', g: 'Remisiones (hoja AuditoriaRemisiones)' },
+    REMISION_PROYECTO_RESTAURADO: { txt: 'Nombre de proyecto restaurado en una remisión', color: '#0891B2', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     DESPACHO_SIN_REMISION:      { txt: 'Despacho sin remisión',      color: '#B45309', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     DESPACHO_SIN_REMISION_ANULADO: { txt: 'Despacho sin remisión quitado', color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },
     REMISION_ANTIGUA_ANULADA:   { txt: 'Remisión antigua quitada',  color: '#DC2626', g: 'Remisiones (hoja AuditoriaRemisiones)' },

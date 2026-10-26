@@ -1143,6 +1143,21 @@
   // Mientras se asigna el envío a una remisión que ya no se edita.
   let asignandoEnvio = false;
 
+  // En qué OTRAS remisiones ya está un envío (26-oct): "ya en RM-0841, RM-0845
+  // y un borrador". No bloquea —un envío suele salir en varias remisiones—,
+  // solo avisa. La remisión abierta no cuenta. FUNCIÓN PURA.
+  function yaEnOtras(e, docIdActual) {
+    const otras = ((e && e.remisiones) || []).filter(r => r.docId !== docIdActual);
+    if (!otras.length) return '';
+    const nums = otras.filter(r => r.consecutivo).map(r => r.consecutivo);
+    const borr = otras.length - nums.length;
+    const partes = nums.slice();
+    if (borr) partes.push(borr === 1 ? 'un borrador' : borr + ' borradores');
+    return 'ya en ' + (partes.length > 1
+      ? partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1]
+      : partes[0]);
+  }
+
   function pintarEnvios() {
     const cont = $('edEnvioWrap'), caja = $('edEnvios'), aviso = $('edEnvioAviso');
     if (!cont || !caja) return;
@@ -1160,9 +1175,12 @@
     const puedeAsignar = !libre && M.esAdmin && !!doc.docId && est !== 'ANULADA';
     const activos = libre || asignandoEnvio || moviendo;
     const ids = envioIdsDe(doc.envioId);
-    caja.innerHTML = enviosCache.map(e =>
-      `<label><input type="checkbox" value="${esc(e.id)}"${ids.indexOf(e.id) !== -1 ? ' checked' : ''}` +
-      `${activos ? '' : ' disabled'}> ${esc(etiquetaEnvio(e))}</label>`).join('');
+    caja.innerHTML = enviosCache.map(e => {
+      const otras = yaEnOtras(e, doc.docId);
+      return `<label><input type="checkbox" value="${esc(e.id)}"${ids.indexOf(e.id) !== -1 ? ' checked' : ''}` +
+        `${activos ? '' : ' disabled'}> ${esc(etiquetaEnvio(e))}` +
+        (otras ? ` <span class="envio-ya">· ${esc(otras)}</span>` : '') + `</label>`;
+    }).join('');
     caja.querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
       doc.envioId = Array.from(caja.querySelectorAll('input:checked')).map(x => x.value).join(',');
       if (libre) marcarSucio();
