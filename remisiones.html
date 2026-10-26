@@ -158,6 +158,12 @@
                   background-position:calc(100% - 14px) center,calc(100% - 9px) center;
                   background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:26px; }
     .lin-tabla input[list] { background-position:calc(100% - 11px) center,calc(100% - 6px) center; padding-right:20px; }
+    /* Envíos que despacha la remisión (26-oct): casillas, uno o varios. */
+    .envios-check { display:flex; flex-wrap:wrap; gap:6px 16px; padding:6px 0; }
+    .form-group .envios-check label { display:inline-flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:500; cursor:pointer;
+                                      text-transform:none; letter-spacing:0; color:var(--cf-dark); margin:0; }
+    .envio-aviso { font-size:0.8rem; color:#92400E; background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:6px 10px; margin-top:4px; }
+    .envio-acciones { display:flex; gap:8px; margin-top:6px; }
   </style>
 </head>
 <body>
@@ -298,9 +304,17 @@
           <!-- Solo aparece si el proyecto está partido en envíos. Elegir el envío
                hace que la sugerencia de kg de acero se calcule contra ESE envío y
                no contra la obra completa (PLAN_PROGRAMACION §8). -->
+          <!-- Uno o varios (26-oct): una remisión a veces lleva material de dos
+               envíos. En un proyecto partido hay que marcar al menos uno: con
+               "todo el proyecto" no contaba para ninguno en Facturación. -->
           <div class="form-group oculto" id="edEnvioWrap" style="grid-column:1/-1;">
-            <label for="edEnvio">Envío que despacha esta remisión</label>
-            <select id="edEnvio"></select>
+            <label>Envío(s) que despacha esta remisión</label>
+            <div id="edEnvios" class="envios-check"></div>
+            <div id="edEnvioAviso" class="envio-aviso oculto"></div>
+            <div class="envio-acciones">
+              <button type="button" class="btn btn-ghost btn-sm oculto" id="btnAsignarEnvio">Asignar envío</button>
+              <button type="button" class="btn btn-primary btn-sm oculto" id="btnGuardarEnvio">Guardar envío</button>
+            </div>
           </div>
         </div>
       </div>

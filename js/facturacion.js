@@ -1238,6 +1238,22 @@
     return (d > 0 ? '+' : '−') + money(Math.abs(d)) + pctTxt;
   }
 
+  /**
+   * Las remisiones de "Todo el proyecto" en un proyecto partido (26-oct): no
+   * cuentan para ningún envío, así que "Despachado" se queda corto. Cada una
+   * lleva a su remisión, donde se le asigna el envío. FUNCIÓN PURA.
+   */
+  function sinEnvioHtml(lista) {
+    var l = lista || [];
+    if (!l.length) return '';
+    return '<div class="sin-rep" title="Remisiones despachadas que no dicen qué envío llevan: no cuentan arriba">' +
+      l.length + (l.length === 1 ? ' remisión' : ' remisiones') + ' sin envío: ' +
+      l.map(function (d) {
+        return '<a href="remisiones.html?doc=' + encodeURIComponent(d.docId) + '" target="_blank" rel="noopener">' +
+               esc(d.consecutivo || 'sin número') + '</a>';
+      }).join(', ') + '</div>';
+  }
+
   var filtroProy = 'abiertos';
 
   function vistaProyecto() {
@@ -1358,7 +1374,7 @@
             '<div class="cbv">' + r.adicionalN + (r.adicionalN === 1 ? ' cobro' : ' cobros') + '</div>'
           : '—') + '</td>' +
         '<td class="n">' + (r.expuesto > 0 ? '<span class="neg">' + money(r.expuesto) + '</span>' : '—') + '</td>' +
-        '<td class="n">' + num(r.unidadesDespachadas) + '/' + num(r.unidades) + '</td>' +
+        '<td class="n">' + num(r.unidadesDespachadas) + '/' + num(r.unidades) + sinEnvioHtml(c.remisionesSinEnvio) + '</td>' +
         '<td class="acc">' + acciones + '</td></tr>';
     }).join('');
 

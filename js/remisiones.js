@@ -712,6 +712,7 @@
     // solo si hay proyecto vinculado, y si la consulta falla el resto del
     // formulario sigue funcionando: el envío ya está guardado en doc.envioId.
     enviosCache = [];
+    asignandoEnvio = false;
     pintarEnvios();
     if (doc.cotizacionArchivo && doc.cb) {
       apiRemProyectos(token, String(doc.cb)).then(res => {
@@ -1125,20 +1126,74 @@
     return 'Envío ' + e.idx + ' de ' + e.total + ' · ' + tam + est;
   }
 
+  // Uno o VARIOS (26-oct): `doc.envioId` es "e1" o "e1,e2". Ya no hay "Todo el
+  // proyecto" en un proyecto partido: una remisión así no contaba para ningún
+  // envío y Facturación decía "Despachado 0/6" (12 remisiones en 4 proyectos).
+  function envioIdsDe(v) {
+    const out = [];
+    String(v || '').split(',').forEach(x => { x = x.trim(); if (x && out.indexOf(x) === -1) out.push(x); });
+    return out;
+  }
+  // Mientras se asigna el envío a una remisión que ya no se edita.
+  let asignandoEnvio = false;
+
   function pintarEnvios() {
-    const cont = $('edEnvioWrap'), sel = $('edEnvio');
-    if (!cont || !sel) return;
-    if (!enviosCache.length) { cont.classList.add('oculto'); sel.innerHTML = ''; return; }
+    const cont = $('edEnvioWrap'), caja = $('edEnvios'), aviso = $('edEnvioAviso');
+    if (!cont || !caja) return;
+    const btnAsig = $('btnAsignarEnvio'), btnGuardarEnv = $('btnGuardarEnvio');
+    if (!enviosCache.length) {
+      cont.classList.add('oculto'); caja.innerHTML = '';
+      btnAsig.classList.add('oculto'); btnGuardarEnv.classList.add('oculto');
+      return;
+    }
     cont.classList.remove('oculto');
-    sel.innerHTML = '<option value="">Todo el proyecto</option>' +
-      enviosCache.map(e => `<option value="${esc(e.id)}"${doc.envioId === e.id ? ' selected' : ''}>` +
-                            `${esc(etiquetaEnvio(e))}</option>`).join('');
+    const editable = doc._puedeEditar !== false;
+    const est = String(doc.estado || '').toUpperCase();
+    // Asignar es para lo que ya no se edita en el formulario: Dirección o
+    // Administrativo, y nunca sobre una anulada.
+    const puedeAsignar = !editable && M.esAdmin && !!doc.docId && est !== 'ANULADA';
+    const activos = editable || asignandoEnvio;
+    const ids = envioIdsDe(doc.envioId);
+    caja.innerHTML = enviosCache.map(e =>
+      `<label><input type="checkbox" value="${esc(e.id)}"${ids.indexOf(e.id) !== -1 ? ' checked' : ''}` +
+      `${activos ? '' : ' disabled'}> ${esc(etiquetaEnvio(e))}</label>`).join('');
+    caja.querySelectorAll('input').forEach(el => el.addEventListener('change', () => {
+      doc.envioId = Array.from(caja.querySelectorAll('input:checked')).map(x => x.value).join(',');
+      if (editable) marcarSucio();
+      pintarAvisoEnvio();
+    }));
+    btnAsig.classList.toggle('oculto', !puedeAsignar || asignandoEnvio);
+    btnAsig.textContent = ids.length ? 'Cambiar envío' : 'Asignar envío';
+    btnGuardarEnv.classList.toggle('oculto', !asignandoEnvio);
+    pintarAvisoEnvio();
+  }
+  function pintarAvisoEnvio() {
+    const aviso = $('edEnvioAviso');
+    if (!aviso) return;
+    const falta = enviosCache.length && !envioIdsDe(doc.envioId).length;
+    aviso.classList.toggle('oculto', !falta);
+    aviso.textContent = doc._puedeEditar === false && !asignandoEnvio
+      ? '⚠ Esta remisión no dice qué envío despacha: en Facturación no cuenta como despachado ninguno.'
+      : 'Marca el envío (o los envíos) que lleva esta remisión.';
   }
 
-  const selEnvio = $('edEnvio');
-  if (selEnvio) selEnvio.addEventListener('change', () => {
-    doc.envioId = selEnvio.value || '';
-    marcarSucio();
+  onClick('btnAsignarEnvio', () => { asignandoEnvio = true; pintarEnvios(); });
+  onClick('btnGuardarEnvio', async () => {
+    const ids = envioIdsDe(doc.envioId);
+    if (!ids.length) { toast('Marca al menos un envío.', 'warning'); return; }
+    const btn = $('btnGuardarEnvio');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const res = await apiRemEnvioAsignar(token, doc.docId, ids.join(','));
+      doc.envioId = res.envioId;
+      asignandoEnvio = false;
+      toast('Envío asignado', 'success');
+    } catch (e) {
+      manejarError(e);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Guardar envío';
+      pintarEnvios();
+    }
   });
 
   // ── Sugerir detalle desde la cotización (§6.1.2 del plan) ────────────────
@@ -2486,6 +2541,13 @@
     }
     if (!doc._detalle.length) {
       toast('Agrega al menos un ítem con cantidad antes de guardar.', 'warning');
+      return false;
+    }
+    // Proyecto partido: hay que decir qué envío(s) lleva (26-oct). El backend
+    // también lo exige; aquí se dice antes de pedir el motivo o mandar nada.
+    if (enviosCache.length && !envioIdsDe(doc.envioId).length) {
+      toast('Este proyecto está partido en envíos: marca cuál o cuáles despacha esta remisión.', 'warning', 5000);
+      pintarAvisoEnvio();
       return false;
     }
 

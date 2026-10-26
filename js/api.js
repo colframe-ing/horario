@@ -543,6 +543,10 @@ async function apiProdAnomaliasList(token) {
 async function apiRemAntiguaAgregar(token, datos) {
   return apiCall('remision_antigua_agregar', Object.assign({ token }, datos));
 }
+/** Asigna el envío (o los envíos, "e1,e2") a una remisión que ya existe (26-oct). */
+async function apiRemEnvioAsignar(token, docId, envioId) {
+  return apiCall('remision_envio_asignar', { token, docId, envioId });
+}
 async function apiRemAntiguaAnular(token, antId, motivo) {
   return apiCall('remision_antigua_anular', { token, antId, motivo });
 }
