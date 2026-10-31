@@ -452,6 +452,11 @@ async function apiCotizDetalle(token, archivo) {
 async function apiCotizVincular(token, archivo, carpetaId, accion) {
   return apiCall('cotiz_vincular', { token, archivo, carpetaId, accion });
 }
+// Agrega al maestro las cotizaciones nuevas de 02_COSTOS BASE (MaestroSync.gs).
+// Lo mismo que corre solo cada mañana. Puede tardar hasta ~4 min.
+async function apiCotizSync(token) {
+  return apiCall('cotiz_sync', { token });
+}
 
 // ── Programación / calendario de producción (Etapa 3) ────────────────────────
 async function apiProdColaGet(token) {

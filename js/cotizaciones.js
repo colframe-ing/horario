@@ -210,7 +210,47 @@
       poblarAnios(resp.anios || []);
       renderStats(resp.stats);
       renderLista(_cache);
+      renderSyncInfo(resp.ultimaSync);
     }).catch(manejarError);
+  }
+
+  // ── Actualizar el maestro (MaestroSync.gs) ──────────────────────────────
+  // Corre solo cada mañana; el botón es para no esperar a mañana.
+  function renderSyncInfo(u) {
+    var el = document.getElementById('syncInfo');
+    if (!u || !u.ts) { el.textContent = ''; return; }
+    var d = new Date(u.ts);
+    var cuando = d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) + ', ' +
+      d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+    var quien = u.por === 'disparador' ? 'automática' : 'manual';
+    el.textContent = u.error
+      ? 'La última actualización (' + cuando + ') falló: ' + u.error
+      : 'Maestro actualizado ' + cuando + ' (' + quien + ') · ' +
+        (u.agregadas ? u.agregadas + ' nueva' + (u.agregadas === 1 ? '' : 's') : 'sin novedades') +
+        (u.pendientes ? ' · faltan ' + u.pendientes + ', vuelve a actualizar' : '');
+    el.style.color = u.error ? 'var(--cf-error)' : '';
+  }
+
+  function sincronizarMaestro() {
+    var btn = document.getElementById('btnSyncMaestro');
+    var texto = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Actualizando…';
+    apiCotizSync(token).then(function (r) {
+      renderSyncInfo(r);
+      if (r.errores && r.errores.length) {
+        toast('No se pudo leer: ' + r.errores.join(', '), 'error');
+      } else if (r.pendientes) {
+        toast(r.agregadas + ' agregadas; faltan ' + r.pendientes + '. Vuelve a presionar.', 'ok');
+      } else {
+        toast(r.agregadas ? r.agregadas + ' cotización' + (r.agregadas === 1 ? '' : 'es') + ' nueva' + (r.agregadas === 1 ? '' : 's') + ' en el maestro'
+                          : 'El maestro ya estaba al día', 'ok');
+      }
+      if (r.agregadas) cargar();
+    }).catch(manejarError).then(function () {
+      btn.disabled = false;
+      btn.textContent = texto;
+    });
   }
 
   // Puebla el <select> de años con los presentes en el maestro, preservando la selección.
@@ -327,6 +367,7 @@
       clearSession(); location.href = 'index.html';
     });
     document.getElementById('btnBuscar').addEventListener('click', cargar);
+    document.getElementById('btnSyncMaestro').addEventListener('click', sincronizarMaestro);
     document.getElementById('filtroAnio').addEventListener('change', cargar);
     document.getElementById('filtroMes').addEventListener('change', cargar);
     document.getElementById('filtroAprobadas').addEventListener('change', cargar);
