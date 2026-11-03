@@ -300,9 +300,12 @@
     inp.value = n; // normaliza (por si escribieron 0 o vacío)
     if (n === (cot.cantidad || 1)) return; // sin cambio
     inp.disabled = true;
-    apiCotizMarcar(token, archivo, true, n).then(function () {
+    apiCotizMarcar(token, archivo, true, n).then(function (r) {
       cot.cantidad = n;
       toast('Cantidad actualizada a ' + n + (n === 1 ? ' casa' : ' casas'), 'ok');
+      // El C140 guardado sigue a la cantidad solo cuando no hay duda; si no, el
+      // backend dice por qué y hay que revisarlo en Programación.
+      if (r && r.avisoC140) toast(r.avisoC140 + ' Revísalo en Programación.', 'error');
       cargar(); // refresca stats (ML/valor ×N) y la línea de la card
     }).catch(function (e) {
       inp.value = cot.cantidad || 1; // revertir
