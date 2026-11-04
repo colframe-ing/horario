@@ -74,6 +74,24 @@
     .ex-estado.SIN_STOCK { background: #FEE2E2; color: #B91C1C; }
     .ex-estado.SIN_CONTEO { background: #F1F5F9; color: #64748B; }
     .und { color: var(--cf-gray-text); font-size: 0.75rem; }
+
+    /* Cargar inventario del mes (desde los Excel) */
+    .mes-alerta { border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; margin-top: 8px; line-height: 1.4; }
+    .mes-alerta.TOTAL, .mes-alerta.COSTO { background: #FFFBEB; border: 1px solid #FDE68A; color: #92400E; }
+    .mes-alerta.VIEJO { background: #EFF6FF; border: 1px solid #BFDBFE; color: #1E40AF; }
+    .mes-alerta.FALTAN, .mes-alerta.INFO { background: #F8FAFC; border: 1px solid var(--cf-gray-mid); color: #475569; }
+    .mes-tabla { width: 100%; font-size: 0.8rem; }
+    .mes-tabla td, .mes-tabla th { padding: 6px 8px; vertical-align: top; }
+    .mes-tabla .n { text-align: right; white-space: nowrap; }
+    .mes-tabla select, .mes-tabla input[type=text] { width: 100%; min-width: 150px; font-size: 0.8rem; padding: 6px 8px; }
+    .mes-sec td { background: #F1F5F9; font-weight: 800; color: var(--cf-dark); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .mes-est { font-size: 0.65rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+    .mes-est.OK { background: #D1FAE5; color: #065F46; }
+    .mes-est.VIEJO { background: #DBEAFE; color: #1E40AF; }
+    .mes-est.PROPUESTO { background: #FEF3C7; color: #92400E; }
+    .mes-est.NUEVO { background: #FCE7F3; color: #9D174D; }
+    .mes-cuentas { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .mes-ok { background: #D1FAE5; color: #065F46; border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; white-space: pre-line; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -111,6 +129,7 @@
     <button class="tab-btn active" data-tab="registrar" role="tab">Registrar recepción</button>
     <button class="tab-btn" data-tab="recepciones" role="tab">Recepciones <span id="cuentaPendientes" class="tab-cuenta hidden"></span></button>
     <button class="tab-btn hidden" data-tab="existencias" id="tabExistencias" role="tab">Existencias</button>
+    <button class="tab-btn hidden" data-tab="mes" id="tabMes" role="tab">Cargar inventario del mes</button>
   </div>
 
   <main class="inv-main">
@@ -178,10 +197,53 @@
       <div id="exCuerpo"><div class="empty-state"><p>Cargando…</p></div></div>
     </section>
 
+    <!-- ══ CARGAR INVENTARIO DEL MES (solo Dirección) ═════════ -->
+    <section class="tab-panel" id="panel-mes">
+      <div class="inv-card">
+        <p class="inv-nota" style="margin-top:0;">Sube los Excel de siempre. Primero se <strong>revisan</strong>: ves a qué código
+          del sistema va cada fila, los códigos viejos y lo que no está en el catálogo. No se escribe nada hasta que tocas <strong>Cargar</strong>.</p>
+        <div class="inv-grid" style="margin-top:10px;">
+          <div class="form-group">
+            <label for="mesCorte">Corte del conteo (fecha y hora)</label>
+            <input type="datetime-local" id="mesCorte">
+          </div>
+          <div class="form-group">
+            <label for="mesQuien">Quién contó</label>
+            <input type="text" id="mesQuien" maxlength="120" autocomplete="off" placeholder="opcional">
+          </div>
+        </div>
+        <label class="inv-nota hidden" id="mesAtrasadoCaja" style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+          <input type="checkbox" id="mesAtrasado"> El conteo de verdad fue ese día (tiene más de una semana)
+        </label>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-sub" style="margin-top:0;">Accesorios, despacho, membranas y repuestos</div>
+        <p class="inv-nota">El INVENTARIO_COLFRAME del mes. La tarjeta de la máquina se queda en el Excel.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <input type="file" id="mesArchAcc" accept=".xlsx">
+          <button id="btnRevisarAcc" class="btn btn-ghost btn-sm">Revisar</button>
+        </div>
+        <div id="mesAcc"></div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-sub" style="margin-top:0;">Acero</div>
+        <p class="inv-nota">El registro de bobinas (CF-RG-ALM-001). Reemplaza al registro del sistema, y las bobinas con
+          Rev. Física desde la fecha que elijas cuentan como verificadas.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <input type="file" id="mesArchAcero" accept=".xlsx">
+          <button id="btnRevisarAcero" class="btn btn-ghost btn-sm">Revisar</button>
+        </div>
+        <div id="mesAcero"></div>
+      </div>
+    </section>
+
   </main>
 
   <datalist id="dlProductos"></datalist>
   <datalist id="dlProveedores"></datalist>
+  <datalist id="dlProductosMes"></datalist>
 
   <div id="toastContainer" style="position:fixed;top:80px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
 

@@ -485,6 +485,15 @@ async function apiInvRecepcionLista(token) {
 async function apiInvRecepcionAprobar(token, docId, costos) {
   return apiCall('inv_recepcion_aprobar', { token, docId, costos });
 }
+// El inventario del mes desde los Excel de siempre (InventarioExcel.gs).
+// `envio` = { tipo: 'accesorios'|'acero', archivo (base64), nombre, ... }.
+// Revisar no escribe nada; cargar sí. Solo Dirección.
+async function apiInvExcelRevisar(token, envio) {
+  return apiCall('inv_excel_revisar', { token, ...envio });
+}
+async function apiInvExcelCargar(token, envio) {
+  return apiCall('inv_excel_cargar', { token, ...envio });
+}
 async function apiInvRecepcionRechazar(token, docId, motivo) {
   return apiCall('inv_recepcion_rechazar', { token, docId, motivo });
 }

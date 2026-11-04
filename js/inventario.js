@@ -203,6 +203,116 @@
     return new Date(Date.now() - 5 * 3600e3).toISOString().substring(0, 10);
   }
 
+  // ── Cargar inventario del mes (InventarioExcel.gs) ──────────────────────
+  var EST_MES = { OK: 'OK', VIEJO: 'Código viejo', PROPUESTO: 'Por confirmar', NUEVO: 'Nuevo' };
+  var SECCIONES_MES = ['ACCESORIOS', 'DESPACHO', 'MEMBRANAS', 'REPUESTOS'];
+
+  /** El control de una fila por confirmar o nueva: a qué código va, o crearla. */
+  function decisionHtml(g) {
+    var opciones = (g.candidatos || []).map(function (c) {
+      return '<option value="' + esc(c.id) + '"' + (c.id === g.sugerido && g.estado === 'PROPUESTO' ? ' selected' : '') + '>' +
+        esc(c.id + ' · ' + c.desc) + '</option>';
+    }).join('');
+    var crear = g.estado === 'NUEVO';
+    return '<select data-modo="' + esc(g.clave) + '">' + opciones +
+      '<option value="__nuevo"' + (crear ? ' selected' : '') + '>Crear nuevo…</option>' +
+      '<option value="__otro">Otro código del catálogo…</option></select>' +
+      '<input type="text" data-codigo="' + esc(g.clave) + '" list="dlProductosMes" autocomplete="off" style="margin-top:4px;"' +
+      (crear ? ' value="' + esc(g.sugerido) + '"' : ' class="hidden"') + ' placeholder="Código">';
+  }
+
+  /** La vista previa del Excel de accesorios. */
+  function revisionHtml(res) {
+    var grupos = (res && res.grupos) || [];
+    var cuenta = { OK: 0, VIEJO: 0, PROPUESTO: 0, NUEVO: 0 };
+    grupos.forEach(function (g) { cuenta[g.estado] = (cuenta[g.estado] || 0) + 1; });
+    var h = '<div class="mes-cuentas">' + ['OK', 'VIEJO', 'PROPUESTO', 'NUEVO'].map(function (e) {
+      return '<span class="mes-est ' + e + '">' + cuenta[e] + ' · ' + EST_MES[e] + '</span>';
+    }).join('') + '</div>';
+    h += ((res && res.alertas) || []).map(function (a) {
+      return '<div class="mes-alerta ' + esc(a.tipo) + '">' + esc(a.texto) + '</div>';
+    }).join('');
+    h += '<div class="table-wrap" style="margin-top:10px;"><table class="mes-tabla"><thead><tr><th>Sección</th>' +
+      '<th class="n">Total del Excel</th><th class="n">Suma de sus filas</th></tr></thead><tbody>' +
+      ((res && res.totales) || []).map(function (t) {
+        var dif = t.excel != null && Math.abs(t.excel - t.filas) > 1;
+        return '<tr><td>' + esc(t.seccion) + '</td><td class="n">' + (t.excel == null ? '—' : '$' + fmtNum(t.excel, 0)) + '</td>' +
+          '<td class="n">' + (dif ? '<strong>$' + fmtNum(t.filas, 0) + '</strong>' : '$' + fmtNum(t.filas, 0)) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    h += '<div class="table-wrap" style="margin-top:10px;"><table class="mes-tabla"><thead><tr><th>En tu Excel</th>' +
+      '<th class="n">Cantidad</th><th>En el sistema</th><th>Estado</th></tr></thead><tbody>';
+    SECCIONES_MES.forEach(function (s) {
+      var suyos = grupos.filter(function (g) { return g.seccion === s; });
+      if (!suyos.length) return;
+      h += '<tr class="mes-sec"><td colspan="4">' + esc(s) + '</td></tr>';
+      suyos.forEach(function (g) {
+        var sistema = (g.estado === 'OK' || g.estado === 'VIEJO')
+          ? '<strong>' + esc(g.idProducto) + '</strong> <span class="und">' + esc(g.descSistema) + '</span>'
+          : decisionHtml(g);
+        var est = g.estado === 'VIEJO' ? 'Código viejo: ' + (g.idExcel || 'sin código') : EST_MES[g.estado];
+        h += '<tr><td><span class="und">' + esc(g.idExcel || '—') + '</span> ' + esc(g.desc) + '</td>' +
+          '<td class="n">' + (g.cantidad == null ? '<span class="und">sin contar</span>' : fmtNum(g.cantidad)) +
+          ' <span class="und">' + esc(g.unidad) + '</span></td><td>' + sistema + '</td>' +
+          '<td><span class="mes-est ' + esc(g.estado) + '">' + esc(est) + '</span></td></tr>';
+      });
+    });
+    h += '</tbody></table></div>';
+    h += '<label class="inv-nota" style="display:flex;gap:6px;align-items:center;margin-top:10px;">' +
+      '<input type="checkbox" id="mesFaltanCero" checked> Lo que no está en mi Excel cuenta como 0 (si no, queda sin contar)</label>';
+    h += '<div id="mesAccError" class="inv-error hidden"></div>' +
+      '<div class="inv-acciones"><button id="btnCargarAcc" class="btn btn-primary">Cargar conteo</button></div>';
+    return h;
+  }
+
+  /**
+   * Lo que el usuario decidió en las filas por confirmar o nuevas → las
+   * decisiones para el servidor. `valores` = { clave: { modo, codigo } }.
+   * Devuelve { errores, decisiones: { clave: { idProducto, crear } } }.
+   */
+  function decisionesDe(grupos, valores, catalogo) {
+    var errores = [], decisiones = {}, usados = {};
+    (grupos || []).forEach(function (g) {
+      if (g.estado === 'OK' || g.estado === 'VIEJO') return;
+      var v = (valores || {})[g.clave] || {};
+      var modo = v.modo || '';
+      if (modo === '__nuevo') {
+        var cod = String(v.codigo || '').trim().toUpperCase();
+        if (!/^(IN|VA|RP)-[A-Z0-9.\-]+$/.test(cod)) { errores.push('"' + g.desc + '": escribe el código nuevo (IN-…, VA-… o RP-…).'); return; }
+        if (codigoDeTexto(cod, catalogo)) { errores.push('"' + g.desc + '": ' + cod + ' ya existe. Elige "Otro código del catálogo".'); return; }
+        if (usados[cod]) { errores.push('"' + g.desc + '": el código nuevo ' + cod + ' ya lo usa otra fila.'); return; }
+        usados[cod] = true;
+        decisiones[g.clave] = { idProducto: cod, crear: true };
+        return;
+      }
+      var id = modo === '__otro' ? codigoDeTexto(v.codigo, catalogo) : modo;
+      if (!id) { errores.push('"' + g.desc + '": elige a qué código va.'); return; }
+      decisiones[g.clave] = { idProducto: id };
+    });
+    return { errores: errores, decisiones: decisiones };
+  }
+
+  /** La vista previa del registro de acero. */
+  function aceroHtml(res) {
+    var h = '<div class="ex-resumen" style="margin-top:10px;">' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(res.filas) + '</div><div class="l">Filas en el Excel</div></div>' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(res.nuevas) + '</div><div class="l">Que el sistema no tenía</div></div>' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(res.enStock) + '</div><div class="l">En stock (' + fmtNum(res.kgStock, 0) + ' kg)</div></div>' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(res.revisadas) + '</div><div class="l">Verificadas (' + fmtNum(res.kgRevisadas, 0) + ' kg)</div></div>' +
+      '<div class="ex-dato"><div class="v">$' + fmtNum(res.valorRevisadas, 0) + '</div><div class="l">Valor verificado</div></div></div>';
+    h += '<div class="form-group" style="max-width:320px;"><label for="mesRevDesde">Verificadas: Rev. Física desde</label>' +
+      '<select id="mesRevDesde">' + (res.fechas || []).map(function (f) {
+        return '<option value="' + esc(f.fecha) + '"' + (f.fecha === res.revDesde ? ' selected' : '') + '>' +
+          esc(fechaCorta(f.fecha)) + ' (' + f.bobinas + ' bobinas)</option>';
+      }).join('') + '</select></div>';
+    if (res.valoracion && res.valoracion.kg != null) {
+      h += '<p class="inv-nota">La Valoración del Excel dice ' + fmtNum(res.valoracion.kg, 0) + ' kg y $' + fmtNum(res.valoracion.valor, 0) + '.</p>';
+    }
+    h += (res.alertas || []).map(function (a) { return '<div class="mes-alerta ' + esc(a.tipo) + '">' + esc(a.texto) + '</div>'; }).join('');
+    h += '<div id="mesAceroError" class="inv-error hidden"></div>' +
+      '<div class="inv-acciones"><button id="btnCargarAcero" class="btn btn-primary">Reemplazar el registro y cargar la verificación</button></div>';
+    return h;
+  }
+
   // ════════════════════════════════════════════════════════════════════════
   // Pantalla
   // ════════════════════════════════════════════════════════════════════════
@@ -353,6 +463,127 @@
       .catch(function (e) { fallo(e, $('exCuerpo')); });
   }
 
+  // ── Cargar inventario del mes ──────────────────────────────────────────
+  var _revAcc = null;     // la última revisión del Excel de accesorios
+  var _archAcero = null;  // { nombre, base64 } del último Excel de acero revisado
+
+  function leerArchivo(input) {
+    return new Promise(function (resolve, reject) {
+      var f = input.files && input.files[0];
+      if (!f) { reject(new Error('Elige el archivo .xlsx.')); return; }
+      if (!/\.xlsx$/i.test(f.name)) { reject(new Error('Tiene que ser un .xlsx (el Excel de siempre).')); return; }
+      var r = new FileReader();
+      r.onload = function () { resolve({ nombre: f.name, base64: String(r.result).replace(/^data:[^,]*,/, '') }); };
+      r.onerror = function () { reject(new Error('No pude leer el archivo.')); };
+      r.readAsDataURL(f);
+    });
+  }
+
+  function datosCorte() {
+    return { corte: $('mesCorte').value, quien: $('mesQuien').value.trim(), atrasado: $('mesAtrasado').checked };
+  }
+
+  /** Un rechazo del servidor por un corte de hace más de una semana: ofrece la casilla. */
+  function errorDeCarga(e, caja) {
+    if (e && e.tipo === 'auth') { fallo(e); return; }
+    if (e && e.datos && e.datos.atrasado) $('mesAtrasadoCaja').classList.remove('hidden');
+    caja.textContent = (e && e.message) || 'No se pudo cargar.';
+    caja.classList.remove('hidden');
+  }
+
+  function revisarAcc() {
+    var cuerpo = $('mesAcc'), btn = $('btnRevisarAcc');
+    btn.disabled = true;
+    cuerpo.innerHTML = '<p class="inv-nota">Leyendo el Excel…</p>';
+    leerArchivo($('mesArchAcc'))
+      .then(function (a) {
+        return apiInvExcelRevisar(token, { tipo: 'accesorios', archivo: a.base64, nombre: a.nombre })
+          .then(function (r) { r.archivo = a; return r; });
+      })
+      .then(function (r) {
+        _revAcc = r;
+        $('dlProductosMes').innerHTML = (r.catalogo || []).map(function (p) {
+          return '<option value="' + esc(etiquetaProducto(p)) + '"></option>';
+        }).join('');
+        cuerpo.innerHTML = revisionHtml(r);
+      })
+      .catch(function (e) { fallo(e, cuerpo); })
+      .finally(function () { btn.disabled = false; });
+  }
+
+  function cargarAcc() {
+    if (!_revAcc) return;
+    var caja = $('mesAccError');
+    caja.classList.add('hidden');
+    var valores = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#mesAcc [data-modo]'), function (s) {
+      var clave = s.getAttribute('data-modo');
+      var inp = document.querySelector('#mesAcc [data-codigo="' + CSS.escape(clave) + '"]');
+      valores[clave] = { modo: s.value, codigo: inp ? inp.value : '' };
+    });
+    var d = decisionesDe(_revAcc.grupos, valores, _revAcc.catalogo || []);
+    var c = datosCorte();
+    if (!c.corte) d.errores.unshift('Falta la fecha y hora del corte del conteo (arriba).');
+    if (d.errores.length) { caja.textContent = d.errores.join('\n'); caja.classList.remove('hidden'); return; }
+    var nuevos = Object.keys(d.decisiones).filter(function (k) { return d.decisiones[k].crear; }).length;
+    if (!window.confirm('¿Cargar el conteo con corte ' + c.corte.replace('T', ' ') + '?' +
+        (nuevos ? '\nSe crean ' + nuevos + ' producto(s) nuevo(s) en el catálogo.' : '') +
+        '\nQueda el cierre del mes y no se deshace desde aquí.')) return;
+    var btn = $('btnCargarAcc');
+    btn.disabled = true;
+    apiInvExcelCargar(token, { tipo: 'accesorios', archivo: _revAcc.archivo.base64, nombre: _revAcc.archivo.nombre,
+                               corte: c.corte, quien: c.quien, atrasado: c.atrasado, decisiones: d.decisiones,
+                               faltanEnCero: $('mesFaltanCero').checked })
+      .then(function (r) {
+        $('mesAcc').innerHTML = '<div class="mes-ok">✅ Conteo cargado: ' + r.lineas + ' códigos.' +
+          (r.creados && r.creados.length ? '\nProductos nuevos: ' + r.creados.join(' · ') : '') +
+          (r.equivalencias ? '\nEquivalencias guardadas para el próximo mes: ' + r.equivalencias + '.' : '') +
+          '\n' + r.mensaje + '</div>';
+        _revAcc = null;
+        _stock = null;
+        toast('Conteo cargado.', 'success');
+      })
+      .catch(function (e) { errorDeCarga(e, caja); })
+      .finally(function () { btn.disabled = false; });
+  }
+
+  function revisarAcero(revDesde) {
+    var cuerpo = $('mesAcero'), btn = $('btnRevisarAcero');
+    btn.disabled = true;
+    cuerpo.innerHTML = '<p class="inv-nota">Leyendo el Excel…</p>';
+    var archivo = revDesde && _archAcero ? Promise.resolve(_archAcero) : leerArchivo($('mesArchAcero'));
+    archivo
+      .then(function (a) {
+        _archAcero = a;
+        return apiInvExcelRevisar(token, { tipo: 'acero', archivo: a.base64, nombre: a.nombre, revDesde: revDesde || '' });
+      })
+      .then(function (r) { cuerpo.innerHTML = aceroHtml(r); })
+      .catch(function (e) { fallo(e, cuerpo); })
+      .finally(function () { btn.disabled = false; });
+  }
+
+  function cargarAcero() {
+    if (!_archAcero) return;
+    var caja = $('mesAceroError');
+    caja.classList.add('hidden');
+    var c = datosCorte();
+    if (!c.corte) { caja.textContent = 'Falta la fecha y hora del corte del conteo (arriba).'; caja.classList.remove('hidden'); return; }
+    var desde = $('mesRevDesde') ? $('mesRevDesde').value : '';
+    if (!window.confirm('¿Reemplazar el registro de bobinas del sistema con este Excel y cargar la verificación ' +
+        '(Rev. Física desde ' + desde + ', corte ' + c.corte.replace('T', ' ') + ')?')) return;
+    var btn = $('btnCargarAcero');
+    btn.disabled = true;
+    apiInvExcelCargar(token, { tipo: 'acero', archivo: _archAcero.base64, nombre: _archAcero.nombre,
+                               corte: c.corte, quien: c.quien, atrasado: c.atrasado, revDesde: desde })
+      .then(function (r) {
+        $('mesAcero').innerHTML = '<div class="mes-ok">' + esc(r.mensaje) + '</div>';
+        _archAcero = null;
+        toast('Acero cargado.', 'success');
+      })
+      .catch(function (e) { errorDeCarga(e, caja); })
+      .finally(function () { btn.disabled = false; });
+  }
+
   // ── Arranque ───────────────────────────────────────────────────────────
   function mostrarTab(nombre) {
     Array.prototype.forEach.call(document.querySelectorAll('.tab-btn'), function (b) {
@@ -369,6 +600,8 @@
     if (opera) {
       $('modNav').classList.remove('hidden');
       $('tabExistencias').classList.remove('hidden');
+      // Cargar el mes es el cierre contable: solo Dirección (lo valida el servidor).
+      if (esDireccion(session)) $('tabMes').classList.remove('hidden');
     } else {
       $('lnkInicio').classList.remove('hidden');
     }
@@ -406,6 +639,22 @@
 
     $('btnRefrescarEx').addEventListener('click', cargarStock);
     $('exFiltro').addEventListener('input', pintarStock);
+
+    $('btnRevisarAcc').addEventListener('click', revisarAcc);
+    $('btnRevisarAcero').addEventListener('click', function () { revisarAcero(''); });
+    $('mesAcc').addEventListener('change', function (e) {
+      var clave = e.target.getAttribute('data-modo');
+      if (clave == null) return;
+      var inp = document.querySelector('#mesAcc [data-codigo="' + CSS.escape(clave) + '"]');
+      var g = (_revAcc && _revAcc.grupos || []).filter(function (x) { return x.clave === clave; })[0];
+      var conCodigo = e.target.value === '__nuevo' || e.target.value === '__otro';
+      inp.classList.toggle('hidden', !conCodigo);
+      inp.value = e.target.value === '__nuevo' && g ? (g.sugerido || '') : '';
+      if (conCodigo) inp.focus();
+    });
+    $('mesAcc').addEventListener('click', function (e) { if (e.target.id === 'btnCargarAcc') cargarAcc(); });
+    $('mesAcero').addEventListener('click', function (e) { if (e.target.id === 'btnCargarAcero') cargarAcero(); });
+    $('mesAcero').addEventListener('change', function (e) { if (e.target.id === 'mesRevDesde') revisarAcero(e.target.value); });
 
     cargarLista();
   }
