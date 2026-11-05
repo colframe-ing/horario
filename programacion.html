@@ -103,10 +103,10 @@
     .cal-casa.fin { opacity:0.55; background-image:repeating-linear-gradient(135deg,rgba(255,255,255,0.35),rgba(255,255,255,0.35) 3px,transparent 3px,transparent 7px); }
     /* En producción: activo, con anillo para que resalte sobre lo planeado */
     .cal-casa.prod { box-shadow:0 0 0 2px #0891B2 inset; }
-    .prod-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#0891B2; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    .prod-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#0891B2; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; white-space:nowrap; }
     /* Pausada: ámbar, para que se lea como "detenida" y no como "en marcha"
        (cian) ni como "atrasada" (rojo) — está parada, que es otra cosa. */
-    .pausa-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#B45309; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    .pausa-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#B45309; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; white-space:nowrap; }
 
     .leg { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
     .leg-item { display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--cf-dark); }
@@ -118,7 +118,10 @@
     .cola-row:last-child { border-bottom:none; }
     .cola-color { width:12px; height:38px; border-radius:4px; flex-shrink:0; }
     .cola-main { flex:1; min-width:0; }
-    .cola-nombre { font-weight:700; font-size:0.84rem; color:var(--cf-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* El nombre se lee COMPLETO: baja a otra línea en vez de cortarse con "…"
+       (5-nov). En lo que está en producción comparte la línea con "Envío 1/3"
+       y "▶ En producción", y cortado no se alcanzaba a leer. */
+    .cola-nombre { font-weight:700; font-size:0.84rem; color:var(--cf-dark); line-height:1.3; overflow-wrap:anywhere; }
     /* El nombre del proyecto lleva a su hoja de vida */
     .cola-proy-link { color:inherit; text-decoration:none; }
     .cola-proy-link:hover { color:var(--cf-blue); text-decoration:underline; }
@@ -177,7 +180,7 @@
     .cola-card.backlog .sec-resumen { color:var(--cf-gray-text); }
     .higiene-titulo { font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--cf-gray-text); margin:10px 0 6px; }
     .higiene-titulo:first-child { margin-top:0; }
-    .envio-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#7C3AED; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
+    .envio-badge { font-size:0.6rem; font-weight:800; color:#fff; background:#7C3AED; padding:1px 6px; border-radius:999px; margin-left:4px; vertical-align:middle; white-space:nowrap; }
     /* El C140 (S Pauta): otra etiqueta, para que no se lea como un envío del C90. */
     .c140-badge { font-size:0.6rem; font-weight:800; color:#92400E; background:#FEF3C7; border:1px solid #FDE68A; padding:0 6px; border-radius:999px; margin-left:4px; vertical-align:middle; }
     .maq-fija { font-size:0.72rem; font-weight:700; color:var(--cf-dark); padding:4px 8px; border:1.5px solid var(--cf-gray-mid); border-left-width:4px; border-radius:6px; background:#fff; white-space:nowrap; }
@@ -569,7 +572,7 @@
       <!-- Cualquier otra carpeta, buscada por nombre, sin salir de aquí (23-oct):
            antes la salida era "Vincular a mano", en otra pestaña. -->
       <div class="conc-buscar">
-        <label for="concBuscar">¿No está? Búscala por nombre</label>
+        <label for="concBuscar">¿No está? Elige una reciente o búscala por nombre</label>
         <input id="concBuscar" type="search" placeholder="Ej. MALAMBO o 581" autocomplete="off">
         <div id="concResultados"></div>
       </div>

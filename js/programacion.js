@@ -302,9 +302,11 @@
     });
   }
   // Nombre del proyecto enlazado a su hoja de vida (agrupada por consecutivo CB).
+  // La fila lo corta con "…" (`.cola-nombre`): el tooltip lo dice completo
+  // (5-nov: "para no tener que abrir la hoja de vida para verlo").
   function nombreProyectoHtml(c){
     return '<a class="cola-proy-link" href="proyecto.html?cb='+encodeURIComponent(c.consecutivo)+'"'+
-      ' target="_blank" rel="noopener" title="Ver hoja de vida de CB'+esc(c.consecutivo)+'">'+
+      ' target="_blank" rel="noopener" title="'+esc((c.proyecto||'')+' · CB'+c.consecutivo+' — clic: hoja de vida')+'">'+
       esc(c.proyecto)+' <span class="cb">CB'+esc(c.consecutivo)+'</span></a>';
   }
   // El cliente: número del maestro y el nombre registrado en la hoja Clientes.
@@ -712,7 +714,7 @@
     var cola = vista(_data.cola);
     if(!cola.length){ cont.innerHTML=''; return; }
     cont.innerHTML = cola.map(function(c){
-      return '<div class="leg-item"><span class="leg-dot" style="background:'+c.color+';"></span>'+esc(etiquetaUnidad(c))+'</div>';
+      return '<div class="leg-item" title="'+esc(etiquetaUnidad(c))+'"><span class="leg-dot" style="background:'+c.color+';"></span>'+esc(etiquetaUnidad(c))+'</div>';
     }).join('');
   }
 
@@ -982,7 +984,7 @@
           ? ' · <span style="color:#0E7490;">'+(x.sugerencias.length===1?'hay 1 carpeta que coincide':'hay '+x.sugerencias.length+' carpetas que coinciden')+'</span>'
           : '';
         return '<div class="cola-row"><div class="cola-main">'+
-          '<div class="cola-nombre">'+esc(x.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(x.consecutivo)+'</span></div>'+
+          '<div class="cola-nombre" title="'+esc((x.proyecto||'')+' · CB'+x.consecutivo)+'">'+esc(x.proyecto)+' <span style="font-weight:400;color:var(--cf-gray-text);font-size:0.72rem;">CB'+esc(x.consecutivo)+'</span></div>'+
           '<div class="cola-meta">produciendo desde '+fechaCorta(x.fechaRealInicio)+' · '+fmtNum(x.mlTotal,0)+' ML'+
             (x.totalUnidades>1 ? ' ('+x.unidades+' de '+x.totalUnidades+' envíos)' : '')+
             (x.finalizadas ? ' · '+x.finalizadas+' ya finalizado(s)' : '')+ sug +'</div>'+
@@ -1506,6 +1508,8 @@
     buscar.value = '';
     document.getElementById('concResultados').innerHTML = '';
     document.getElementById('modalConciliar').classList.remove('hidden');
+    // Las más recientes, de una vez (la lista se pide una sola vez por página).
+    buscarCarpetasConc('');
     // Sin sugeridas, lo siguiente que hay que hacer es buscar: el cursor ya está ahí.
     if(!_concSug.length) buscar.focus();
   }
@@ -1534,20 +1538,41 @@
       return palabras.every(function(p){ return n.indexOf(p) !== -1; });
     }).slice(0, 12);
   }
+
+  // FUNCIÓN PURA: las `n` carpetas más recientes que todavía no están
+  // vinculadas a ninguna cotización (`cola` vacío), sin las sugeridas. Es lo
+  // que sale por defecto, sin escribir nada (5-nov: "que por defecto salieran
+  // las últimas carpetas, para que sea más rápido"): la carpeta de un proyecto
+  // que arranca casi siempre es de las últimas creadas.
+  function carpetasRecientes(lista, excluir, n){
+    var fuera = {}; (excluir||[]).forEach(function(id){ fuera[id] = true; });
+    return (lista||[]).filter(function(c){ return !fuera[c.carpetaId] && !c.cola; })
+      .slice().sort(function(a, b){ return String(b.fecha||'').localeCompare(String(a.fecha||'')); })
+      .slice(0, n || 8);
+  }
+  function filaCarpetaConc(s){
+    return '<div class="cola-row"><div class="cola-main">'+
+      '<div class="cola-nombre" title="'+esc(s.nombre)+'">'+esc(s.nombre)+'</div>'+
+      '<div class="cola-meta">'+fechaCorta(s.fecha)+' · '+fmtNum(s.metrosTotal,0)+' ML'+(s.estado?' · '+esc(s.estado):'')+'</div>'+
+    '</div>'+
+    '<button class="btn btn-primary btn-sm" data-conc-id="'+esc(s.carpetaId)+'">Vincular y arrancar</button>'+
+    '</div>';
+  }
   function pintarBusquedaCarpetas(q){
     var cont = document.getElementById('concResultados');
-    var res = filtrarCarpetas(_concCarpetas, q, _concSug.map(function(s){ return s.carpetaId; }));
-    if(sinTildes(q).replace(/\s+/g,'').length < 2){ cont.innerHTML = ''; return; }
-    cont.innerHTML = !res.length
-      ? '<div class="conc-vacio">Ninguna carpeta tiene eso en el nombre. Si la acabas de crear, usa ↻ Escanear Drive.</div>'
-      : res.map(function(s){
-          return '<div class="cola-row"><div class="cola-main">'+
-            '<div class="cola-nombre">'+esc(s.nombre)+'</div>'+
-            '<div class="cola-meta">'+fechaCorta(s.fecha)+' · '+fmtNum(s.metrosTotal,0)+' ML'+(s.estado?' · '+esc(s.estado):'')+'</div>'+
-          '</div>'+
-          '<button class="btn btn-primary btn-sm" data-conc-id="'+esc(s.carpetaId)+'">Vincular y arrancar</button>'+
-          '</div>';
-        }).join('');
+    var sugeridas = _concSug.map(function(s){ return s.carpetaId; });
+    if(sinTildes(q).replace(/\s+/g,'').length < 2){
+      // Sin búsqueda: las más recientes sin vincular.
+      var rec = carpetasRecientes(_concCarpetas, sugeridas, 8);
+      cont.innerHTML = rec.length
+        ? '<div class="conc-vacio" style="margin-top:2px;">Las más recientes sin vincular:</div>' + rec.map(filaCarpetaConc).join('')
+        : '';
+    } else {
+      var res = filtrarCarpetas(_concCarpetas, q, sugeridas);
+      cont.innerHTML = !res.length
+        ? '<div class="conc-vacio">Ninguna carpeta tiene eso en el nombre. Si la acabas de crear, usa ↻ Escanear Drive.</div>'
+        : res.map(filaCarpetaConc).join('');
+    }
     cont.querySelectorAll('[data-conc-id]').forEach(function(b){
       b.addEventListener('click', function(){ vincularYArrancar(b.getAttribute('data-conc-id')); });
     });
