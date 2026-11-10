@@ -161,16 +161,44 @@
     return r;
   }
 
-  /** La tabla de existencias, filtrada por código o descripción. Lo que pide atención, primero. */
-  function existenciasHtml(res, filtro) {
+  // Las categorías de Existencias (5-nov). Agrupan las secciones del conteo
+  // —las pestañas del Excel, que no cambian—: las membranas van con los
+  // accesorios, y "insumos de fabricación" es lo de despacho.
+  var CATEGORIAS_EX = [['', 'Todas'], ['ACCESORIOS', 'Accesorios'], ['REPUESTOS', 'Repuestos'],
+                       ['INSUMOS', 'Insumos de fabricación'], ['OTROS', 'Otros']];
+
+  /** La categoría de un producto por su sección del conteo. */
+  function categoriaDe(seccion) {
+    var s = String(seccion || '').trim().toUpperCase();
+    if (s === 'ACCESORIOS' || s === 'MEMBRANAS') return 'ACCESORIOS';
+    if (s === 'REPUESTOS') return 'REPUESTOS';
+    if (s === 'DESPACHO') return 'INSUMOS';
+    return 'OTROS';
+  }
+
+  /**
+   * La tabla de existencias, filtrada por categoría (botones) y por código o
+   * descripción. El resumen —valor, sin stock, bajo el mínimo— es el de la
+   * categoría elegida. Lo que pide atención, primero.
+   */
+  function existenciasHtml(res, filtro, categoria) {
     var f = String(filtro || '').trim().toLowerCase();
-    var items = ((res && res.items) || []).filter(function (i) {
+    var cat = categoria || '';
+    var todos = (res && res.items) || [];
+    var deCat = todos.filter(function (i) { return !cat || categoriaDe(i.seccion) === cat; });
+    var items = deCat.filter(function (i) {
       return !f || String(i.idProducto).toLowerCase().indexOf(f) > -1 || String(i.descripcion).toLowerCase().indexOf(f) > -1;
     });
     var peso = function (i) { return i.sinConteo ? 3 : i.estado === 'SIN STOCK' ? 0 : i.estado === 'BAJO' ? 1 : 2; };
     items.sort(function (a, b) { return (peso(a) - peso(b)) || String(a.descripcion).localeCompare(String(b.descripcion)); });
-    var r = resumenExistencias((res && res.items) || []);
-    var h = '<div class="ex-resumen">' +
+    var cuenta = {};
+    todos.forEach(function (i) { var c = categoriaDe(i.seccion); cuenta[c] = (cuenta[c] || 0) + 1; });
+    var h = '<div class="ex-cats">' + CATEGORIAS_EX.filter(function (c) { return !c[0] || cuenta[c[0]]; }).map(function (c) {
+      return '<button type="button" class="ex-cat' + (c[0] === cat ? ' on' : '') + '" data-cat="' + c[0] + '">' +
+        esc(c[1]) + ' <span class="und">' + (c[0] ? cuenta[c[0]] : todos.length) + '</span></button>';
+    }).join('') + '</div>';
+    var r = resumenExistencias(deCat);
+    h += '<div class="ex-resumen">' +
       '<div class="ex-dato"><div class="v">$' + fmtNum(r.valor, 0) + '</div><div class="l">Valor contado</div></div>' +
       '<div class="ex-dato"><div class="v">' + r.sinStock + '</div><div class="l">Sin stock</div></div>' +
       '<div class="ex-dato"><div class="v">' + r.bajo + '</div><div class="l">Bajo el mínimo</div></div>' +
@@ -344,6 +372,7 @@
   var _catalogo = [];
   var _lista = null;
   var _stock = null;
+  var _exCategoria = '';   // el botón de categoría elegido en Existencias ('' = todas)
   var _clientId = nuevoClientId();
 
   // ── Registrar ──────────────────────────────────────────────────────────
@@ -456,7 +485,7 @@
 
   // ── Existencias ────────────────────────────────────────────────────────
   function pintarStock() {
-    if (_stock) $('exCuerpo').innerHTML = existenciasHtml(_stock, $('exFiltro').value);
+    if (_stock) $('exCuerpo').innerHTML = existenciasHtml(_stock, $('exFiltro').value, _exCategoria);
   }
   function cargarStock() {
     return apiInvStock(token).then(function (r) { _stock = r; pintarStock(); })
@@ -639,6 +668,12 @@
 
     $('btnRefrescarEx').addEventListener('click', cargarStock);
     $('exFiltro').addEventListener('input', pintarStock);
+    $('exCuerpo').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-cat]');
+      if (!b) return;
+      _exCategoria = b.getAttribute('data-cat');
+      pintarStock();
+    });
 
     $('btnRevisarAcc').addEventListener('click', revisarAcc);
     $('btnRevisarAcero').addEventListener('click', function () { revisarAcero(''); });

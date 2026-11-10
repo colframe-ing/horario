@@ -74,6 +74,11 @@
     .ex-estado.SIN_STOCK { background: #FEE2E2; color: #B91C1C; }
     .ex-estado.SIN_CONTEO { background: #F1F5F9; color: #64748B; }
     .und { color: var(--cf-gray-text); font-size: 0.75rem; }
+    .ex-cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .ex-cat { background: #fff; border: 1.5px solid var(--cf-gray-mid); border-radius: 999px; padding: 6px 12px; font-family: inherit;
+      font-size: 0.8rem; font-weight: 700; color: var(--cf-dark); cursor: pointer; }
+    .ex-cat.on { background: var(--cf-blue); border-color: var(--cf-blue); color: #fff; }
+    .ex-cat.on .und { color: rgba(255,255,255,0.8); }
 
     /* Cargar inventario del mes (desde los Excel) */
     .mes-alerta { border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; margin-top: 8px; line-height: 1.4; }
