@@ -514,6 +514,10 @@ async function apiInvAcero(token) {
   return apiCall('inv_acero', { token });
 }
 // Marcar una bobina: 'Parcial' (con los kg que le quedan, estimados), 'Consumido' o 'Descartado'.
+// Pasar una bobina a otra sede activa (26-nov).
+async function apiInvBobinaTrasladar(token, codigo, sede) {
+  return apiCall('inv_bobina_trasladar', { token, codigo, sede });
+}
 async function apiInvBobinaMarcar(token, codigo, estado, kg) {
   return apiCall('inv_bobina_marcar', { token, codigo, estado, kg: kg == null ? '' : kg });
 }

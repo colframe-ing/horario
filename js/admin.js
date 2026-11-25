@@ -1815,6 +1815,8 @@
     RECEPCION_RECHAZADA:        { txt: 'Recepción rechazada',        color: '#DC2626', g: 'Inventario (hoja AuditoriaRemisiones)' },
     // Parcial, Consumido, Descartado o la corrección de Dirección (25-nov): el detalle dice antes y después.
     BOBINA_MARCADA:             { txt: 'Bobina marcada',             color: '#D97706', g: 'Inventario (hoja AuditoriaRemisiones)' },
+    // De una sede a otra (26-nov): el detalle dice antes y después.
+    BOBINA_TRASLADADA:          { txt: 'Bobina trasladada',          color: '#2563EB', g: 'Inventario (hoja AuditoriaRemisiones)' },
     // Solo aparece cuando remConciliar encuentra un documento DESPACHADO sin
     // sus movimientos de inventario y los completa (R4-04). En rojo a
     // propósito: cada fila de estas es un despacho que estuvo sin registrar

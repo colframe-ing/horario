@@ -123,6 +123,12 @@
    * El código que sigue: "1560-05" → "1560-06", "31324-9" → "31324-10". Sin un
    * número al final, vacío (el operario lo escribe). Respeta los ceros.
    */
+  /** "COLFRAME BARRIO COLOMBIA" → "Barrio Colombia": para mostrar (26-nov). */
+  function sedeCorta(s) {
+    var t = String(s || '').trim().replace(/^COLFRAME\s+/i, '').toLowerCase();
+    return t.replace(/(^|\s)([a-záéíóúñ])/g, function (m, a, b) { return a + b.toUpperCase(); });
+  }
+
   function siguienteCodigo(cod) {
     var m = String(cod || '').trim().match(/^(.*?)(\d+)$/);
     if (!m) return '';
@@ -189,7 +195,8 @@
     var h = '<div class="rec-card ' + esc(rc.estado) + '">' +
       '<div class="rec-top"><div><div class="rec-prov">' + esc(rc.proveedor) + '</div>' +
       '<div class="rec-meta">' + esc(docs) + '</div>' +
-      '<div class="rec-meta">Ingresó el ' + esc(fechaCorta(rc.fechaIngreso)) + ' · registró ' + esc(rc.creadoNombre || rc.creadoPor) + '</div></div>' +
+      '<div class="rec-meta">Ingresó el ' + esc(fechaCorta(rc.fechaIngreso)) + (rc.sede ? ' a ' + esc(sedeCorta(rc.sede)) : '') +
+        ' · registró ' + esc(rc.creadoNombre || rc.creadoPor) + '</div></div>' +
       '<span class="rec-estado ' + esc(rc.estado) + '">' + (rc.tipo === 'ACERO' ? 'Acero · ' : '') + esc(ESTADO_TXT[rc.estado] || rc.estado) + '</span></div>';
     if (rc.tipo === 'ACERO') {
       h += bobinasRecepcionHtml(rc);
@@ -312,7 +319,7 @@
    * previa del Excel de acero (Cargar inventario del mes), y en un mismo
    * bloque la última declaración gana (lo vigila sin_funciones_repetidas.test).
    */
-  function aceroVistaHtml(a, f) {
+  function aceroVistaHtml(a, f, sedeFiltro) {
     if (!a) return '<div class="empty-state"><p>Cargando el acero…</p></div>';
     if (a.sinCierre) return '<div class="empty-state"><p>Todavía no hay ninguna verificación de acero cargada.</p></div>';
     var kg = function (n) { return fmtNum(n, 0) + ' <span class="und">kg</span>'; };
@@ -346,12 +353,24 @@
             '</td><td class="n">' + kg(g.kg) + '</td></tr>';
         }).join('') + '</tbody></table></details>';
     }
-    var todas = a.bobinas || [];
+    // Por sede (26-nov): cuánto hay en cada una, y el filtro.
+    var porSede = a.porSede || [];
+    var sede = sedeFiltro || '';
+    if (porSede.length > 1 || (porSede.length === 1 && (a.sedesActivas || []).length > 1)) {
+      h += '<div class="ex-cats" style="margin-top:12px;">' +
+        '<button type="button" class="ex-cat' + (!sede ? ' on' : '') + '" data-acsede="">Todas las sedes <span class="und">' + a.enPlanta.bobinas + '</span></button>' +
+        porSede.map(function (s) {
+          return '<button type="button" class="ex-cat' + (s.sede === sede ? ' on' : '') + '" data-acsede="' + esc(s.sede) + '">' + esc(sedeCorta(s.sede)) +
+            ' <span class="und">' + s.bobinas + ' · ' + fmtNum(s.kg, 0) + ' kg</span></button>';
+        }).join('') + '</div>';
+    }
+    var todas = (a.bobinas || []).filter(function (b) { return !sede || b.sede === sede; });
     var bs = todas.filter(function (b) {
       if (!f) return true;
-      return [b.codigo, b.calibre, b.grado, b.galvanizado, b.proveedor, b.factura].join(' ').toLowerCase().indexOf(f) > -1;
+      return [b.codigo, b.calibre, b.grado, b.galvanizado, b.proveedor, b.factura, b.sede].join(' ').toLowerCase().indexOf(f) > -1;
     });
-    h += '<div class="inv-sub">Bobinas en planta' + (f ? ' (' + bs.length + ' de ' + todas.length + ')' : '') + '</div>' +
+    var otrasSedes = function (b) { return (a.sedesActivas || []).filter(function (s) { return s !== b.sede; }); };
+    h += '<div class="inv-sub">Bobinas en planta' + (sede ? ' en ' + esc(sedeCorta(sede)) : '') + (f ? ' (' + bs.length + ' de ' + todas.length + ')' : '') + '</div>' +
       '<p class="inv-nota" style="margin-top:0;">Al desmontar una a medio usar: <strong>Parcial</strong> y los kg que le quedan (sale su sticker nuevo). Al terminarla: <strong>Consumida</strong>.</p>';
     if (!bs.length) return h + '<div class="empty-state"><p>' + (f ? 'Ninguna bobina coincide con la búsqueda.' : 'No hay bobinas en planta.') + '</p></div>';
     // Tarjetas y no tabla: se marca desde el celular junto a la máquina, y en
@@ -363,12 +382,15 @@
       return '<div class="ac-bob"><div class="ac-bob-top"><strong>' + cod + '</strong>' +
         (b.nueva ? ' <span class="und">nueva</span>' : '') + (parcial ? ' <span class="ex-estado BAJO">Parcial</span>' : '') +
         '<span class="ac-kg">' + fmtNum(b.kg, 0) + ' kg' + (parcial ? ' <span class="und">de ' + fmtNum(b.pesoKg, 0) + '</span>' : '') + '</span></div>' +
-        '<div class="rec-meta">Cal ' + esc(b.calibre) + ' · G' + esc(b.grado) + ' · ' + esc(b.galvanizado) + ' · ' + esc(b.proveedor) +
-        ' · ingresó ' + esc(fechaCorta(b.fechaIngreso)) + '</div>' +
+        '<div class="rec-meta"><strong>📍 ' + esc(sedeCorta(b.sede)) + '</strong> · Cal ' + esc(b.calibre) + ' · G' + esc(b.grado) + ' · ' +
+        esc(b.galvanizado) + ' · ' + esc(b.proveedor) + ' · ingresó ' + esc(fechaCorta(b.fechaIngreso)) + '</div>' +
         '<div class="ac-acc">' +
         '<button class="btn btn-ghost btn-sm" data-bob="Parcial" data-cod="' + cod + '" data-kg="' + esc(b.kg) + '">Parcial</button>' +
         '<button class="btn btn-ghost btn-sm" data-bob="Consumido" data-cod="' + cod + '">Consumida</button>' +
-        '<button class="btn btn-ghost btn-sm" data-bob="Descartado" data-cod="' + cod + '">Descartar</button></div></div>';
+        '<button class="btn btn-ghost btn-sm" data-bob="Descartado" data-cod="' + cod + '">Descartar</button>' +
+        (otrasSedes(b).length ? '<button class="btn btn-ghost btn-sm" data-tras="' + cod + '" data-sede="' + esc(b.sede) + '">' +
+          (otrasSedes(b).length === 1 ? 'Pasar a ' + esc(sedeCorta(otrasSedes(b)[0])) : 'Trasladar') + '</button>' : '') +
+        '</div></div>';
     }).join('') + '</div>';
   }
 
@@ -634,18 +656,28 @@
     if (c.desde && hoyBogota() < c.desde) {
       $('recAceroNota').textContent = 'Desde el ' + c.desde + ' el acero se registra aquí. Lo que entró antes va todavía en el Excel CF-RG-ALM-001.';
     }
+    pintarSedesRecepcion();
     $('recError').classList.add('hidden');
+  }
+  // La sede a la que llegó (26-nov): las activas de asistencia. Con una sola,
+  // ya elegida; con varias, hay que elegir (no se adivina).
+  function pintarSedesRecepcion() {
+    var sedes = aceroCfg().sedes || [];
+    var actual = $('recSede').value;
+    $('recSede').innerHTML = (sedes.length > 1 ? '<option value="">Elige la sede…</option>' : '') +
+      sedes.map(function (s) { return '<option value="' + esc(s) + '"' + (s === actual ? ' selected' : '') + '>' + esc(sedeCorta(s)) + '</option>'; }).join('');
   }
   function registrarAcero() {
     var f = leerFormulario();
     var c = aceroCfg();
     var v = validarAceroLocal(Object.assign({}, f, { lineas: leerBobinas() }), hoyBogota(), c.desde);
+    if ((c.sedes || []).length > 1 && !$('recSede').value) v.errores.unshift('Elige a qué sede llegó el acero.');
     var caja = $('recError');
     if (v.errores.length) { caja.textContent = v.errores.join('\n'); caja.classList.remove('hidden'); return; }
     caja.classList.add('hidden');
     var envio = { clientId: f.clientId, tipo: 'ACERO', fechaIngreso: f.fechaIngreso, proveedor: f.proveedor, factura: f.factura,
                   remisionProveedor: f.remisionProveedor, ordenCompra: f.ordenCompra, observaciones: f.observaciones,
-                  lineas: v.lineas };
+                  sede: $('recSede').value, lineas: v.lineas };
     var btn = $('btnRegistrar');
     btn.disabled = true;
     apiInvRecepcionCrear(token, envio)
@@ -742,6 +774,7 @@
       $('dlProductos').innerHTML = _catalogo.map(function (p) { return '<option value="' + esc(etiquetaProducto(p)) + '"></option>'; }).join('');
       $('dlProveedores').innerHTML = (r.proveedores || []).map(function (p) { return '<option value="' + esc(p) + '"></option>'; }).join('');
       pintarLista();
+      pintarSedesRecepcion();
     }).catch(function (e) { fallo(e, $('recLista')); });
   }
   function aprobar(docId, tarjeta) {
@@ -775,8 +808,30 @@
   }
 
   // ── Acero (25-nov) ─────────────────────────────────────────────────────
+  var _acSede = '';   // la sede elegida en la pestaña Acero ('' = todas)
   function pintarAceroVista() {
-    if (_acero) $('acCuerpo').innerHTML = aceroVistaHtml(_acero, $('acFiltro').value.trim().toLowerCase());
+    if (_acero) $('acCuerpo').innerHTML = aceroVistaHtml(_acero, $('acFiltro').value.trim().toLowerCase(), _acSede);
+  }
+  /** Pasar una bobina a otra sede. Con una sola sede posible, confirmar; con varias, el número. */
+  function trasladarBobina(btn) {
+    var cod = btn.getAttribute('data-cod') || btn.getAttribute('data-tras'), desde = btn.getAttribute('data-sede');
+    var otras = ((_acero && _acero.sedesActivas) || []).filter(function (s) { return s !== desde; });
+    if (!otras.length) return;
+    var destino = '';
+    if (otras.length === 1) {
+      if (!window.confirm('¿Pasar la bobina ' + cod + ' de ' + sedeCorta(desde) + ' a ' + sedeCorta(otras[0]) + '?')) return;
+      destino = otras[0];
+    } else {
+      var n = window.prompt('¿A qué sede pasa la bobina ' + cod + '? Escribe el número:\n' +
+        otras.map(function (s, i) { return (i + 1) + ' = ' + sedeCorta(s); }).join('\n'));
+      if (n == null) return;
+      destino = otras[parseInt(n, 10) - 1] || '';
+      if (!destino) { toast('Ese número no es de ninguna sede.', 'warning'); return; }
+    }
+    btn.disabled = true;
+    apiInvBobinaTrasladar(token, cod, destino)
+      .then(function () { toast(cod + ': ahora en ' + sedeCorta(destino) + '.', 'success'); return cargarAceroVista(); })
+      .catch(function (e) { btn.disabled = false; fallo(e); });
   }
   function cargarAceroVista() {
     return apiInvAcero(token).then(function (r) { _acero = r; pintarAceroVista(); })
@@ -1017,7 +1072,11 @@
     $('acFiltro').addEventListener('input', pintarAceroVista);
     $('acCuerpo').addEventListener('click', function (e) {
       var b = e.target.closest('[data-bob]');
-      if (b) marcarBobina(b);
+      if (b) { marcarBobina(b); return; }
+      var t = e.target.closest('[data-tras]');
+      if (t) { trasladarBobina(t); return; }
+      var s = e.target.closest('[data-acsede]');
+      if (s) { _acSede = s.getAttribute('data-acsede'); pintarAceroVista(); }
     });
 
     $('prCorte').value = hoyBogota();
