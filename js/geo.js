@@ -32,10 +32,29 @@ function getPosicion() {
   });
 }
 
-async function validarEnPlanta(onProgress) {
-  if (onProgress) onProgress('Obteniendo GPS...');
+/**
+ * La sede más cercana y si se está dentro de su radio (24-nov: hay dos sedes).
+ * `sedes` llega del servidor con el estado ([{ nombre, lat, lng, radio }]); sin
+ * ella, la planta de CONFIG, como antes. Es solo para avisar en el celular:
+ * quien decide es el servidor, con la misma regla (`_sedeDe` en Code.gs).
+ */
+function sedeMasCercana(lat, lng, sedes) {
+  const lista = (sedes && sedes.length) ? sedes
+    : [{ nombre: 'la planta', lat: CONFIG.PLANTA_LAT, lng: CONFIG.PLANTA_LNG, radio: CONFIG.RADIO_METROS }];
+  let mejor = null;
+  lista.forEach(s => {
+    const d = haversine(lat, lng, s.lat, s.lng);
+    const dentro = d <= s.radio;
+    if (!mejor || (dentro && !mejor.dentro) || (dentro === mejor.dentro && d < mejor.distancia)) {
+      mejor = { sede: s, distancia: d, dentro };
+    }
+  });
+  return mejor;
+}
+
+async function validarEnPlanta(sedes) {
   const { lat, lng, precision } = await getPosicion();
-  const distancia = Math.round(haversine(lat, lng, CONFIG.PLANTA_LAT, CONFIG.PLANTA_LNG));
-  const enPlanta  = distancia <= CONFIG.RADIO_METROS;
-  return { enPlanta, distancia, lat, lng, precision };
+  const m = sedeMasCercana(lat, lng, sedes);
+  return { enPlanta: m.dentro, distancia: Math.round(m.distancia), sede: m.sede.nombre, radio: m.sede.radio,
+           lat, lng, precision };
 }

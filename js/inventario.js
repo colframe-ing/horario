@@ -231,6 +231,51 @@
     return new Date(Date.now() - 5 * 3600e3).toISOString().substring(0, 10);
   }
 
+  // ── Producido sin remisión (11-nov) ─────────────────────────────────────
+  var AVISO_PR = {
+    ANTES_DEL_SISTEMA: 'Terminó antes de las remisiones del sistema: si salió, regístrala como remisión antigua',
+    REMISIONES_SIN_ENVIO: 'El proyecto tiene remisiones sin envío asignado: una puede ser de este',
+    SIN_KG: 'La cotización no tiene KG: no se puede valorizar',
+  };
+
+  /**
+   * La lista de lo producido que sigue en planta al corte. Arriba, lo que se
+   * suma al inventario; las filas con aviso van resaltadas y cuentan aparte,
+   * porque pueden haber salido (lo dijo la medición del 11-nov).
+   */
+  function producidoHtml(res) {
+    var t = (res && res.totales) || {};
+    var items = (res && res.items) || [];
+    var precio = res && res.precioKg;
+    var h = '<div class="ex-resumen">' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(t.envios) + '</div><div class="l">Envíos en planta</div></div>' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(t.kg, 0) + ' kg</div><div class="l">Acero producido</div></div>' +
+      '<div class="ex-dato"><div class="v">' + (precio ? '$' + fmtNum(t.valor, 0) : '—') + '</div><div class="l">A costo</div></div>' +
+      '<div class="ex-dato"><div class="v">' + (precio ? '$' + fmtNum(t.valorSinAvisos, 0) : fmtNum(t.kgSinAvisos, 0) + ' kg') + '</div>' +
+      '<div class="l">Sin avisos (' + fmtNum(t.sinAvisos) + ')</div></div></div>';
+    h += '<p class="inv-nota">Finalizado en Programación hasta el ' + esc(fechaCorta(res && res.corte)) +
+      ' y sin remisión firme a esa fecha. Kg = los KG por casa de la cotización × lo que se produjo. ' +
+      (precio ? 'Costo = kg × $' + fmtNum(precio, 0) + '/kg, el precio del acero del cierre del ' + esc(fechaCorta(res.precioCorte)) + '.'
+              : 'Todavía no hay un cierre de acero: sale solo en kg.') +
+      ' Las filas resaltadas pueden haber salido: revísalas en la hoja de vida del proyecto.</p>';
+    if (!items.length) return h + '<div class="empty-state"><p>Nada producido sin remisión a esa fecha.</p></div>';
+    h += '<div class="table-card"><div class="table-wrap"><table class="ex-tabla"><thead><tr><th>Proyecto</th><th>Envío</th>' +
+      '<th>Terminó</th><th class="n">Kg</th><th class="n">Costo</th></tr></thead><tbody>' +
+      items.map(function (i) {
+        var avisos = (i.avisos || []).map(function (a) {
+          return '<span class="pr-aviso" title="' + esc(AVISO_PR[a] || a) + '">' + esc(a === 'ANTES_DEL_SISTEMA' ? 'Antes del sistema'
+            : a === 'REMISIONES_SIN_ENVIO' ? i.remSinEnvio + ' remisión(es) sin envío' : 'Sin KG') + '</span>';
+        }).join('');
+        return '<tr' + (avisos ? ' class="pr-revisar"' : '') + '><td><a href="proyecto.html?cb=' + encodeURIComponent(i.consecutivo) + '" target="_blank" rel="noopener">' +
+          '<strong>CB' + esc(i.consecutivo) + '</strong></a> ' + esc(i.proyecto) + (avisos ? '<div>' + avisos + '</div>' : '') + '</td>' +
+          '<td>' + esc(i.envio) + (i.casas && i.casas !== 1 ? ' <span class="und">(' + fmtNum(i.casas, 2) + ' casas)</span>' : '') + '</td>' +
+          '<td>' + esc(fechaCorta(i.fechaFin)) + '</td>' +
+          '<td class="n">' + (i.avisos.indexOf('SIN_KG') >= 0 ? '—' : fmtNum(i.kg, 0)) + '</td>' +
+          '<td class="n">' + (i.valor == null || i.avisos.indexOf('SIN_KG') >= 0 ? '—' : '$' + fmtNum(i.valor, 0)) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+    return h;
+  }
+
   // ── Cargar inventario del mes (InventarioExcel.gs) ──────────────────────
   var EST_MES = { OK: 'OK', VIEJO: 'Código viejo', PROPUESTO: 'Por confirmar', NUEVO: 'Nuevo' };
   var SECCIONES_MES = ['ACCESORIOS', 'DESPACHO', 'MEMBRANAS', 'REPUESTOS'];
@@ -629,6 +674,7 @@
     if (opera) {
       $('modNav').classList.remove('hidden');
       $('tabExistencias').classList.remove('hidden');
+      $('tabProducido').classList.remove('hidden');
       // Cargar el mes es el cierre contable: solo Dirección (lo valida el servidor).
       if (esDireccion(session)) $('tabMes').classList.remove('hidden');
     } else {
@@ -673,6 +719,17 @@
       if (!b) return;
       _exCategoria = b.getAttribute('data-cat');
       pintarStock();
+    });
+
+    $('prCorte').value = hoyBogota();
+    $('btnProducido').addEventListener('click', function () {
+      var b = $('btnProducido'), cuerpo = $('prCuerpo');
+      b.disabled = true;
+      cuerpo.innerHTML = '<div class="empty-state"><p>Calculando…</p></div>';
+      apiInvProducidoSinRemision(token, $('prCorte').value)
+        .then(function (r) { cuerpo.innerHTML = producidoHtml(r); })
+        .catch(function (e) { fallo(e, cuerpo); })
+        .finally(function () { b.disabled = false; });
     });
 
     $('btnRevisarAcc').addEventListener('click', revisarAcc);

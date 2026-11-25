@@ -74,6 +74,9 @@
     .ex-estado.SIN_STOCK { background: #FEE2E2; color: #B91C1C; }
     .ex-estado.SIN_CONTEO { background: #F1F5F9; color: #64748B; }
     .und { color: var(--cf-gray-text); font-size: 0.75rem; }
+    .pr-aviso { display: inline-block; font-size: 0.65rem; font-weight: 800; padding: 2px 7px; border-radius: 999px;
+      background: #FEF3C7; color: #92400E; margin: 2px 4px 0 0; white-space: nowrap; }
+    .pr-revisar td { background: #FFFBEB; }
     .ex-cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
     .ex-cat { background: #fff; border: 1.5px solid var(--cf-gray-mid); border-radius: 999px; padding: 6px 12px; font-family: inherit;
       font-size: 0.8rem; font-weight: 700; color: var(--cf-dark); cursor: pointer; }
@@ -134,6 +137,7 @@
     <button class="tab-btn active" data-tab="registrar" role="tab">Registrar recepción</button>
     <button class="tab-btn" data-tab="recepciones" role="tab">Recepciones <span id="cuentaPendientes" class="tab-cuenta hidden"></span></button>
     <button class="tab-btn hidden" data-tab="existencias" id="tabExistencias" role="tab">Existencias</button>
+    <button class="tab-btn hidden" data-tab="producido" id="tabProducido" role="tab">Producido sin remisión</button>
     <button class="tab-btn hidden" data-tab="mes" id="tabMes" role="tab">Cargar inventario del mes</button>
   </div>
 
@@ -200,6 +204,18 @@
         <button id="btnRefrescarEx" class="btn btn-ghost btn-sm">🔄 Actualizar</button>
       </div>
       <div id="exCuerpo"><div class="empty-state"><p>Cargando…</p></div></div>
+    </section>
+
+    <!-- ══ PRODUCIDO SIN REMISIÓN ═════════════════════════════ -->
+    <section class="tab-panel" id="panel-producido">
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;">
+          <label for="prCorte">Corte</label>
+          <input type="date" id="prCorte">
+        </div>
+        <button id="btnProducido" class="btn btn-ghost btn-sm">Calcular</button>
+      </div>
+      <div id="prCuerpo"><div class="empty-state"><p>Elige el corte (por defecto hoy) y toca Calcular.</p></div></div>
     </section>
 
     <!-- ══ CARGAR INVENTARIO DEL MES (solo Dirección) ═════════ -->

@@ -403,8 +403,9 @@ async function apiAdminAuditoriaGet(token, desde, hasta) {
 async function apiAdminReportePdf(token, cedula, mes) {
   return apiCall('admin_reporte_pdf', { token, cedula, mes });
 }
-async function apiAdminMarcarPorOperario(token, cedulaOperario, fechaOverride, horaOverride) {
-  return apiCall('admin_marcar_por_operario', { token, cedulaOperario, fechaOverride, horaOverride });
+// sede: el nombre de una sede activa (24-nov); vacío con una sola sede.
+async function apiAdminMarcarPorOperario(token, cedulaOperario, fechaOverride, horaOverride, sede) {
+  return apiCall('admin_marcar_por_operario', { token, cedulaOperario, fechaOverride, horaOverride, sede: sede || '' });
 }
 async function apiAdminDesbloquear(token, cedulaOperario) {
   return apiCall('admin_desbloquear', { token, cedulaOperario });
@@ -493,6 +494,10 @@ async function apiInvExcelRevisar(token, envio) {
 }
 async function apiInvExcelCargar(token, envio) {
   return apiCall('inv_excel_cargar', { token, ...envio });
+}
+// Lo producido que sigue en planta al corte ('aaaa-mm-dd', vacío = hoy), a costo.
+async function apiInvProducidoSinRemision(token, corte) {
+  return apiCall('inv_producido_sin_remision', { token, corte: corte || '' });
 }
 async function apiInvRecepcionRechazar(token, docId, motivo) {
   return apiCall('inv_recepcion_rechazar', { token, docId, motivo });

@@ -1189,6 +1189,8 @@
     btnAsig.classList.toggle('oculto', !puedeAsignar || asignandoEnvio || moviendo);
     btnAsig.textContent = ids.length ? 'Cambiar envío' : 'Asignar envío';
     btnGuardarEnv.classList.toggle('oculto', !asignandoEnvio || moviendo);
+    const btnCancEnv = $('btnCancelarEnvio');
+    if (btnCancEnv) btnCancEnv.classList.toggle('oculto', !asignandoEnvio || moviendo);
     pintarAvisoEnvio();
   }
   function pintarAvisoEnvio() {
@@ -1201,7 +1203,9 @@
       : 'Marca el envío (o los envíos) que lleva esta remisión.';
   }
 
-  onClick('btnAsignarEnvio', () => { asignandoEnvio = true; pintarEnvios(); });
+  let envioAntesDeAsignar = '';
+  onClick('btnAsignarEnvio', () => { envioAntesDeAsignar = doc.envioId || ''; asignandoEnvio = true; pintarEnvios(); });
+  onClick('btnCancelarEnvio', () => { doc.envioId = envioAntesDeAsignar; asignandoEnvio = false; pintarEnvios(); });
   onClick('btnGuardarEnvio', async () => {
     const ids = envioIdsDe(doc.envioId);
     if (!ids.length) { toast('Marca al menos un envío.', 'warning'); return; }
@@ -2645,6 +2649,15 @@
   }
 
   async function guardarAhora(silencioso) {
+    // A medio asignar envío o mover: "Guardar" no lleva ni el envío ni la
+    // cotización —en una firme el backend conserva los de la fila (R15-07)—,
+    // así que guardar ahora dejaría creer que sí. Primero se termina o se
+    // cancela eso, con sus botones.
+    if (asignandoEnvio || moviendo) {
+      if (!silencioso) toast(moviendo ? 'Primero confirma o cancela el cambio de cotización.'
+                                      : 'Primero guarda o cancela el envío.', 'warning');
+      return false;
+    }
     const quitadas = quitarPrecargadasVacias();
     if (quitadas) {
       editandoDesc.clear();

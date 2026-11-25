@@ -87,10 +87,15 @@
   }
 
   // ── Cargar estado inicial ──
+  // Las sedes donde se puede marcar (24-nov), del servidor con el estado. Aparte
+  // de `estadoActual`, que se reemplaza al marcar.
+  let sedes = null;
+
   async function cargarEstado() {
     try {
       const res = await apiEstado(session.token);
       estadoActual = res;
+      if (res.sedes && res.sedes.length) sedes = res.sedes;
       actualizarUI();
       verificarSesionVencida();
     } catch (e) {
@@ -114,7 +119,8 @@
 
     const u = estadoActual.ultimoRegistro;
     if (u) {
-      lastMark.textContent = 'Último registro: ' + u.tipo + ' el ' + u.fecha + ' a las ' + fmtHora(u.hora);
+      lastMark.textContent = 'Último registro: ' + u.tipo + ' el ' + u.fecha + ' a las ' + fmtHora(u.hora) +
+        (u.sede ? ' · ' + u.sede : '');
       lastMark.classList.remove('hidden');
     }
   }
@@ -129,23 +135,23 @@
     setGeoStatus('Obteniendo ubicación GPS...', '');
 
     try {
-      const { enPlanta, distancia, lat, lng, precision } = await validarEnPlanta();
+      const { enPlanta, distancia, sede, radio, lat, lng, precision } = await validarEnPlanta(sedes);
 
       if (!enPlanta) {
-        setGeoStatus('📍 Estás a ' + distancia + ' m de la planta (máx. ' + CONFIG.RADIO_METROS + ' m)', 'error');
-        showAlert('No puedes marcar desde fuera de la planta. Acércate al área de producción.', 'error');
+        setGeoStatus('📍 Estás a ' + distancia + ' m de ' + sede + ', la sede más cercana (máx. ' + radio + ' m)', 'error');
+        showAlert('No puedes marcar desde fuera de una sede. Acércate al área de producción.', 'error');
         setMarkLoading(false);
         return;
       }
 
-      setGeoStatus('📍 Ubicación confirmada (' + distancia + ' m de la planta, precisión ±' + precision + ' m)', 'ok');
+      setGeoStatus('📍 ' + sede + ' (' + distancia + ' m, precisión ±' + precision + ' m)', 'ok');
 
       const res = await apiMarcar(session.token, lat, lng, null, tipoEsperado);
       const emoji = res.tipo === 'ENTRADA' ? '✅' : '🏁';
-      showAlert(emoji + ' ' + res.tipo + ' registrada a las ' + res.hora, 'success');
+      showAlert(emoji + ' ' + res.tipo + ' registrada a las ' + res.hora + (res.sede ? ' en ' + res.sede : ''), 'success');
       estadoActual = {
         tieneEntradaAbierta: res.tipo === 'ENTRADA',
-        ultimoRegistro: { tipo: res.tipo, fecha: res.fecha, hora: res.hora },
+        ultimoRegistro: { tipo: res.tipo, fecha: res.fecha, hora: res.hora, sede: res.sede || '' },
       };
       actualizarUI();
       await cargarHistorial();
@@ -312,15 +318,15 @@
     svGpsMsg.textContent   = 'Obteniendo ubicación...';
 
     try {
-      const { enPlanta, distancia, lat, lng } = await validarEnPlanta();
+      const { enPlanta, distancia, sede, radio, lat, lng } = await validarEnPlanta(sedes);
 
       if (!enPlanta) {
         svGpsMsg.style.display = 'none';
-        mostrarSvError('📍 Estás a ' + distancia + ' m de la planta (máx. ' + CONFIG.RADIO_METROS + ' m). Debes estar en la planta para corregir la salida.');
+        mostrarSvError('📍 Estás a ' + distancia + ' m de ' + sede + ', la sede más cercana (máx. ' + radio + ' m). Debes estar en una sede para corregir la salida.');
         return;
       }
 
-      svGpsMsg.textContent  = '📍 Ubicación confirmada (' + distancia + ' m)';
+      svGpsMsg.textContent  = '📍 ' + sede + ' (' + distancia + ' m)';
       svBtnConf.textContent = 'Registrando...';
 
       await apiMarcar(session.token, lat, lng, { fecha, hora: hora + ':00' }, 'SALIDA');

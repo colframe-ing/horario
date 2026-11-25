@@ -1133,6 +1133,7 @@
   // ============================================================
 
   let sesionesAbiertasData = [];   // se rellena en cargarSesionesAbiertas()
+  let sedesActivas = [];           // nombres de las sedes activas, de la misma respuesta (24-nov)
 
   async function cargarOperarios() {
     try {
@@ -1340,6 +1341,15 @@
     document.getElementById('marcarEstado').innerHTML = estadoHtml +
       ' <span style="color:var(--cf-gray-text);font-size:0.78rem;">Ajusta la fecha/hora si el operario olvidó marcar a tiempo.</span>';
 
+    // La sede (24-nov): con una sola activa no se pregunta (el servidor usa
+    // esa). Con varias se elige; una salida propone la sede de su entrada.
+    const selSede = document.getElementById('marcarSede');
+    const wrapSede = document.getElementById('marcarSedeWrap');
+    const propuesta = sesionAbierta && sesionAbierta.sede ? sesionAbierta.sede : '';
+    selSede.innerHTML = '<option value="">Elige la sede…</option>' +
+      sedesActivas.map(n => `<option value="${esc(n)}"${n === propuesta ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    wrapSede.classList.toggle('hidden', sedesActivas.length < 2);
+
     marcarAlert.classList.add('hidden');
     marcarBtnText.classList.remove('hidden');
     marcarBtnLoading.classList.add('hidden');
@@ -1360,6 +1370,12 @@
 
   btnMarcarConfirm.addEventListener('click', async () => {
     if (!operarioMarcar) return;
+    const sede = document.getElementById('marcarSede').value;
+    if (sedesActivas.length > 1 && !sede) {
+      marcarAlert.textContent = 'Elige en qué sede está el operario.';
+      marcarAlert.className = 'alert alert-error';
+      return;
+    }
     marcarAlert.classList.add('hidden');
     marcarBtnText.classList.add('hidden');
     marcarBtnLoading.classList.remove('hidden');
@@ -1369,7 +1385,7 @@
     const horaOverride  = document.getElementById('marcarHora').value;
 
     try {
-      const res = await apiAdminMarcarPorOperario(token, operarioMarcar.cedula, fechaOverride, horaOverride);
+      const res = await apiAdminMarcarPorOperario(token, operarioMarcar.cedula, fechaOverride, horaOverride, sede);
       cerrarModalMarcar();
       const horaMsg = res.horaAjustada
         ? ` (hora ajustada: ${horaOverride} del ${fechaOverride})`
@@ -1546,6 +1562,7 @@
       const res = await apiAdminSesionesAbiertas(token);
       sesionesAbiertasData = res.sesiones || [];
       sesionesAbiertasData._loaded = true; // marca que ya fue consultado
+      if (res.sedes && res.sedes.length) sedesActivas = res.sedes;
       renderSesionesAbiertas(sesionesAbiertasData);
     } catch (e) {
       body.innerHTML = '<span style="color:#DC2626;font-size:0.82rem;">Error al cargar sesiones abiertas.</span>';
@@ -1566,7 +1583,13 @@
 
     const ahora = new Date();
     sesionesRender = sesiones;
-    body.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:10px;">' +
+    // Cuántos hay en cada sede (24-nov). Las entradas de antes de las sedes no
+    // dicen dónde: van aparte, sin adivinar.
+    const porSede = {};
+    sesiones.forEach(s => { const k = s.sede || 'Sede sin registrar'; porSede[k] = (porSede[k] || 0) + 1; });
+    const resumenSedes = '<div style="font-size:0.8rem;font-weight:700;color:var(--cf-dark);margin-bottom:8px;">' +
+      Object.keys(porSede).sort().map(k => '📍 ' + esc(k) + ': ' + porSede[k]).join(' &nbsp;·&nbsp; ') + '</div>';
+    body.innerHTML = resumenSedes + '<div style="display:flex;flex-wrap:wrap;gap:10px;">' +
       sesiones.map((s, i) => {
         const entradaDt = new Date(s.fecha + 'T' + (s.hora.length === 5 ? s.hora + ':00' : s.hora));
         const diffMs = ahora - entradaDt;
@@ -1584,6 +1607,7 @@
           <div style="flex:1;min-width:0;">
             <div style="font-weight:700;font-size:0.85rem;color:var(--cf-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(s.nombre)}</div>
             <div style="font-size:0.72rem;color:var(--cf-gray-text);">Entró: ${esc(s.fecha)} ${esc(s.hora.slice(0,5))}</div>
+            <div style="font-size:0.72rem;font-weight:700;color:var(--cf-dark);">📍 ${s.sede ? esc(s.sede) : 'Sede sin registrar'}</div>
             <div style="font-size:0.75rem;font-weight:700;color:${colorT};">⏱ ${tiempoLabel}${esLargo ? ' ⚠ larga' : ''}</div>
           </div>
           <button class="btn btn-primary btn-sm" data-acc="cerrar" data-i="${i}" style="font-size:0.72rem;padding:5px 10px;background:var(--cf-dark);border-color:var(--cf-dark);flex-shrink:0;">Cerrar</button>
