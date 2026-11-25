@@ -85,6 +85,19 @@ function paginaInicio(s) {
   return 'app.html';
 }
 
+/**
+ * Adónde ir al entrar (25-nov). Si se llegó al login desde el QR de una bobina
+ * (b.html guarda `cf_volver`), a esa bobina; si no, a la página de inicio del
+ * rol. Solo se acepta un enlace a una bobina de la pestaña Acero: `cf_volver`
+ * no puede mandar a ninguna otra parte (ni a otro sitio).
+ */
+function destinoTrasLogin(s) {
+  var v = '';
+  try { v = sessionStorage.getItem('cf_volver') || ''; sessionStorage.removeItem('cf_volver'); } catch (e) { v = ''; }
+  if (/^inventario\.html\?bobina=[A-Za-z0-9%._\-]{1,120}$/.test(v)) return v;
+  return paginaInicio(s);
+}
+
 /** Las páginas del navegador de módulos que son solo de Dirección. */
 var PAGINAS_SOLO_DIRECCION = ['admin.html', 'facturacion.html'];
 
@@ -496,6 +509,14 @@ async function apiInvExcelCargar(token, envio) {
   return apiCall('inv_excel_cargar', { token, ...envio });
 }
 // Lo producido que sigue en planta al corte ('aaaa-mm-dd', vacío = hoy), a costo.
+// El acero del último corte verificado: por calibre × grado × galvanizado, y bobina por bobina.
+async function apiInvAcero(token) {
+  return apiCall('inv_acero', { token });
+}
+// Marcar una bobina: 'Parcial' (con los kg que le quedan, estimados), 'Consumido' o 'Descartado'.
+async function apiInvBobinaMarcar(token, codigo, estado, kg) {
+  return apiCall('inv_bobina_marcar', { token, codigo, estado, kg: kg == null ? '' : kg });
+}
 async function apiInvProducidoSinRemision(token, corte) {
   return apiCall('inv_producido_sin_remision', { token, corte: corte || '' });
 }

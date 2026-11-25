@@ -1813,6 +1813,8 @@
     RECEPCION_REGISTRADA:       { txt: 'Recepción registrada',       color: '#2563EB', g: 'Inventario (hoja AuditoriaRemisiones)' },
     RECEPCION_APROBADA:         { txt: 'Recepción aprobada',         color: '#16A34A', g: 'Inventario (hoja AuditoriaRemisiones)' },
     RECEPCION_RECHAZADA:        { txt: 'Recepción rechazada',        color: '#DC2626', g: 'Inventario (hoja AuditoriaRemisiones)' },
+    // Parcial, Consumido, Descartado o la corrección de Dirección (25-nov): el detalle dice antes y después.
+    BOBINA_MARCADA:             { txt: 'Bobina marcada',             color: '#D97706', g: 'Inventario (hoja AuditoriaRemisiones)' },
     // Solo aparece cuando remConciliar encuentra un documento DESPACHADO sin
     // sus movimientos de inventario y los completa (R4-04). En rojo a
     // propósito: cada fila de estas es un despacho que estuvo sin registrar

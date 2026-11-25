@@ -19,7 +19,14 @@
   'use strict';
 
   var session = getSession();
-  if (!session || !session.token) { window.location.replace('index.html'); return; }
+  // La bobina del QR del sticker (25-nov): `?bobina=CODIGO` abre la pestaña
+  // Acero con esa bobina. Sin sesión, el login vuelve aquí (destinoTrasLogin).
+  var bobinaQR = '';
+  try { bobinaQR = String(new URLSearchParams(location.search).get('bobina') || '').trim().toUpperCase(); } catch (e) { bobinaQR = ''; }
+  if (!session || !session.token) {
+    if (bobinaQR) { try { sessionStorage.setItem('cf_volver', 'inventario.html?bobina=' + encodeURIComponent(bobinaQR)); } catch (e) { /* nada */ } }
+    window.location.replace('index.html'); return;
+  }
   var token = session.token;
   // Registrar y ver las propias: todos. Ver todas y las existencias: Dirección
   // y administrativo. Aprobar: solo Dirección (lo decide el servidor y lo dice
@@ -111,6 +118,67 @@
     return { errores: errores, lineas: lineas };
   }
 
+  // ── Acero (25-nov) ─────────────────────────────────────────────────────
+  /**
+   * El código que sigue: "1560-05" → "1560-06", "31324-9" → "31324-10". Sin un
+   * número al final, vacío (el operario lo escribe). Respeta los ceros.
+   */
+  function siguienteCodigo(cod) {
+    var m = String(cod || '').trim().match(/^(.*?)(\d+)$/);
+    if (!m) return '';
+    var n = String(parseInt(m[2], 10) + 1);
+    while (n.length < m[2].length) n = '0' + n;
+    return m[1] + n;
+  }
+
+  /**
+   * Lo mínimo de una recepción de acero antes de mandarla; el servidor valida
+   * todo otra vez (rangos de peso y precio, valores conocidos, códigos usados).
+   * `r.lineas` = [{ codigo, calibre, grado, galvanizado, pesoKg, precioKg }].
+   */
+  function validarAceroLocal(r, hoy, desde) {
+    var errores = [];
+    if (!String(r.proveedor || '').trim()) errores.push('Falta el proveedor.');
+    if (!String(r.factura || '').trim() && !String(r.remisionProveedor || '').trim()) {
+      errores.push('Escribe el número de la factura o de la remisión del proveedor.');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.fechaIngreso || ''))) errores.push('Falta la fecha de ingreso.');
+    else if (hoy && r.fechaIngreso > hoy) errores.push('La fecha de ingreso no puede estar en el futuro.');
+    else if (desde && r.fechaIngreso < desde) errores.push('El acero que entró antes del ' + desde + ' va en el Excel CF-RG-ALM-001, no aquí.');
+    var lineas = [], vistos = {};
+    (r.lineas || []).forEach(function (l, i) {
+      var vacia = ['codigo', 'pesoKg'].every(function (k) { return !String(l[k] == null ? '' : l[k]).trim(); });
+      if (vacia) return;
+      var n = 'Bobina ' + (i + 1);
+      var cod = String(l.codigo || '').trim().toUpperCase();
+      if (!cod) { errores.push(n + ': falta el código.'); return; }
+      if (vistos[cod]) { errores.push(n + ': el código ' + cod + ' está dos veces.'); return; }
+      vistos[cod] = true;
+      if (!String(l.calibre || '') || !String(l.grado || '') || !String(l.galvanizado || '')) { errores.push(n + ' (' + cod + '): elige calibre, grado y galvanizado.'); return; }
+      if (!(numero(l.pesoKg) > 0)) { errores.push(n + ' (' + cod + '): falta el peso neto.'); return; }
+      if (!(numero(l.precioKg) > 0)) { errores.push(n + ' (' + cod + '): falta el precio por kg.'); return; }
+      lineas.push({ codigo: cod, calibre: l.calibre, grado: l.grado, galvanizado: l.galvanizado,
+                    pesoKg: String(l.pesoKg).trim(), precioKg: String(l.precioKg).trim() });
+    });
+    if (!lineas.length && !errores.some(function (e) { return /^Bobina/.test(e); })) errores.push('Agrega al menos una bobina.');
+    return { errores: errores, lineas: lineas };
+  }
+
+  /** La tabla de bobinas de una recepción de acero, para su tarjeta. */
+  function bobinasRecepcionHtml(rc) {
+    var bs = rc.bobinas || [];
+    var kg = bs.reduce(function (t, b) { return t + (+b.pesoKg || 0); }, 0);
+    return '<div class="table-wrap"><table class="rec-tabla"><thead><tr><th>Código</th><th>Calibre</th><th>Grado</th>' +
+      '<th>Galvanizado</th><th class="n">Peso neto</th><th class="n">$ / kg</th></tr></thead><tbody>' +
+      bs.map(function (b) {
+        return '<tr><td>' + esc(b.codigo) + '</td><td>' + esc(b.calibre) + '</td><td>' + esc(b.grado) + '</td><td>' + esc(b.galvanizado) +
+          '</td><td class="n"><strong>' + fmtNum(b.pesoKg, 0) + '</strong> <span class="und">kg</span></td><td class="n">' +
+          (b.precioKg == null ? '—' : fmtNum(b.precioKg, 0)) + '</td></tr>';
+      }).join('') +
+      '<tr><td colspan="4"><strong>' + bs.length + ' bobina' + (bs.length === 1 ? '' : 's') + '</strong></td><td class="n"><strong>' +
+      fmtNum(kg, 0) + '</strong> <span class="und">kg</span></td><td></td></tr></tbody></table></div>';
+  }
+
   var ESTADO_TXT = { PENDIENTE: 'Pendiente', APROBADA: 'Aprobada', RECHAZADA: 'Rechazada' };
 
   /** Una recepción. Con `puedeAprobar` y pendiente: costos editables y los dos botones. */
@@ -122,7 +190,17 @@
       '<div class="rec-top"><div><div class="rec-prov">' + esc(rc.proveedor) + '</div>' +
       '<div class="rec-meta">' + esc(docs) + '</div>' +
       '<div class="rec-meta">Ingresó el ' + esc(fechaCorta(rc.fechaIngreso)) + ' · registró ' + esc(rc.creadoNombre || rc.creadoPor) + '</div></div>' +
-      '<span class="rec-estado ' + esc(rc.estado) + '">' + esc(ESTADO_TXT[rc.estado] || rc.estado) + '</span></div>';
+      '<span class="rec-estado ' + esc(rc.estado) + '">' + (rc.tipo === 'ACERO' ? 'Acero · ' : '') + esc(ESTADO_TXT[rc.estado] || rc.estado) + '</span></div>';
+    if (rc.tipo === 'ACERO') {
+      h += bobinasRecepcionHtml(rc);
+      if (rc.observaciones) h += '<div class="rec-meta" style="margin-top:8px;">' + esc(rc.observaciones) + '</div>';
+      if (rc.estado === 'RECHAZADA' && rc.motivoRechazo) h += '<div class="rec-motivo">Motivo: ' + esc(rc.motivoRechazo) + '</div>';
+      if (editable) {
+        h += '<div class="inv-acciones"><button class="btn btn-ghost btn-sm" data-acc="rechazar" data-id="' + esc(rc.docId) + '">Rechazar</button>' +
+          '<button class="btn btn-primary btn-sm" data-acc="aprobar" data-id="' + esc(rc.docId) + '">Aprobar: entran al acero en planta</button></div>';
+      }
+      return h + '</div>';
+    }
     h += '<div class="table-wrap"><table class="rec-tabla"><thead><tr><th>Código</th><th>Descripción</th>' +
       '<th class="n">Cantidad</th><th class="n">Costo unitario</th></tr></thead><tbody>' +
       (rc.lineas || []).map(function (l) {
@@ -220,6 +298,78 @@
           '<td class="n">' + (i.valor == null ? '—' : '$' + fmtNum(i.valor, 0)) + '</td></tr>';
       }).join('') + '</tbody></table></div></div>';
     return h;
+  }
+
+  /**
+   * La pestaña Acero (25-nov): el acero que hay HOY —lo verificado en el último
+   * corte, más lo que entró, menos lo que se marcó consumido—, por calibre ×
+   * grado × galvanizado y bobina por bobina, con los botones para marcarlas.
+   * Los valores ($) solo si el servidor los manda (Dirección y Administrativo).
+   * Lo que el registro dice "En stock" sin que el corte lo viera va APARTE.
+   * `f` filtra las bobinas por código, calibre, grado, proveedor o factura.
+   *
+   * Se llama aceroVistaHtml y no aceroHtml: ese nombre ya lo tiene la vista
+   * previa del Excel de acero (Cargar inventario del mes), y en un mismo
+   * bloque la última declaración gana (lo vigila sin_funciones_repetidas.test).
+   */
+  function aceroVistaHtml(a, f) {
+    if (!a) return '<div class="empty-state"><p>Cargando el acero…</p></div>';
+    if (a.sinCierre) return '<div class="empty-state"><p>Todavía no hay ninguna verificación de acero cargada.</p></div>';
+    var kg = function (n) { return fmtNum(n, 0) + ' <span class="und">kg</span>'; };
+    var val = !!a.verValores;
+    var h = '<div class="ex-resumen">' +
+      '<div class="ex-dato"><div class="v">' + fmtNum(a.enPlanta.kg, 0) + '</div><div class="l">kg en planta</div></div>' +
+      '<div class="ex-dato"><div class="v">' + a.enPlanta.bobinas + '</div><div class="l">Bobinas</div></div>' +
+      (val ? '<div class="ex-dato"><div class="v">$' + fmtNum(a.enPlanta.valor, 0) + '</div><div class="l">Valor</div></div>' +
+             '<div class="ex-dato"><div class="v">' + (a.precioKg == null ? '—' : '$' + fmtNum(a.precioKg, 0)) + '</div><div class="l">Precio ponderado / kg</div></div>' : '') +
+      '</div>';
+    var d = a.desdeCorte || {};
+    var cambios = [d.entraron ? '+' + d.entraron + ' entraron' : '', d.salieron ? '−' + d.salieron + ' consumidas o descartadas' : '',
+                   d.parciales ? d.parciales + ' a medio usar' : ''].filter(Boolean).join(' · ');
+    h += '<p class="inv-nota">Desde la verificación del <strong>' + esc(fechaCorta(a.corte)) + '</strong>' +
+      (cambios ? ': ' + esc(cambios) + '.' : ', sin cambios.') +
+      (a.fueraPlanta && a.fueraPlanta.bobinas ? ' Fuera de planta (Bogotá): ' + a.fueraPlanta.bobinas + ' · ' + fmtNum(a.fueraPlanta.kg, 0) + ' kg, aparte.' : '') +
+      '</p>';
+    h += '<div class="table-card"><div class="table-wrap"><table class="ex-tabla"><thead><tr>' +
+      '<th>Calibre</th><th>Grado</th><th>Galvanizado</th><th class="n">Bobinas</th><th class="n">Kg</th>' + (val ? '<th class="n">Valor</th>' : '') +
+      '</tr></thead><tbody>' + (a.grupos || []).map(function (g) {
+        return '<tr><td><strong>' + esc(g.calibre) + '</strong></td><td>' + esc(g.grado) + '</td><td>' + esc(g.galvanizado) + '</td>' +
+          '<td class="n">' + g.bobinas + '</td><td class="n">' + kg(g.kg) + '</td>' + (val ? '<td class="n">$' + fmtNum(g.valor, 0) + '</td>' : '') + '</tr>';
+      }).join('') + '</tbody></table></div></div>';
+    if (a.sinVerificar && a.sinVerificar.bobinas) {
+      h += '<details class="inv-nota"><summary>El registro dice además <strong>' + a.sinVerificar.bobinas + ' bobinas · ' +
+        fmtNum(a.sinVerificar.kg, 0) + ' kg</strong> "En stock" que no se verificaron en ese corte' +
+        (a.noEstan && a.noEstan.bobinas ? ', y ' + a.noEstan.bobinas + ' que se buscaron y no estaban' : '') +
+        '. No cuentan arriba: lo más probable es que ya se consumieron y nadie les cambió el estado.</summary>' +
+        '<table class="ex-tabla"><tbody>' + (a.gruposSinVerificar || []).map(function (g) {
+          return '<tr><td>' + esc(g.calibre) + ' · ' + esc(g.grado) + ' · ' + esc(g.galvanizado) + '</td><td class="n">' + g.bobinas +
+            '</td><td class="n">' + kg(g.kg) + '</td></tr>';
+        }).join('') + '</tbody></table></details>';
+    }
+    var todas = a.bobinas || [];
+    var bs = todas.filter(function (b) {
+      if (!f) return true;
+      return [b.codigo, b.calibre, b.grado, b.galvanizado, b.proveedor, b.factura].join(' ').toLowerCase().indexOf(f) > -1;
+    });
+    h += '<div class="inv-sub">Bobinas en planta' + (f ? ' (' + bs.length + ' de ' + todas.length + ')' : '') + '</div>' +
+      '<p class="inv-nota" style="margin-top:0;">Al desmontar una a medio usar: <strong>Parcial</strong> y los kg que le quedan (sale su sticker nuevo). Al terminarla: <strong>Consumida</strong>.</p>';
+    if (!bs.length) return h + '<div class="empty-state"><p>' + (f ? 'Ninguna bobina coincide con la búsqueda.' : 'No hay bobinas en planta.') + '</p></div>';
+    // Tarjetas y no tabla: se marca desde el celular junto a la máquina, y en
+    // una tabla los botones quedaban fuera de la pantalla (medido: 684 px de
+    // tabla en 375 de pantalla).
+    return h + '<div class="ac-bobinas">' + bs.map(function (b) {
+      var parcial = b.estado === 'Parcial';
+      var cod = esc(b.codigo);
+      return '<div class="ac-bob"><div class="ac-bob-top"><strong>' + cod + '</strong>' +
+        (b.nueva ? ' <span class="und">nueva</span>' : '') + (parcial ? ' <span class="ex-estado BAJO">Parcial</span>' : '') +
+        '<span class="ac-kg">' + fmtNum(b.kg, 0) + ' kg' + (parcial ? ' <span class="und">de ' + fmtNum(b.pesoKg, 0) + '</span>' : '') + '</span></div>' +
+        '<div class="rec-meta">Cal ' + esc(b.calibre) + ' · G' + esc(b.grado) + ' · ' + esc(b.galvanizado) + ' · ' + esc(b.proveedor) +
+        ' · ingresó ' + esc(fechaCorta(b.fechaIngreso)) + '</div>' +
+        '<div class="ac-acc">' +
+        '<button class="btn btn-ghost btn-sm" data-bob="Parcial" data-cod="' + cod + '" data-kg="' + esc(b.kg) + '">Parcial</button>' +
+        '<button class="btn btn-ghost btn-sm" data-bob="Consumido" data-cod="' + cod + '">Consumida</button>' +
+        '<button class="btn btn-ghost btn-sm" data-bob="Descartado" data-cod="' + cod + '">Descartar</button></div></div>';
+    }).join('') + '</div>';
   }
 
   function nuevoClientId() {
@@ -418,6 +568,7 @@
   var _lista = null;
   var _stock = null;
   var _exCategoria = '';   // el botón de categoría elegido en Existencias ('' = todas)
+  var _acero = null;       // la pestaña Acero, pedida al abrirla (25-nov)
   var _clientId = nuevoClientId();
 
   // ── Registrar ──────────────────────────────────────────────────────────
@@ -432,6 +583,85 @@
   function agregarLinea() {
     $('recLineas').insertAdjacentHTML('beforeend', filaLineaHtml());
   }
+  // ── Registrar acero (25-nov) ─────────────────────────────────────────────
+  var _modo = '';   // '' = accesorios · 'ACERO' = bobinas
+  var ACERO_DEF = { calibre: [18, 20, 22], grado: [33, 40, 50], galvanizado: ['Z-180', 'Z-275', 'ZAM'] };
+  function aceroCfg() { return (_lista && _lista.acero) || { desde: '', conocidos: ACERO_DEF, puedeNuevo: false }; }
+  function opcionesHtml(valores, elegido, puedeNuevo) {
+    var vs = (valores || []).map(String);
+    if (elegido && vs.indexOf(String(elegido)) === -1) vs.push(String(elegido));
+    return '<option value="">—</option>' + vs.map(function (v) {
+      return '<option value="' + esc(v) + '"' + (String(elegido) === v ? ' selected' : '') + '>' + esc(v) + '</option>';
+    }).join('') + (puedeNuevo ? '<option value="__otro">Otro…</option>' : '');
+  }
+  function filaBobinaHtml(prev) {
+    var c = aceroCfg(), k = c.conocidos || ACERO_DEF, p = prev || {};
+    var sel = function (campo) {
+      return '<div><label>' + { calibre: 'Calibre', grado: 'Grado', galvanizado: 'Galvanizado' }[campo] + '</label>' +
+        '<select data-campo="' + campo + '">' + opcionesHtml(k[campo], p[campo], c.puedeNuevo) + '</select></div>';
+    };
+    return '<div class="rec-bobina">' +
+      '<div class="rec-cod"><label>Código</label><input type="text" data-campo="codigo" autocomplete="off" placeholder="factura-nº, p. ej. 1560-05" value="' +
+        esc(p.codigo ? siguienteCodigo(p.codigo) : '') + '"></div>' +
+      sel('calibre') + sel('grado') + sel('galvanizado') +
+      '<div><label>Peso neto (kg)</label><input type="text" inputmode="decimal" data-campo="pesoKg"></div>' +
+      '<div><label>$ por kg</label><input type="text" inputmode="decimal" data-campo="precioKg" value="' + esc(p.precioKg || '') + '"></div>' +
+      '<button type="button" class="rec-quitar" data-quitar title="Quitar la bobina" aria-label="Quitar la bobina">✕</button></div>';
+  }
+  function leerBobinas() {
+    return Array.prototype.map.call(document.querySelectorAll('#recBobinas .rec-bobina'), function (f) {
+      var v = function (k) { return f.querySelector('[data-campo="' + k + '"]').value; };
+      return { codigo: v('codigo'), calibre: v('calibre'), grado: v('grado'), galvanizado: v('galvanizado'),
+               pesoKg: v('pesoKg'), precioKg: v('precioKg') };
+    });
+  }
+  function agregarBobina() {
+    var previas = leerBobinas();
+    $('recBobinas').insertAdjacentHTML('beforeend', filaBobinaHtml(previas[previas.length - 1]));
+    var filas = document.querySelectorAll('#recBobinas .rec-bobina');
+    var peso = filas[filas.length - 1].querySelector('[data-campo="pesoKg"]');
+    if (previas.length) peso.focus();
+  }
+  function setModo(m) {
+    _modo = m || '';
+    Array.prototype.forEach.call(document.querySelectorAll('#recModo [data-modo]'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-modo') === _modo);
+    });
+    $('recModoAccesorios').classList.toggle('hidden', _modo === 'ACERO');
+    $('recModoAcero').classList.toggle('hidden', _modo !== 'ACERO');
+    if (_modo === 'ACERO' && !document.querySelector('#recBobinas .rec-bobina')) agregarBobina();
+    var c = aceroCfg();
+    if (c.desde && hoyBogota() < c.desde) {
+      $('recAceroNota').textContent = 'Desde el ' + c.desde + ' el acero se registra aquí. Lo que entró antes va todavía en el Excel CF-RG-ALM-001.';
+    }
+    $('recError').classList.add('hidden');
+  }
+  function registrarAcero() {
+    var f = leerFormulario();
+    var c = aceroCfg();
+    var v = validarAceroLocal(Object.assign({}, f, { lineas: leerBobinas() }), hoyBogota(), c.desde);
+    var caja = $('recError');
+    if (v.errores.length) { caja.textContent = v.errores.join('\n'); caja.classList.remove('hidden'); return; }
+    caja.classList.add('hidden');
+    var envio = { clientId: f.clientId, tipo: 'ACERO', fechaIngreso: f.fechaIngreso, proveedor: f.proveedor, factura: f.factura,
+                  remisionProveedor: f.remisionProveedor, ordenCompra: f.ordenCompra, observaciones: f.observaciones,
+                  lineas: v.lineas };
+    var btn = $('btnRegistrar');
+    btn.disabled = true;
+    apiInvRecepcionCrear(token, envio)
+      .then(function () {
+        toast('Acero registrado: ' + v.lineas.length + ' bobina' + (v.lineas.length === 1 ? '' : 's') + '. Queda pendiente de aprobación.', 'success');
+        limpiarFormulario();
+        cargarLista();
+      })
+      .catch(function (e) {
+        if (e && e.tipo === 'auth') { fallo(e); return; }
+        caja.textContent = (e && e.message) || 'No se pudo registrar. Revisa la señal y vuelve a tocar Registrar.';
+        caja.classList.remove('hidden');
+      })
+      .finally(function () { btn.disabled = false; });
+  }
+
   function leerFormulario() {
     return {
       clientId: _clientId,
@@ -449,10 +679,13 @@
     $('recFecha').value = hoyBogota();
     $('recLineas').innerHTML = '';
     agregarLinea(); agregarLinea(); agregarLinea();
+    $('recBobinas').innerHTML = '';
+    if (_modo === 'ACERO') agregarBobina();
     $('recError').classList.add('hidden');
     _clientId = nuevoClientId();
   }
   function registrar() {
+    if (_modo === 'ACERO') { registrarAcero(); return; }
     var f = leerFormulario();
     var v = validarRecepcionLocal(f, _catalogo, hoyBogota());
     var caja = $('recError');
@@ -516,7 +749,11 @@
     Array.prototype.forEach.call(tarjeta.querySelectorAll('[data-costo]'), function (inp) { costos[inp.getAttribute('data-costo')] = inp.value.trim(); });
     if (!window.confirm('¿Aprobar esta recepción? Suma al inventario y no se puede deshacer desde aquí.')) return;
     apiInvRecepcionAprobar(token, docId, costos)
-      .then(function () { toast('Aprobada: ya suma al inventario.', 'success'); return Promise.all([cargarLista(), _stock ? cargarStock() : null]); })
+      .then(function (r) {
+        toast(r && r.tipo === 'ACERO' ? 'Aprobada: las bobinas ya están en el acero en planta.' : 'Aprobada: ya suma al inventario.', 'success');
+        _acero = null;   // la vista de acero se vuelve a pedir
+        return Promise.all([cargarLista(), _stock ? cargarStock() : null]);
+      })
       .catch(function (e) { fallo(e); });
   }
   function rechazar(docId) {
@@ -535,6 +772,37 @@
   function cargarStock() {
     return apiInvStock(token).then(function (r) { _stock = r; pintarStock(); })
       .catch(function (e) { fallo(e, $('exCuerpo')); });
+  }
+
+  // ── Acero (25-nov) ─────────────────────────────────────────────────────
+  function pintarAceroVista() {
+    if (_acero) $('acCuerpo').innerHTML = aceroVistaHtml(_acero, $('acFiltro').value.trim().toLowerCase());
+  }
+  function cargarAceroVista() {
+    return apiInvAcero(token).then(function (r) { _acero = r; pintarAceroVista(); })
+      .catch(function (e) { fallo(e, $('acCuerpo')); });
+  }
+  /** Parcial (con los kg que le quedan, estimados), Consumido o Descartado. */
+  function marcarBobina(btn) {
+    var estado = btn.getAttribute('data-bob'), cod = btn.getAttribute('data-cod');
+    var kg = '';
+    if (estado === 'Parcial') {
+      kg = window.prompt('Bobina ' + cod + ': ¿cuántos kg le quedan, más o menos? (tenía ' + btn.getAttribute('data-kg') + ' kg)');
+      if (kg == null) return;
+      if (!(numero(kg) > 0)) { toast('Escribe los kg que le quedan.', 'warning'); return; }
+    } else if (!window.confirm('¿Marcar la bobina ' + cod + ' como ' + (estado === 'Consumido' ? 'CONSUMIDA' : 'DESCARTADA') +
+                               '? Sale del acero en planta.')) {
+      return;
+    }
+    btn.disabled = true;
+    apiInvBobinaMarcar(token, cod, estado, kg)
+      .then(function (r) {
+        toast(r.estado === 'Parcial'
+          ? cod + ': Parcial, le quedan ' + fmtNum(r.kgRestante, 0) + ' kg. Imprímele su sticker nuevo.'
+          : cod + ': ' + (r.estado === 'Consumido' ? 'consumida' : 'descartada') + '.', 'success');
+        return cargarAceroVista();
+      })
+      .catch(function (e) { btn.disabled = false; fallo(e); });
   }
 
   // ── Cargar inventario del mes ──────────────────────────────────────────
@@ -667,6 +935,7 @@
       p.classList.toggle('active', p.id === 'panel-' + nombre);
     });
     if (nombre === 'existencias' && !_stock) cargarStock();
+    if (nombre === 'acero' && !_acero) cargarAceroVista();
   }
 
   function init() {
@@ -702,6 +971,28 @@
     $('recLineas').addEventListener('change', function (e) {
       if (e.target.getAttribute('data-campo') === 'texto') mostrarUnidad(e.target);
     });
+    // Acero (25-nov)
+    $('recModo').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-modo]');
+      if (b) setModo(b.getAttribute('data-modo'));
+    });
+    $('btnAgregarBobina').addEventListener('click', agregarBobina);
+    $('recBobinas').addEventListener('click', function (e) {
+      var q = e.target.closest('[data-quitar]');
+      if (!q) return;
+      q.closest('.rec-bobina').remove();
+      if (!document.querySelector('#recBobinas .rec-bobina')) agregarBobina();
+    });
+    $('recBobinas').addEventListener('change', function (e) {
+      // "Otro…" (solo Dirección): un material nuevo. El servidor lo vuelve a validar.
+      if (e.target.tagName !== 'SELECT' || e.target.value !== '__otro') return;
+      var nuevo = window.prompt('¿Qué ' + ({ calibre: 'calibre', grado: 'grado', galvanizado: 'galvanizado' }[e.target.getAttribute('data-campo')]) + ' es?');
+      if (!nuevo || !nuevo.trim()) { e.target.value = ''; return; }
+      var o = document.createElement('option');
+      o.value = nuevo.trim().toUpperCase(); o.textContent = o.value;
+      e.target.insertBefore(o, e.target.lastChild);
+      e.target.value = o.value;
+    });
 
     $('btnRefrescarLista').addEventListener('click', cargarLista);
     $('recLista').addEventListener('click', function (e) {
@@ -719,6 +1010,14 @@
       if (!b) return;
       _exCategoria = b.getAttribute('data-cat');
       pintarStock();
+    });
+
+    // Acero (25-nov)
+    $('btnRefrescarAc').addEventListener('click', cargarAceroVista);
+    $('acFiltro').addEventListener('input', pintarAceroVista);
+    $('acCuerpo').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-bob]');
+      if (b) marcarBobina(b);
     });
 
     $('prCorte').value = hoyBogota();
@@ -749,6 +1048,8 @@
     $('mesAcero').addEventListener('change', function (e) { if (e.target.id === 'mesRevDesde') revisarAcero(e.target.value); });
 
     cargarLista();
+    // Llegó desde el QR de un sticker: directo a esa bobina, con sus botones.
+    if (bobinaQR) { $('acFiltro').value = bobinaQR; mostrarTab('acero'); }
   }
   init();
 })();

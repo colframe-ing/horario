@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>COLFRAME — Bobina</title>
+  <style>body { font-family: system-ui, sans-serif; color: #071D49; padding: 24px; }</style>
+</head>
+<body>
+  <!-- La página del QR de cada bobina (25-nov, PLAN_ETIQUETAS_ACERO). El sticker
+       lleva "b.html?CODIGO": corto a propósito, para que el QR tenga cuadros
+       grandes. Lleva a la pestaña Acero con esa bobina. Sin sesión, al login, y
+       el login vuelve aquí (ver `destinoTrasLogin` en api.js). -->
+  <p id="msg">Abriendo la bobina…</p>
+  <script>
+    (function () {
+      'use strict';
+      // El código va tal cual después del "?" (codificado). Solo los caracteres
+      // que la app acepta en un código de bobina: lo demás no es un sticker nuestro.
+      var crudo = String(location.search || '').replace(/^\?/, '');
+      var codigo = '';
+      try { codigo = decodeURIComponent(crudo).trim().toUpperCase(); } catch (e) { codigo = ''; }
+      if (!codigo || codigo.length > 40 || !/^[A-Z0-9][A-Z0-9 ._\/-]*$/.test(codigo)) {
+        document.getElementById('msg').textContent = 'Este enlace no es de una bobina de COLFRAME.';
+        return;
+      }
+      var destino = 'inventario.html?bobina=' + encodeURIComponent(codigo);
+      var sesion = null;
+      try { sesion = JSON.parse(localStorage.getItem('cf_session')); } catch (e) { sesion = null; }
+      if (sesion && sesion.token) { location.replace(destino); return; }
+      try { sessionStorage.setItem('cf_volver', destino); } catch (e) { /* sin almacenamiento: entra y la busca a mano */ }
+      location.replace('index.html');
+    })();
+  </script>
+</body>
+</html>

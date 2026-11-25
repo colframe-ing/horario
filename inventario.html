@@ -35,9 +35,23 @@
     .rec-linea input { width: 100%; }
     .rec-und { font-size: 0.72rem; color: var(--cf-gray-text); margin-top: 3px; min-height: 1em; }
     .rec-quitar { background: none; border: 1px solid var(--cf-gray-mid); border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--cf-gray-text); font-size: 0.9rem; }
+    /* La pestaña Acero (25-nov): una tarjeta por bobina, con sus botones. */
+    .ac-bobinas { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .ac-bob { background: #fff; border: 1px solid var(--cf-gray-mid); border-radius: 10px; padding: 10px 12px; }
+    .ac-bob-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .ac-kg { margin-left: auto; font-weight: 700; }
+    .ac-acc { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .ac-acc .btn { flex: 1; }
+    /* Una bobina (25-nov): código, calibre, grado, galvanizado, kg, $/kg. */
+    .rec-bobina { display: grid; grid-template-columns: minmax(110px, 1.4fr) repeat(3, minmax(70px, 1fr)) minmax(80px, 1fr) minmax(80px, 1fr) auto; gap: 8px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--cf-gray-mid); }
+    .rec-bobina:last-child { border-bottom: none; }
+    .rec-bobina label { display: block; font-size: 0.7rem; font-weight: 700; color: var(--cf-gray-text); text-transform: uppercase; margin-bottom: 4px; }
+    .rec-bobina input, .rec-bobina select { width: 100%; }
     @media (max-width: 600px) {
       .rec-linea { grid-template-columns: 1fr 1fr auto; }
       .rec-linea .rec-cod { grid-column: 1 / -1; }
+      .rec-bobina { grid-template-columns: 1fr 1fr 1fr; }
+      .rec-bobina .rec-cod { grid-column: 1 / -1; }
     }
     .inv-acciones { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
     .inv-error { background: #FEE2E2; color: #B91C1C; border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; white-space: pre-line; margin-top: 10px; }
@@ -136,6 +150,7 @@
   <div class="tabs" role="tablist">
     <button class="tab-btn active" data-tab="registrar" role="tab">Registrar recepción</button>
     <button class="tab-btn" data-tab="recepciones" role="tab">Recepciones <span id="cuentaPendientes" class="tab-cuenta hidden"></span></button>
+    <button class="tab-btn" data-tab="acero" role="tab">Acero</button>
     <button class="tab-btn hidden" data-tab="existencias" id="tabExistencias" role="tab">Existencias</button>
     <button class="tab-btn hidden" data-tab="producido" id="tabProducido" role="tab">Producido sin remisión</button>
     <button class="tab-btn hidden" data-tab="mes" id="tabMes" role="tab">Cargar inventario del mes</button>
@@ -146,6 +161,11 @@
     <!-- ══ REGISTRAR ══════════════════════════════════════════ -->
     <section class="tab-panel active" id="panel-registrar">
       <div class="inv-card">
+        <!-- Qué llegó (25-nov): el acero se registra bobina por bobina. -->
+        <div class="ex-cats" id="recModo" style="margin-bottom:12px;">
+          <button type="button" class="ex-cat on" data-modo="">Accesorios e insumos</button>
+          <button type="button" class="ex-cat" data-modo="ACERO">Acero (bobinas)</button>
+        </div>
         <div class="inv-grid">
           <div class="form-group">
             <label for="recFecha">Fecha de ingreso</label>
@@ -170,9 +190,17 @@
         </div>
         <p class="inv-nota" style="margin-top:8px;">La factura o la remisión del proveedor: al menos una de las dos.</p>
 
-        <div class="inv-sub">Lo que llegó</div>
-        <div id="recLineas"></div>
-        <button id="btnAgregarLinea" class="btn btn-ghost btn-sm" style="margin-top:10px;">+ Agregar línea</button>
+        <div id="recModoAccesorios">
+          <div class="inv-sub">Lo que llegó</div>
+          <div id="recLineas"></div>
+          <button id="btnAgregarLinea" class="btn btn-ghost btn-sm" style="margin-top:10px;">+ Agregar línea</button>
+        </div>
+        <div id="recModoAcero" class="hidden">
+          <div class="inv-sub">Las bobinas que llegaron</div>
+          <p class="inv-nota" id="recAceroNota" style="margin-top:0;">Una línea por bobina, con los datos de su etiqueta. "+ Agregar bobina" copia la anterior y sigue el código.</p>
+          <div id="recBobinas"></div>
+          <button id="btnAgregarBobina" class="btn btn-ghost btn-sm" style="margin-top:10px;">+ Agregar bobina</button>
+        </div>
 
         <div class="form-group" style="margin-top:14px;">
           <label for="recObs">Observaciones (opcional)</label>
@@ -198,6 +226,15 @@
     </section>
 
     <!-- ══ EXISTENCIAS ════════════════════════════════════════ -->
+    <!-- ══ ACERO (25-nov): lo que hay, y marcar cada bobina ══════════ -->
+    <section class="tab-panel" id="panel-acero">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+        <input type="search" id="acFiltro" placeholder="Buscar código, calibre, proveedor o factura" style="flex:1;min-width:180px;">
+        <button id="btnRefrescarAc" class="btn btn-ghost btn-sm">🔄 Actualizar</button>
+      </div>
+      <div id="acCuerpo"><div class="empty-state"><p>Cargando…</p></div></div>
+    </section>
+
     <section class="tab-panel" id="panel-existencias">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
         <input type="search" id="exFiltro" placeholder="Buscar código o descripción" style="flex:1;min-width:180px;">
