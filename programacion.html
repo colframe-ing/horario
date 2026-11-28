@@ -519,7 +519,12 @@
       <div class="cfg-field" style="margin-top:12px;">
         <label>Nombre en la etiqueta <small style="color:var(--cf-gray-text);font-weight:400;">(todo el proyecto)</small></label>
         <input id="ajNombreEtiqueta" type="text" maxlength="40" autocomplete="off">
-        <small style="color:var(--cf-gray-text);font-size:0.72rem;">Corto: así lo ve el operario en el programa de etiquetas. Vacío = CB y nombre del proyecto.</small>
+        <small style="color:var(--cf-gray-text);font-size:0.72rem;">Corto: así sale en la etiqueta de cada pieza (sin el CB). Vacío = el nombre del proyecto.</small>
+      </div>
+      <div class="cfg-field" style="margin-top:10px;">
+        <label>Números de las casas <small style="color:var(--cf-gray-text);font-weight:400;">(todo el proyecto)</small></label>
+        <input id="ajCasasNumeros" type="text" maxlength="300" autocomplete="off">
+        <small style="color:var(--cf-gray-text);font-size:0.72rem;">Si sigue la numeración de un CB anterior, por ejemplo <b>23-31</b>. Tantos números como casas. Vacío = 1, 2, 3…</small>
       </div>
       <div class="modal-actions" style="justify-content:space-between;">
         <button class="btn btn-ghost btn-sm" id="ajLimpiar" title="Quita el ritmo propio y la fecha mínima">Quitar ajustes</button>

@@ -1259,6 +1259,9 @@
     document.getElementById('ajRitmo').placeholder = 'Usar el global ('+fmtNum(ritmoG,0)+' ML/d)';
     document.getElementById('ajFechaMin').value = (item && item.fechaInicioMin) ? item.fechaInicioMin : '';
     document.getElementById('ajNombreEtiqueta').value = (item && item.nombreEtiqueta) || '';
+    document.getElementById('ajNombreEtiqueta').placeholder = (item && item.proyecto) || '';
+    document.getElementById('ajCasasNumeros').value = casasLegibles((item && item.casasNumeros) || '');
+    document.getElementById('ajCasasNumeros').placeholder = (item && item.cantidad > 1) ? '1-' + item.cantidad : '1';
     document.getElementById('modalAjustes').classList.remove('hidden');
   }
   function cerrarAjustes(){
@@ -1275,21 +1278,49 @@
     var item = buscarItem(uid);
     var espera = (item && item.esC140) ? document.getElementById('ajEsperaC90').checked : undefined;
     var nombreEt = document.getElementById('ajNombreEtiqueta').value.trim().replace(/\s+/g, ' ');
+    var numerosTxt = document.getElementById('ajCasasNumeros').value.trim();
     cerrarAjustes();
     aplicarAjustes(uid, ritmoStr ? Number(ritmoStr) : null, fechaMin || '', espera);
-    // El nombre de la etiqueta va aparte y solo si cambió: es del proyecto, no
-    // de la agenda, y "Quitar ajustes" no lo toca.
-    if(item && nombreEt !== (item.nombreEtiqueta || '')) guardarNombreEtiqueta(item.archivo, nombreEt);
+    // Lo de la etiqueta va aparte y solo si cambió: es del proyecto, no de la
+    // agenda, y "Quitar ajustes" no lo toca. Los números se comparan ya
+    // normalizados ("23-25" y "23,24,25" son lo mismo).
+    if(!item) return;
+    var cambiaNombre = nombreEt !== (item.nombreEtiqueta || '');
+    var cambiaNumeros = casasLegibles(numerosTxt) !== casasLegibles(item.casasNumeros || '');
+    if(cambiaNombre || cambiaNumeros){
+      guardarEtiquetaProyecto(item.archivo, cambiaNombre ? nombreEt : undefined, cambiaNumeros ? numerosTxt : undefined);
+    }
   }
-  function guardarNombreEtiqueta(archivo, nombre){
+  // "23,24,25,30" → "23-25, 30" (y lo que no se entienda, tal cual: el backend lo dice).
+  function casasLegibles(txt){
+    var nums = [], partes = String(txt||'').split(/[,;\s]+/).filter(Boolean);
+    for(var i=0;i<partes.length;i++){
+      var m = /^(\d+)\s*-\s*(\d+)$/.exec(partes[i]);
+      if(m){ for(var n=+m[1]; n<=+m[2] && n-(+m[1])<=500; n++) nums.push(n); }
+      else if(/^\d+$/.test(partes[i])) nums.push(+partes[i]);
+      else return String(txt||'').trim();
+    }
+    nums = nums.filter(function(n,i,a){ return a.indexOf(n)===i; }).sort(function(a,b){ return a-b; });
+    var out = [], a = null, b = null;
+    nums.forEach(function(n){ if(a!==null && n===b+1){ b=n; return; } if(a!==null) out.push(a===b?String(a):a+'-'+b); a=b=n; });
+    if(a!==null) out.push(a===b?String(a):a+'-'+b);
+    return out.join(', ');
+  }
+  function guardarEtiquetaProyecto(archivo, nombre, numeros){
     var todos = _data.cola.concat(_data.backlog||[], _data.finalizados||[]).filter(function(c){ return c.archivo===archivo; });
-    var antes = todos.map(function(c){ return c.nombreEtiqueta || ''; });
-    todos.forEach(function(c){ c.nombreEtiqueta = nombre; });
+    var antes = todos.map(function(c){ return { n:c.nombreEtiqueta || '', c:c.casasNumeros || '' }; });
     beginSave();
-    apiProdNombreEtiqueta(token, archivo, nombre).then(function(){
-      toast(nombre ? 'Nombre en la etiqueta: '+nombre : 'La etiqueta vuelve al nombre del proyecto','ok');
+    apiProdNombreEtiqueta(token, archivo, nombre, numeros).then(function(r){
+      todos.forEach(function(c){
+        if(nombre !== undefined) c.nombreEtiqueta = nombre;
+        if(numeros !== undefined) c.casasNumeros = (r && r.casasNumeros) || '';
+      });
+      var partes = [];
+      if(nombre !== undefined) partes.push(nombre ? 'nombre en la etiqueta: '+nombre : 'la etiqueta vuelve al nombre del proyecto');
+      if(numeros !== undefined) partes.push((r && r.casasNumeros) ? 'casas '+casasLegibles(r.casasNumeros) : 'casas 1, 2, 3…');
+      toast(partes.join(' · '),'ok');
     }).catch(function(e){
-      todos.forEach(function(c, i){ c.nombreEtiqueta = antes[i]; });
+      todos.forEach(function(c, i){ c.nombreEtiqueta = antes[i].n; c.casasNumeros = antes[i].c; });
       manejarError(e);
     }).finally(endSave);
   }
@@ -1374,6 +1405,7 @@
     var hayCongelado = _enviosRows.some(function(r){ return r.congelado; });
     document.getElementById('envProyectoNombre').textContent = _enviosProy.proyecto || '';
     document.getElementById('envTotalInfo').textContent = 'Total del proyecto: '+nUnidades(_enviosProy.cantidad)+' · '+fmtNum(_enviosProy.totalML,0)+' ML'+
+      (any.casasNumeros ? ' · casas '+casasLegibles(any.casasNumeros) : '')+
       (_soloMetros() ? ' — proyecto de 1 unidad: solo se puede partir por metros' : '')+
       (hayCongelado ? ' — hay envíos ya producidos: su tamaño no se puede cambiar' : '');
     // Etiqueta de "partir en N partes": por unidades o por metros según el proyecto

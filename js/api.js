@@ -573,9 +573,11 @@ async function apiProdEnvioPartir(token, archivo, envioId, partes, puesto) {
 async function apiProdEnviosSet(token, archivo, envios, puesto) {
   return apiCall('prod_envios_set', { token, archivo, envios, puesto: puesto || 'aqui' });
 }
-// El nombre corto del proyecto para las etiquetas de las piezas (28-nov). '' = el de siempre.
-async function apiProdNombreEtiqueta(token, archivo, nombre) {
-  return apiCall('prod_nombre_etiqueta', { token, archivo, nombre });
+// Lo del proyecto para las etiquetas de las piezas (28-nov): el nombre corto
+// ('' = el del proyecto) y los números de sus casas ('23-31'; '' = 1..N).
+// `undefined` = no se toca.
+async function apiProdNombreEtiqueta(token, archivo, nombre, casasNumeros) {
+  return apiCall('prod_nombre_etiqueta', { token, archivo, nombre, casasNumeros });
 }
 async function apiProdAlertasHigiene(token) {
   return apiCall('prod_alertas_higiene', { token });
