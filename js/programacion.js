@@ -57,6 +57,7 @@
   var apiProdColaConfig     = enSerie.envolver(window.apiProdColaConfig);
   var apiProdEnvioPartir    = enSerie.envolver(window.apiProdEnvioPartir);
   var apiProdEnviosSet      = enSerie.envolver(window.apiProdEnviosSet);
+  var apiProdNombreEtiqueta = enSerie.envolver(window.apiProdNombreEtiqueta);
   var apiProdMaquinaSet     = enSerie.envolver(window.apiProdMaquinaSet);
   var apiProdCalExcepcion   = enSerie.envolver(window.apiProdCalExcepcion);
   var apiProdScanNow        = enSerie.envolver(window.apiProdScanNow);
@@ -1257,6 +1258,7 @@
     document.getElementById('ajRitmo').value = (item && item.ritmoOvr && !item.esC140) ? item.ritmoOvr : '';
     document.getElementById('ajRitmo').placeholder = 'Usar el global ('+fmtNum(ritmoG,0)+' ML/d)';
     document.getElementById('ajFechaMin').value = (item && item.fechaInicioMin) ? item.fechaInicioMin : '';
+    document.getElementById('ajNombreEtiqueta').value = (item && item.nombreEtiqueta) || '';
     document.getElementById('modalAjustes').classList.remove('hidden');
   }
   function cerrarAjustes(){
@@ -1272,8 +1274,24 @@
     // La casilla solo existe en un pedido de C140: en el resto no se manda.
     var item = buscarItem(uid);
     var espera = (item && item.esC140) ? document.getElementById('ajEsperaC90').checked : undefined;
+    var nombreEt = document.getElementById('ajNombreEtiqueta').value.trim().replace(/\s+/g, ' ');
     cerrarAjustes();
     aplicarAjustes(uid, ritmoStr ? Number(ritmoStr) : null, fechaMin || '', espera);
+    // El nombre de la etiqueta va aparte y solo si cambió: es del proyecto, no
+    // de la agenda, y "Quitar ajustes" no lo toca.
+    if(item && nombreEt !== (item.nombreEtiqueta || '')) guardarNombreEtiqueta(item.archivo, nombreEt);
+  }
+  function guardarNombreEtiqueta(archivo, nombre){
+    var todos = _data.cola.concat(_data.backlog||[], _data.finalizados||[]).filter(function(c){ return c.archivo===archivo; });
+    var antes = todos.map(function(c){ return c.nombreEtiqueta || ''; });
+    todos.forEach(function(c){ c.nombreEtiqueta = nombre; });
+    beginSave();
+    apiProdNombreEtiqueta(token, archivo, nombre).then(function(){
+      toast(nombre ? 'Nombre en la etiqueta: '+nombre : 'La etiqueta vuelve al nombre del proyecto','ok');
+    }).catch(function(e){
+      todos.forEach(function(c, i){ c.nombreEtiqueta = antes[i]; });
+      manejarError(e);
+    }).finally(endSave);
   }
   function limpiarAjustesModal(){
     var uid = _ajustesUid;
@@ -1344,6 +1362,7 @@
     // finalizados; `fechaRealInicio` viene en toda unidad que ya arrancó.
     _enviosRows = envs.map(function(c){
       return { id:c.envioId, tipo:c.tipoEnvio, valor:c.valorEnvio, fechaEntrega:c.fechaEntrega||'',
+               casas: c.casasEnvio || '',
                congelado: !!(c.finalizado || c.fechaRealInicio),
                motivo: c.finalizado ? 'Finalizado' : (c.fechaRealInicio ? 'En producción' : '') };
     });
@@ -1366,6 +1385,14 @@
     reiniciarPuesto('envPuesto');
     document.getElementById('modalEnvios').classList.remove('hidden');
   }
+  // Qué casas lleva cada envío (28-nov): "1-3" o "4,5,6". Lo lee el programa de
+  // etiquetas, que ofrece al operario solo esas casas. Se puede corregir aunque
+  // el envío ya se haya producido: no es su tamaño.
+  function casasCtrl(r){
+    return '<input data-f="casas" type="text" value="'+esc(r.casas||'')+'" placeholder="casas: 1-3" '+
+      'title="Qué casas van en este envío, por ejemplo 1-3 o 4,5,6. Así salen en el programa de etiquetas." '+
+      'style="width:96px;" autocomplete="off">';
+  }
   function renderEnviosRows(){
     var cont = document.getElementById('envRows');
     var soloM = _soloMetros();
@@ -1376,6 +1403,7 @@
         return '<div class="env-row env-row-congelado" data-i="'+i+'" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'+
           '<span style="font-size:0.82rem;color:var(--cf-gray-text);width:70px;display:inline-block;">'+esc(r.tipo)+'</span>'+
           '<span style="width:100px;font-size:0.82rem;font-weight:700;color:var(--cf-dark);">'+esc(r.valor)+'</span>'+
+          casasCtrl(r)+
           '<input data-f="fechaEntrega" type="date" value="'+esc(r.fechaEntrega)+'" title="Fecha de entrega de este envío" style="flex:1;">'+
           '<span class="env-badge" title="Ya se produjo: su tamaño no se puede cambiar">🔒 '+esc(r.motivo)+'</span>'+
         '</div>';
@@ -1389,6 +1417,7 @@
       return '<div class="env-row" data-i="'+i+'" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'+
         tipoCtrl+
         '<input data-f="valor" type="number" min="1" step="'+(r.tipo==='metros'?'0.01':'1')+'" value="'+esc(r.valor)+'" placeholder="'+(r.tipo==='metros'?'ML':'nº unidades')+'" style="width:100px;">'+
+        casasCtrl(r)+
         '<input data-f="fechaEntrega" type="date" value="'+esc(r.fechaEntrega)+'" title="Fecha de entrega de este envío" style="flex:1;">'+
         '<button data-del="'+i+'" class="cola-toggle-btn" title="Quitar envío">✕</button>'+
       '</div>';
@@ -1903,7 +1932,9 @@
     }
     if(sumML > _enviosProy.totalML + 0.5){ toast('Los envíos exceden el total del proyecto','error'); return; }
     if(sumUnidades > _enviosProy.cantidad){ toast('Los envíos exceden las unidades del proyecto','error'); return; }
-    var payload = _enviosRows.map(function(r){ var o={ tipo:r.tipo, valor:parseFloat(r.valor), fechaEntrega:r.fechaEntrega||'' }; if(r.id) o.id=r.id; return o; });
+    // `casas` va siempre (vacío = sin casas): el backend valida que cuadren con
+    // las unidades, que existan en el proyecto y que ninguna esté en dos envíos.
+    var payload = _enviosRows.map(function(r){ var o={ tipo:r.tipo, valor:parseFloat(r.valor), fechaEntrega:r.fechaEntrega||'', casas:(r.casas||'').trim() }; if(r.id) o.id=r.id; return o; });
     var puesto = puestoElegido('envPuesto');
     cerrarEnvios();
     beginSave();

@@ -1781,6 +1781,7 @@
     PROD_COLA_NOTA:             { txt: 'Nota de cola',               color: '#64748B', g: 'Producción y cola' },
     PROD_COLA_CONFIG:           { txt: 'Configuración de la cola',   color: '#2563EB', g: 'Producción y cola' },
     PROD_AJUSTES_SET:           { txt: 'Ajustes de proyecto',        color: '#2563EB', g: 'Producción y cola' },
+    PROD_NOMBRE_ETIQUETA:       { txt: 'Nombre en la etiqueta',      color: '#2563EB', g: 'Producción y cola' },
     PROD_ENVIOS_SET:            { txt: 'Envíos redefinidos',         color: '#D97706', g: 'Producción y cola' },
     PROD_ENVIO_PARTIR:          { txt: 'Envío partido',              color: '#D97706', g: 'Producción y cola' },
     PROD_COLA_PAUSAR:           { txt: 'Producción pausada',        color: '#B45309', g: 'Producción y cola' },
