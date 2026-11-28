@@ -795,7 +795,7 @@
           // pertenece lo ya fabricado, y eso no se puede adivinar.
           (((c.esEnvio || c.esC140) && !c.fechaRealInicio)
             ? '<button data-partir-envio="'+esc(c.uid)+'">✂ '+(c.esC140 ? 'Partir este pedido de C140' : 'Partir este envío en partes')+'</button>' : '')+
-          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ '+(c.esC140 ? 'Fecha mínima del pedido' : 'Ritmo / fecha de inicio')+'</button>'+
+          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ '+(c.esC140 ? 'Ajustes (fecha mínima, etiqueta)' : 'Ajustes (ritmo, fecha, etiqueta)')+'</button>'+
           '<div class="menu-sep"></div>'+
           // A una pausada no se le ofrece sacarla (R10-07): primero se reanuda o se finaliza.
           (c.pausada ? '' : '<button data-sacar="'+esc(c.uid)+'">Sacar de la cola</button>')+
@@ -897,7 +897,7 @@
           // pertenece lo ya fabricado, y eso no se puede adivinar.
           (((c.esEnvio || c.esC140) && !c.fechaRealInicio)
             ? '<button data-partir-envio="'+esc(c.uid)+'">✂ '+(c.esC140 ? 'Partir este pedido de C140' : 'Partir este envío en partes')+'</button>' : '')+
-          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ '+(c.esC140 ? 'Fecha mínima del pedido' : 'Ritmo / fecha de inicio')+'</button>'+
+          '<button data-ajustes="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">⚙ '+(c.esC140 ? 'Ajustes (fecha mínima, etiqueta)' : 'Ajustes (ritmo, fecha, etiqueta)')+'</button>'+
           '<div class="menu-sep"></div>'+
           '<button class="danger" data-finalizar="'+esc(c.uid)+'" data-nombre="'+esc(etiquetaUnidad(c))+'">Finalizar</button>'
         )+
